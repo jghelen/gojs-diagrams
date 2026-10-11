@@ -22,24 +22,17 @@ import {
   highlightTree,
   picturedParts,
   revealNodesOneByOne,
-  showModel,
   showSearchHit,
   textColorFor,
 } from '../diagram/diagram-factory';
-import { ChangeDetails, MAX_CHANGE_ROWS, describeChanges } from '../diagram/change-details';
+import { ChangeDetails, describeChanges } from '../diagram/change-details';
 import { downloadFileName } from '../diagram/file-name';
-import { BLANK_DATASET, DATASETS, DEFAULT_DATASET, findDataset } from '../diagram/datasets';
-import {
-  DEFAULT_LAYOUT,
-  LAYOUTS,
-  LayoutType,
-  createLayout,
-  resetPortSpots,
-} from '../diagram/layouts';
+import { HistoryService, StateCheck, withoutUndo } from '../diagram/history.service';
+import { DATASETS, findDataset } from '../diagram/datasets';
+import { LAYOUTS, LayoutType, createLayout, resetPortSpots } from '../diagram/layouts';
 import { SHAPE_TILES } from '../diagram/shape-tiles';
 import { newBatchUrl } from '../new-batch/new-batch';
 import {
-  DEFAULT_LINK_TYPE,
   LINK_TYPES,
   LinkType,
   avoidsNodes,
@@ -47,17 +40,30 @@ import {
   tooBigToAvoidNodes,
 } from '../diagram/link-types';
 import {
-  COLORS,
-  DEFAULT_COLOR,
-  DEFAULT_SHAPE,
   EDITABLE_FIELDS,
   EditableField,
-  FUND_TYPES,
   LinkData,
   NodeData,
   formatOwnership,
   randomPatch,
 } from '../diagram/node-data';
+import {
+  BLANK_DATASET,
+  BULK_EDIT_BUDGET,
+  COLORS,
+  DEFAULT_COLOR,
+  DEFAULT_DATASET,
+  DEFAULT_LAYOUT,
+  DEFAULT_LINK_TYPE,
+  DEFAULT_SHAPE,
+  FAILURE_NOTICE,
+  FUND_TYPES,
+  IMAGE_MAX_SIDE,
+  IMAGE_SCALE,
+  LOG_OPEN_KEY,
+  MAX_CHANGE_ROWS,
+  MAX_LOG_ENTRIES,
+} from '../diagram/constants';
 
 interface Stats {
   nodes: number;
@@ -83,12 +89,6 @@ interface LogEntry {
   maxMs: number;
   /** From the start of the operation until the result was painted; null if the tab was hidden. */
   paintMs: number | null;
-}
-
-interface StateCheck {
-  label: string;
-  /** true/false when compared against a snapshot, null when there is nothing to compare with. */
-  ok: boolean | null;
 }
 
 /** The selected nodes: per field, the value they all share, or null where they differ. */
@@ -130,27 +130,19 @@ interface DeleteRequest {
   attached: number;
 }
 
-/** First and last index into UndoManager.history, inclusive. */
-type HistoryRange = [first: number, last: number];
-
+/**
+ * Something the user asked for, cut into the steps whose time is measured: one
+ * step is one transaction that is recorded, undone or redone.
+ */
 interface Operation {
   /** Shown in the timing log. */
   name: string;
+  /** Whether there is another step to do. */
   hasNext: () => boolean;
   step: () => void;
-  /** The history entries this operation commits, undoes or redoes. */
-  range: HistoryRange;
+  /** Lets the page show its disabled buttons before a long operation blocks it. */
   showBusyFirst?: boolean;
 }
-
-const MAX_LOG_ENTRIES = 30;
-
-/** Shown above the diagram after an action failed and its changes were taken back. */
-const FAILURE_NOTICE =
-  'That action could not be completed and was undone. You can keep working on the diagram.';
-
-/** Where the browser remembers whether the benchmark statistics are open. */
-const LOG_OPEN_KEY = 'gojs-diagrams.benchmark-statistics-open';
 
 /** A yes/no setting remembered by the browser; `fallback` when there is none or storage is blocked. */
 function readFlag(key: string, fallback: boolean): boolean {
@@ -170,22 +162,13 @@ function writeFlag(key: string, value: boolean): void {
   }
 }
 
-/**
- * A picture of the diagram, for export and print, is drawn at twice the size of
- * the diagram so that small text stays sharp, also on high-resolution screens.
- * Very large diagrams are drawn smaller, so that no side exceeds the maximum.
- */
-const IMAGE_SCALE = 2;
-const IMAGE_MAX_SIDE = 10_000;
-
-/** Upper limit for runs × nodes of one bulk edit; beyond it the page is blocked for too long. */
-const BULK_EDIT_BUDGET = 40_000;
-
 @Component({
   selector: 'app-perf-diagram',
   templateUrl: './perf-diagram.html',
   styleUrl: './perf-diagram.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // One history per diagram, so the service lives and dies with this component.
+  providers: [HistoryService],
 })
 export class PerfDiagram {
   protected readonly angularVersion = VERSION.full;
@@ -339,11 +322,9 @@ export class PerfDiagram {
   private diagram!: go.Diagram;
   /** The small picture of the whole diagram in the corner of the canvas. */
   private overview!: go.Overview;
-  /** Model JSON after the initial layout: what "undo all" has to get back to. */
-  private initialJson: string | null = null;
-  /** Model JSON at the newest transaction, captured before undoing away from it. */
-  private tipJson: string | null = null;
-  /** True while a timed operation runs, so the model listener adds nothing to the measurement. */
+  /** The undo history of the diagram: recording changes, undo, redo and everything read from it. */
+  private readonly history = inject(HistoryService);
+  /** True while a timed operation runs, so that refreshing the page adds nothing to the measurement. */
   private measuring = false;
   private nextLogId = 1;
   /** Stops the animation in which a loaded diagram's nodes appear one by one. */
@@ -367,10 +348,6 @@ export class PerfDiagram {
     return this.diagram.model as NodeModel;
   }
 
-  private get undoManager(): go.UndoManager {
-    return this.diagram.model.undoManager;
-  }
-
   private init(): void {
     this.diagram = createDiagram(this.host().nativeElement, {
       onLinkInfo: (link) => this.showLinkInfo(link),
@@ -382,26 +359,22 @@ export class PerfDiagram {
     });
     this.overview = createOverview(this.overviewHost().nativeElement, this.diagram);
 
-    // Route Ctrl/Cmd+Z and Ctrl/Cmd+Y through the timed versions.
-    this.diagram.commandHandler.undo = () => void this.undo();
-    this.diagram.commandHandler.redo = () => void this.redo();
+    // The page shows numbers from the history, so it follows every change of it, also
+    // the ones GoJS makes itself (dragging a node, editing a text in place).
+    this.history.connect(this.diagram, () => {
+      if (!this.measuring) this.refresh();
+    });
+    // Ctrl/Cmd+Z and Ctrl/Cmd+Y do what the Undo and Redo buttons do, timing included.
+    this.history.sendShortcutsTo(
+      () => void this.undo(),
+      () => void this.redo(),
+    );
     // Same for the Delete key, which removes whatever is selected.
     this.diagram.commandHandler.deleteSelection = () => void this.deleteSelection();
 
-    // Picks up transactions committed by GoJS itself (dragging, in-place text editing).
-    this.diagram.addModelChangedListener((e) => {
-      if (!e.isTransactionFinished || this.measuring) return;
-      if (e.propertyName === 'CommittedTransaction' && e.object) this.tipJson = null;
-      this.refresh();
-    });
-    // GoJS commits the initial layout as a transaction and then clears the history
-    // without raising a model event; "Modified" is what fires once that is done.
-    this.diagram.addDiagramListener('Modified', () => {
-      if (!this.measuring) this.refresh();
-    });
     // The initial layout writes every node's `loc`, so the snapshot is taken after it.
     this.diagram.addDiagramListener('InitialLayoutCompleted', () => {
-      this.initialJson = this.model.toJson();
+      this.history.markInitialState();
       // GoJS clears the history right after this event; read the numbers once it has.
       queueMicrotask(() => this.refresh());
       // The nodes now appear one by one; everything stays disabled until they are all there.
@@ -426,7 +399,7 @@ export class PerfDiagram {
     const onError = (): void => {
       // A drag or a text edit that is under way keeps its transaction, whatever went wrong elsewhere.
       if (this.diagram.currentTool !== this.diagram.defaultTool) return;
-      if (this.measuring || this.undoManager.transactionLevel === 0) return;
+      if (this.measuring || !this.history.hasUnfinishedTransaction) return;
       this.recoverFrom('An error left a transaction open.');
       this.refresh();
     };
@@ -441,56 +414,45 @@ export class PerfDiagram {
 
   protected undo(): Promise<void> {
     return this.measure(() => {
-      const um = this.undoManager;
-      this.captureTip();
-      const index = um.historyIndex;
+      // Saved before the clock starts: redoing everything is later checked against it.
+      this.history.rememberLatestState();
       return {
         name: 'Undo',
-        hasNext: once(() => um.canUndo()),
-        step: () => um.undo(),
-        range: [index, index],
+        hasNext: once(() => this.history.canUndo),
+        step: () => this.history.undo(),
       };
     });
   }
 
   protected redo(): Promise<void> {
-    return this.measure(() => {
-      const um = this.undoManager;
-      const index = um.historyIndex + 1;
-      return {
-        name: 'Redo',
-        hasNext: once(() => um.canRedo()),
-        step: () => um.redo(),
-        range: [index, index],
-      };
-    });
+    return this.measure(() => ({
+      name: 'Redo',
+      hasNext: once(() => this.history.canRedo),
+      step: () => this.history.redo(),
+    }));
   }
 
+  /** Undoes one transaction after another until the diagram is as it was loaded. */
   protected undoAll(): Promise<void> {
     return this.measure(() => {
-      const um = this.undoManager;
-      this.captureTip();
+      this.history.rememberLatestState();
       return {
         name: 'Undo all',
-        hasNext: () => um.canUndo(),
-        step: () => um.undo(),
-        range: [0, um.historyIndex],
+        hasNext: () => this.history.canUndo,
+        step: () => this.history.undo(),
         showBusyFirst: true,
       };
     });
   }
 
+  /** Redoes one transaction after another until the diagram is at its newest state again. */
   protected redoAll(): Promise<void> {
-    return this.measure(() => {
-      const um = this.undoManager;
-      return {
-        name: 'Redo all',
-        hasNext: () => um.canRedo(),
-        step: () => um.redo(),
-        range: [um.historyIndex + 1, um.history.count - 1],
-        showBusyFirst: true,
-      };
-    });
+    return this.measure(() => ({
+      name: 'Redo all',
+      hasNext: () => this.history.canRedo,
+      step: () => this.history.redo(),
+      showBusyFirst: true,
+    }));
   }
 
   // ----- edits -----
@@ -548,7 +510,7 @@ export class PerfDiagram {
       return this.newTransactions(
         'Add node',
         once(() => true),
-        () => this.diagram.commit((d) => addNodeInView(d, node), 'add node'),
+        () => this.history.record('add node', () => addNodeInView(this.diagram, node)),
       );
     });
   }
@@ -637,12 +599,12 @@ export class PerfDiagram {
         `Style ${nodes.length} ${nodes.length === 1 ? 'node' : 'nodes'}`,
         once(() => nodes.length > 0),
         () => {
-          this.model.commit((m) => {
+          this.history.record('apply styles', () => {
             for (const node of nodes) {
-              if (color !== null) m.set(node, 'color', color);
-              if (shape !== null) m.set(node, 'shape', shape);
+              if (color !== null) this.model.set(node, 'color', color);
+              if (shape !== null) this.model.set(node, 'shape', shape);
             }
-          }, 'apply styles');
+          });
           this.styleDraft.set({ color: null, shape: null });
         },
       );
@@ -677,12 +639,12 @@ export class PerfDiagram {
         'Reset styles',
         once(() => nodes.length > 0),
         () =>
-          this.model.commit((m) => {
+          this.history.record('reset styles', () => {
             for (const node of nodes) {
-              m.set(node, 'shape', DEFAULT_SHAPE);
-              m.set(node, 'color', DEFAULT_COLOR);
+              this.model.set(node, 'shape', DEFAULT_SHAPE);
+              this.model.set(node, 'color', DEFAULT_COLOR);
             }
-          }, 'reset styles'),
+          }),
       );
     });
   }
@@ -741,9 +703,9 @@ export class PerfDiagram {
         `Set ${field} on ${nodes.length} ${nodes.length === 1 ? 'node' : 'nodes'}`,
         once(() => nodes.length > 0),
         () =>
-          this.model.commit((m) => {
-            for (const data of nodes) m.set(data, field, value);
-          }, `edit ${field}`),
+          this.history.record(`edit ${field}`, () => {
+            for (const data of nodes) this.model.set(data, field, value);
+          }),
       );
     });
   }
@@ -805,10 +767,10 @@ export class PerfDiagram {
         `Delete ${nodes.length} ${nodes.length === 1 ? 'node' : 'nodes'}`,
         once(() => nodes.length > 0),
         () =>
-          this.model.commit(() => {
+          this.history.record('delete', () => {
             this.model.removeLinkDataCollection(links);
             this.model.removeNodeDataCollection(nodes);
-          }, 'delete'),
+          }),
       );
     });
   }
@@ -864,9 +826,8 @@ export class PerfDiagram {
         `Remove ${links.length} ${links.length === 1 ? 'relationship' : 'relationships'}`,
         once(() => links.length > 0),
         () =>
-          this.model.commit(
-            () => this.model.removeLinkDataCollection(links),
-            'remove relationships',
+          this.history.record('remove relationships', () =>
+            this.model.removeLinkDataCollection(links),
           ),
       );
     });
@@ -880,7 +841,8 @@ export class PerfDiagram {
         `Layout: ${label}`,
         once(() => type !== this.model.modelData.layoutType),
         () =>
-          this.diagram.commit((d) => {
+          this.history.record('change layout', () => {
+            const d = this.diagram;
             d.model.set(d.model.modelData, 'layoutType', type);
             // GoJS records this assignment too, so undo/redo also swaps the layout object back.
             const layout = createLayout(type, d.nodes.count);
@@ -888,7 +850,7 @@ export class PerfDiagram {
             d.layout = layout;
             // Layouts are not "ongoing", so ask for this one run explicitly.
             layout.isValidLayout = false;
-          }, 'change layout'),
+          }),
       ),
       showBusyFirst: true,
     }));
@@ -904,10 +866,10 @@ export class PerfDiagram {
         'Auto arrange',
         once(() => true),
         () => {
-          this.diagram.commit((d) => {
-            resetPortSpots(d);
-            d.layoutDiagram(true);
-          }, 'auto arrange');
+          this.history.record('auto arrange', () => {
+            resetPortSpots(this.diagram);
+            this.diagram.layoutDiagram(true);
+          });
           this.zoomToFitSoon();
         },
       ),
@@ -960,7 +922,10 @@ export class PerfDiagram {
       ...this.newTransactions(
         `Lines: ${linkStyle(type).label}`,
         once(() => type !== this.model.modelData.linkType),
-        () => this.model.commit((m) => m.set(m.modelData, 'linkType', type), 'change line type'),
+        () =>
+          this.history.record('change line type', () =>
+            this.model.set(this.model.modelData, 'linkType', type),
+          ),
       ),
       showBusyFirst: true,
     }));
@@ -1119,7 +1084,10 @@ export class PerfDiagram {
       this.newTransactions(
         field === 'name' ? 'Rename diagram' : 'Describe diagram',
         once(() => value !== this.model.modelData[field]),
-        () => this.model.commit((m) => m.set(m.modelData, field, value), `edit ${field}`),
+        () =>
+          this.history.record(`edit ${field}`, () =>
+            this.model.set(this.model.modelData, field, value),
+          ),
       ),
     );
   }
@@ -1159,43 +1127,34 @@ export class PerfDiagram {
           () => remaining > 0,
           () => {
             remaining--;
-            this.model.commit((m) => {
+            this.history.record('randomize', () => {
               for (const data of nodes) {
                 const patch = randomPatch(data);
-                for (const field of EDITABLE_FIELDS) m.set(data, field, patch[field]);
+                for (const field of EDITABLE_FIELDS) this.model.set(data, field, patch[field]);
               }
-            }, 'randomize');
+            });
           },
-          runs,
         ),
         showBusyFirst: runs > 1,
       };
     });
   }
 
-  /** An operation that commits `count` new transactions after the current history index. */
-  private newTransactions(
-    name: string,
-    hasNext: () => boolean,
-    step: () => void,
-    count = 1,
-  ): Operation {
-    // The newest state is about to change, so its snapshot no longer applies.
-    this.tipJson = null;
-    // New transactions replace everything after the current history index.
-    const first = this.undoManager.historyIndex + 1;
-    return { name, hasNext, step, range: [first, first + count - 1] };
+  /** An operation whose every step records one new transaction. */
+  private newTransactions(name: string, hasNext: () => boolean, step: () => void): Operation {
+    return { name, hasNext, step };
   }
 
   /** Loads a fresh model that keeps the currently selected layout and line type. */
   private loadModel(datasetId: string): void {
     // A reveal of the previous diagram that is still running has nothing left to show.
     this.stopReveal();
-    this.diagram.isEnabled = true;
+    // Not a change for the history: see revealNodesOneByOne.
+    withoutUndo(this.diagram, () => (this.diagram.isEnabled = true));
     // GoJS refuses to replace a model in the middle of a transaction, whether a
     // tool is using it or an error left it open.
     this.diagram.currentTool.doCancel();
-    this.closeStrayTransactions();
+    this.history.rollBackUnfinished();
     this.failure.set(null);
     const dataset = findDataset(datasetId);
     const data = dataset.create();
@@ -1212,8 +1171,6 @@ export class PerfDiagram {
       description: '',
     };
     this.busy.set(true);
-    this.initialJson = null;
-    this.tipJson = null;
     // A new model gets new parts, none of them dimmed.
     this.highlighted = false;
     // What was searched for belonged to the diagram that is replaced now.
@@ -1221,7 +1178,7 @@ export class PerfDiagram {
     this.searchMatches.set([]);
     this.searchIndex.set(-1);
     this.diagram.layout = createLayout(settings.layoutType, data.nodes.length);
-    showModel(this.diagram, createModel(data, settings));
+    this.history.load(createModel(data, settings));
   }
 
   /** Makes the controls follow the model's settings, which a change, an undo or a redo alters. */
@@ -1255,28 +1212,31 @@ export class PerfDiagram {
     // Busy at this point means a model is still loading.
     if (this.busy()) return;
     // A drag or a text edit is in the middle of its own transaction; let it finish first.
-    if (!this.closeStrayTransactions()) return;
+    if (!this.history.rollBackUnfinished()) return;
     this.failure.set(null);
     this.clearHighlight();
-    const { name, hasNext, step, range, showBusyFirst } = plan();
+    const { name, hasNext, step, showBusyFirst } = plan();
     this.busy.set(true);
     try {
       // Long runs block the main thread, so let the disabled buttons paint first.
       if (showBusyFirst) await afterNextPaint();
 
       this.measuring = true;
+      const positionBefore = this.history.position;
       const start = performance.now();
       const result = timeSteps(hasNext, step);
       this.measuring = false;
       const paintedAt = await afterNextPaint();
 
       if (result.steps > 0) {
+        // The transactions this operation recorded, undid or redid.
+        const involved = this.history.transactionsBetween(positionBefore, this.history.position);
         const entry: LogEntry = {
           id: this.nextLogId++,
           op: name,
           steps: result.steps,
-          changes: this.countChanges(...range),
-          details: describeChanges(this.transactionsIn(...range)),
+          changes: involved.reduce((sum, transaction) => sum + transaction.changes.count, 0),
+          details: describeChanges(involved),
           totalMs: result.totalMs,
           avgMs: result.totalMs / result.steps,
           minMs: result.minMs,
@@ -1294,93 +1254,34 @@ export class PerfDiagram {
     }
   }
 
-  /**
-   * Ends the transactions that an error left open, taking back their half-done
-   * changes. While a transaction stays open GoJS records no undo steps, refuses
-   * undo and redo and refuses to load another diagram, so without this the
-   * diagram would be stuck until the page is reloaded.
-   *
-   * Returns false, and leaves everything alone, while a tool such as a drag or a
-   * text edit is busy: the transaction that is open then is the tool's own.
-   */
-  private closeStrayTransactions(): boolean {
-    const um = this.undoManager;
-    if (um.transactionLevel === 0) return true;
-    if (this.diagram.currentTool !== this.diagram.defaultTool) return false;
-    while (um.transactionLevel > 0) um.rollbackTransaction();
-    return true;
-  }
-
   /** After an action failed: undoes what it had done so far, so that work can go on, and says so. */
   private recoverFrom(error: unknown): void {
     console.error('The action failed and was undone.', error);
     this.measuring = false;
     this.diagram.currentTool.doCancel();
-    this.closeStrayTransactions();
+    this.history.rollBackUnfinished();
     this.failure.set(FAILURE_NOTICE);
   }
 
-  /** Remembers the newest state before the first undo away from it, so "redo all" can be verified. */
-  private captureTip(): void {
-    const um = this.undoManager;
-    if (this.tipJson === null && um.canUndo() && !um.canRedo()) this.tipJson = this.model.toJson();
-  }
-
-  /** Number of ChangedEvents recorded in history[from..to]. */
-  /** The transactions at these positions of the history, as far as they exist. */
-  private transactionsIn(from: number, to: number): go.Transaction[] {
-    const history = this.undoManager.history;
-    const found: go.Transaction[] = [];
-    const last = Math.min(to, history.count - 1);
-    for (let i = Math.max(from, 0); i <= last; i++) found.push(history.elt(i));
-    return found;
-  }
-
-  private countChanges(from: number, to: number): number {
-    const history = this.undoManager.history;
-    let total = 0;
-    const last = Math.min(to, history.count - 1);
-    for (let i = Math.max(from, 0); i <= last; i++) total += history.elt(i).changes.count;
-    return total;
-  }
-
   private refresh(): void {
-    const um = this.undoManager;
     const memory = (performance as { memory?: { usedJSHeapSize: number } }).memory;
     this.stats.set({
       nodes: this.model.nodeDataArray.length,
       links: this.model.linkDataArray.length,
-      historyLength: um.history.count,
-      historyIndex: um.historyIndex,
-      changedEvents: this.countChanges(0, um.history.count - 1),
-      canUndo: um.canUndo(),
-      canRedo: um.canRedo(),
+      historyLength: this.history.length,
+      historyIndex: this.history.position,
+      changedEvents: this.history.recordedChanges,
+      canUndo: this.history.canUndo,
+      canRedo: this.history.canRedo,
       heapMb: memory ? memory.usedJSHeapSize / 1048576 : null,
     });
     if (this.stylesDialog().nativeElement.open) this.refreshStyles();
     this.updateSearch();
     // The limit follows the node count, so a number typed for a bigger diagram may now be too high.
     if (this.bulkRuns() > this.maxBulkRuns()) this.bulkRuns.set(this.maxBulkRuns());
-    this.stateCheck.set(this.describeState());
+    this.stateCheck.set(this.history.describeState());
     this.syncSettings();
     this.syncSelection();
-  }
-
-  private describeState(): StateCheck {
-    const um = this.undoManager;
-    if (this.initialJson === null) return { label: 'Waiting for the initial layout', ok: null };
-    if (um.historyIndex < 0) {
-      return this.model.toJson() === this.initialJson
-        ? { label: 'Initial state: matches the startup snapshot', ok: true }
-        : { label: 'Initial state: differs from the startup snapshot', ok: false };
-    }
-    if (um.canRedo()) {
-      return { label: `Transaction ${um.historyIndex + 1} of ${um.history.count}`, ok: null };
-    }
-    if (this.tipJson === null) return { label: 'Latest state', ok: null };
-    return this.model.toJson() === this.tipJson
-      ? { label: 'Latest state: matches the snapshot taken before undo', ok: true }
-      : { label: 'Latest state: differs from the snapshot taken before undo', ok: false };
   }
 
   private selectedNodes(): NodeData[] {

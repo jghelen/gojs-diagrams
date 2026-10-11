@@ -1,4 +1,5 @@
-import { DEFAULT_COLOR, DEFAULT_SHAPE, LinkData, NodeData } from './node-data';
+import { LinkData, NodeData } from './node-data';
+import { DEFAULT_COLOR, DEFAULT_SHAPE } from './constants';
 
 /** One fund in the sample structure, with the funds below it. */
 interface Fund {

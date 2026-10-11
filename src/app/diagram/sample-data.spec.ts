@@ -1,5 +1,5 @@
-import { DEFAULT_COLOR, DEFAULT_SHAPE } from './node-data';
 import { createFundStructure } from './sample-data';
+import { DEFAULT_COLOR, DEFAULT_SHAPE } from './constants';
 
 describe('createFundStructure', () => {
   const { nodes, links } = createFundStructure();

@@ -7,7 +7,8 @@ The first half of this document is for people who use the app. The second half e
 built and how to run its tests.
 
 The business requirements, rule by rule, are in
-[BUSINESS_REQUIREMENTS.md](BUSINESS_REQUIREMENTS.md).
+[BUSINESS_REQUIREMENTS.md](BUSINESS_REQUIREMENTS.md). How undo and redo work, step by step and with
+diagrams, is in [UNDO_HISTORY.md](UNDO_HISTORY.md).
 
 - [What it is for](#what-it-is-for)
 - [Quick start](#quick-start)
@@ -202,9 +203,12 @@ There are three kinds of line. All are black and end in an arrowhead.
 - **Ownership:** a dark green percentage near the arrowhead says how much of the fund the line
   points at is owned by the fund it comes from, e.g. `62.50%`. Lines without known ownership show
   nothing.
+  Where several lines end at the same node, their percentages are set apart (on the other side
+  of the line, or further back along it) so that none covers another.
 - **Info:** click the small "i" in the middle of a line to see what it connects and its
   ownership. The dialog can also remove that relationship.
-- **Add:** drag from the edge of a node to another node. The edge does not have to be hit
+- **Add:** drag from the edge of a node to another node. Two funds that already have a
+  relationship, in either direction, cannot get a second one this way. The edge does not have to be hit
   exactly: a drag that starts within a few pixels of it, inside or just outside the node, draws a
   relationship, however far the diagram is zoomed out. A drag from the middle of the node moves
   the node.
@@ -285,15 +289,39 @@ seven links in ten get an ownership percentage.
 ### Undo and redo
 
 GoJS calls its history the **`UndoManager`** (`model.undoManager`); there is no `HistoryManager`.
+Everything the app does with it is in one place, the **`HistoryService`**
+(`src/app/diagram/history.service.ts`). The page and the drawing code never touch the
+`UndoManager` themselves. The service file starts with an explanation of the ideas (transaction,
+history, position), and every method says what it is for. [UNDO_HISTORY.md](UNDO_HISTORY.md) walks
+through it step by step, with diagrams.
 
-- `maxHistoryLength` is set to `-1`. The default of 999 drops the oldest transactions, which
-  would make it impossible to undo back to the start.
-- Every user action is exactly one transaction (`model.commit` / `diagram.commit`).
-- The model's JSON is snapshotted once the initial layout is done. Whenever the history index is
-  back at −1 the current JSON is compared with it. A second snapshot, taken before the first undo
-  away from the newest state, verifies "Redo all" the same way.
-- Display-only state is kept out of the history: the tree highlight, zoom, selection, the info
-  icons and percentages, and the lengthening of lines up to a shape's outline.
+| The service's method                               | What it does                                                                                           |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `connect(diagram, onChange)`                       | Says which diagram the history belongs to, and whom to tell when the history changes                   |
+| `load(model)`                                      | Shows new data with an empty history of unlimited length                                               |
+| `markInitialState()`                               | Saves the state that "undo everything" must lead back to                                               |
+| `record(name, change)`                             | Makes a change as one transaction, which is one undo step                                              |
+| `undo()`, `redo()`, `canUndo`, `canRedo`           | One step back or forward, and whether there is one                                                     |
+| `rememberLatestState()`                            | Saves the newest state before the first undo away from it, so that "redo everything" can be checked    |
+| `length`, `position`, `recordedChanges`            | How many transactions there are, which one the diagram is at (-1 = as loaded), how many single changes |
+| `transactionsBetween(a, b)`                        | The transactions an action recorded, undid or redid, given the position before and after it            |
+| `describeState()`                                  | "Initial state: matches …", "Transaction 2 of 7", "Latest state: matches …"                            |
+| `hasUnfinishedTransaction`, `rollBackUnfinished()` | Notices and ends a transaction that an error left open, so the diagram is not stuck                    |
+| `sendShortcutsTo(undo, redo)`                      | Makes Ctrl/Cmd+Z and Ctrl/Cmd+Y do what the page's buttons do                                          |
+| `withoutUndo(diagram, change)` (a function)        | Makes a change that is deliberately not recorded                                                       |
+
+How the app uses it:
+
+- The history is unlimited (`maxHistoryLength = -1`). The default of 999 drops the oldest
+  transactions, which would make it impossible to undo back to the start.
+- Every user action is exactly one `record(...)`, and so one undo step.
+- The state is saved as text once the initial layout is done. Whenever the position is back at -1
+  the current state is compared with it. A second copy, saved before the first undo away from the
+  newest state, verifies "Redo all" the same way.
+- Display-only changes are kept out of the history with `withoutUndo`: the loading animation,
+  switching the diagram off and on around it, and the lengthening of lines up to a shape's
+  outline. The tree highlight, zoom, selection, info icons and percentages are not recorded
+  either.
 - Deleting a node removes its node data and the link data of every relationship that starts or
   ends at it, in one transaction, so one undo restores both.
 
@@ -398,6 +426,8 @@ npm test -- --watch=false --include src/app/diagram/undo-history.spec.ts
 | `diagram/layouts.spec.ts`                                     | Every layout positions all nodes without overlaps; tree direction; small versus big trees                                                                                                                                                                                                                                                                           |
 | `diagram/diagram-factory.spec.ts`                             | Nodes (fixed size, icons, arrows, rule, red comment dot, gold outline), clicks on icons and selection, lines (black, solid or dotted, info icon, ownership label, meeting the outline of a shape), tree highlight, adding a node, drag rule                                                                                                                         |
 | `diagram/undo-history.spec.ts`                                | Undo/redo of every kind of change back to the exact initial state, more than 999 steps, deleted nodes coming back with their relationships                                                                                                                                                                                                                          |
+| `diagram/history.service.spec.ts`                             | The history service: recording, undo and redo, positions, the state check, unfinished transactions, changes that are not recorded                                                                                                                                                                                                                                   |
+| `diagram/constants.spec.ts`                                   | The constants: no duplicates, defaults among the choices, a picture for every shape                                                                                                                                                                                                                                                                                 |
 | `diagram/shape-tiles.spec.ts`, `diagram/benchmark.spec.ts`    | Shape pictures for the Styles dialog; the timing helpers                                                                                                                                                                                                                                                                                                            |
 | `diagram/file-name.spec.ts`, `diagram/change-details.spec.ts` | The name of the exported file; the description of what an operation changed                                                                                                                                                                                                                                                                                         |
 | `perf-diagram/perf-diagram.spec.ts`                           | The page: loading and its animation (everything disabled until all nodes are shown), undo/redo and the state check, bulk-run input, multi-node edits, comments, delete confirmation, relationships, layout and line type, tree highlight, the Styles dialog, the canvas tools, the Actions menu, name and description, search, the overview, new diagram, Add Batch |
@@ -444,22 +474,25 @@ The tests run without a real browser, so some things can only be checked by hand
 
 ## Project structure
 
-| File                                             | Purpose                                                                      |
-| ------------------------------------------------ | ---------------------------------------------------------------------------- |
-| `src/app/perf-diagram/perf-diagram.ts`           | The page: operations, timing, history state, dialogs                         |
-| `src/app/perf-diagram/perf-diagram.html`, `.css` | Its template and styles                                                      |
-| `src/app/diagram/diagram-factory.ts`             | Node and link templates, icons, click handling, tree highlight, adding nodes |
-| `src/app/diagram/layouts.ts`                     | The six layouts                                                              |
-| `src/app/diagram/link-types.ts`                  | The four line types                                                          |
-| `src/app/diagram/node-data.ts`                   | Data types and the generator for random diagrams                             |
-| `src/app/diagram/sample-data.ts`                 | The sample fund structure                                                    |
-| `src/app/diagram/datasets.ts`                    | The list behind the **Data** dropdown                                        |
-| `src/app/diagram/shape-tiles.ts`                 | The shape pictures used in the Styles dialog                                 |
-| `src/app/diagram/benchmark.ts`                   | Timing helpers                                                               |
-| `src/app/new-batch/new-batch.ts`                 | The placeholder "Add batch" page and its address                             |
-| `src/app/app.routes.ts`                          | Routes                                                                       |
-| `src/testing/`                                   | Test setup, the canvas stand-in and the diagram test helpers                 |
-| `src/**/*.spec.ts`                               | Unit tests, next to the file they test                                       |
+| File                                                | Purpose                                                                                                                    |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `src/app/perf-diagram/perf-diagram.ts`              | The page: operations, timing, history state, dialogs                                                                       |
+| `src/app/perf-diagram/perf-diagram.html`, `.css`    | Its template and styles                                                                                                    |
+| `src/app/diagram/diagram-factory.ts`                | Node and link templates, icons, click handling, tree highlight, adding nodes                                               |
+| `src/app/diagram/history.service.ts`                | Everything to do with the undo history (GoJS UndoManager)                                                                  |
+| `src/app/diagram/constants.ts`                      | The fixed values of the product in one place: shapes, colours, fund types, defaults, size limits, animation timings, texts |
+| `src/app/diagram/change-details.ts`, `file-name.ts` | The description of what an operation changed; the name of an exported file                                                 |
+| `src/app/diagram/layouts.ts`                        | The six layouts                                                                                                            |
+| `src/app/diagram/link-types.ts`                     | The four line types                                                                                                        |
+| `src/app/diagram/node-data.ts`                      | Data types and the generator for random diagrams                                                                           |
+| `src/app/diagram/sample-data.ts`                    | The sample fund structure                                                                                                  |
+| `src/app/diagram/datasets.ts`                       | The list behind the **Data** dropdown                                                                                      |
+| `src/app/diagram/shape-tiles.ts`                    | The shape pictures used in the Styles dialog                                                                               |
+| `src/app/diagram/benchmark.ts`                      | Timing helpers                                                                                                             |
+| `src/app/new-batch/new-batch.ts`                    | The placeholder "Add batch" page and its address                                                                           |
+| `src/app/app.routes.ts`                             | Routes                                                                                                                     |
+| `src/testing/`                                      | Test setup, the canvas stand-in and the diagram test helpers                                                               |
+| `src/**/*.spec.ts`                                  | Unit tests, next to the file they test                                                                                     |
 
 ## Build and hosting
 

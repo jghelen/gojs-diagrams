@@ -1,5 +1,6 @@
-import { LinkData, NODE_COUNTS, NodeData, createLinks, createNodes } from './node-data';
+import { LinkData, NodeData, createLinks, createNodes } from './node-data';
 import { createFundStructure } from './sample-data';
+import { BLANK_DATASET, NODE_COUNTS } from './constants';
 
 /** Something the diagram can be loaded with. */
 export interface Dataset {
@@ -15,13 +16,8 @@ export const DATASETS: readonly Dataset[] = [
     label: `${count} generated funds`,
     create: () => ({ nodes: createNodes(count), links: createLinks(count) }),
   })),
-  { id: 'blank', label: 'Empty diagram', create: () => ({ nodes: [], links: [] }) },
+  { id: BLANK_DATASET, label: 'Empty diagram', create: () => ({ nodes: [], links: [] }) },
 ];
-
-/** The dataset with nothing in it, for building a diagram from scratch. */
-export const BLANK_DATASET = 'blank';
-
-export const DEFAULT_DATASET = '30';
 
 export function findDataset(id: string): Dataset {
   return DATASETS.find((dataset) => dataset.id === id) ?? DATASETS[0];

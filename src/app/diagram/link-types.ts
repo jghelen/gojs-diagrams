@@ -1,4 +1,5 @@
 import * as go from 'gojs/release/go';
+import { AVOID_NODES_BELOW } from './constants';
 
 export type LinkType = 'avoid' | 'orthogonal' | 'straight' | 'curved';
 
@@ -53,8 +54,6 @@ export const LINK_TYPES: readonly LinkStyle[] = [
   },
 ];
 
-export const DEFAULT_LINK_TYPE: LinkType = 'avoid';
-
 export function linkStyle(type: LinkType): LinkStyle {
   return LINK_TYPES.find((style) => style.type === type) ?? LINK_TYPES[0];
 }
@@ -62,13 +61,6 @@ export function linkStyle(type: LinkType): LinkStyle {
 export function avoidsNodes(type: LinkType): boolean {
   return linkStyle(type).routing === go.Routing.AvoidsNodes;
 }
-
-/**
- * Lines are routed around the nodes on diagrams with fewer nodes than this. Doing
- * that for every line takes about a second at 200 nodes, seven at 500 and minutes
- * beyond that, during which the page does not respond.
- */
-export const AVOID_NODES_BELOW = 500;
 
 /** True when a diagram of that many nodes is too big to route its lines around them. */
 export function tooBigToAvoidNodes(nodeCount: number): boolean {

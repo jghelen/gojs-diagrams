@@ -1,17 +1,12 @@
 import {
-  COLORS,
-  DEFAULT_COLOR,
-  DEFAULT_SHAPE,
   EDITABLE_FIELDS,
-  FUND_TYPES,
   LinkData,
-  NODE_COUNTS,
-  SHAPES,
   createLinks,
   createNodes,
   formatOwnership,
   randomPatch,
 } from './node-data';
+import { COLORS, DEFAULT_COLOR, DEFAULT_SHAPE, FUND_TYPES, NODE_COUNTS, SHAPES } from './constants';
 
 const hierarchy = (links: LinkData[]) => links.filter((link) => link.category === 'hierarchy');
 const relations = (links: LinkData[]) => links.filter((link) => link.category === 'relation');

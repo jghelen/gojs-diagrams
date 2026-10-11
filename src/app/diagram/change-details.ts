@@ -1,4 +1,5 @@
 import * as go from 'gojs/release/go';
+import { MAX_CHANGE_ROWS } from './constants';
 
 /**
  * `data`: a change to the diagram's data, which is what an action sets out to do.
@@ -33,10 +34,12 @@ export interface ChangeDetails {
   rows: ChangeRow[];
 }
 
-/** How many changes are listed one by one; an action on a big diagram makes thousands. */
-export const MAX_CHANGE_ROWS = 200;
-
-const MAX_VALUE_LENGTH = 60;
+/**
+ * Values are shown in full, so that the data of an added or removed fund or
+ * relationship can be read to the end. Only something as long as a pasted
+ * document is cut.
+ */
+const MAX_VALUE_LENGTH = 2000;
 
 /** Names for the fields of the data, where the field name itself says too little. */
 const DATA_LABELS: Record<string, string> = {

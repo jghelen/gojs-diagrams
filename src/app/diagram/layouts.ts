@@ -1,5 +1,6 @@
 import * as go from 'gojs/release/go';
 import { LinkKind } from './node-data';
+import { CLASSIC_TREE_LIMIT } from './constants';
 
 export type LayoutType = 'top-bottom' | 'bottom-top' | 'circle' | 'layered' | 'force' | 'grid';
 
@@ -38,8 +39,6 @@ export const LAYOUTS: readonly LayoutChoice[] = [
   },
   { type: 'grid', label: 'Grid', icon: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z' },
 ];
-
-export const DEFAULT_LAYOUT: LayoutType = 'top-bottom';
 
 const HIERARCHY: LinkKind = 'hierarchy';
 
@@ -97,9 +96,6 @@ class SpacedForceDirectedLayout extends go.ForceDirectedLayout {
     super.commitLayout();
   }
 }
-
-/** Up to this many nodes, a tree is drawn in the classic organisation-chart style. */
-const CLASSIC_TREE_LIMIT = 60;
 
 /**
  * The hierarchy as a tree that grows in the direction of `angle`: 90 is

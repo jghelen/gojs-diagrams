@@ -1,4 +1,5 @@
 import * as go from 'gojs/release/go';
+import { COLORS, DEFAULT_COLOR, DEFAULT_SHAPE, FUND_TYPES, SHAPES } from './constants';
 
 export interface NodeData {
   key: number;
@@ -39,34 +40,6 @@ export function formatOwnership(ownership: number): string {
 export type EditableField = 'title' | 'subtitle' | 'shape' | 'color';
 export const EDITABLE_FIELDS: readonly EditableField[] = ['title', 'subtitle', 'shape', 'color'];
 
-// Only figures that ship with core GoJS (no Figures.js extension needed), and only
-// ones that reach the left and right edge of their bounds at mid-height: GoJS's
-// node-avoiding link routing cuts through the empty corners of a triangle.
-export const SHAPES: readonly go.FigureName[] = [
-  go.Figures.Rectangle,
-  go.Figures.RoundedRectangle,
-  go.Figures.Ellipse,
-  go.Figures.Diamond,
-  go.Figures.Capsule,
-  go.Figures.RoundedTopRectangle,
-];
-
-/** Every node starts out as a very light gray rectangle. */
-export const DEFAULT_SHAPE: go.FigureName = go.Figures.Rectangle;
-export const DEFAULT_COLOR = '#f3f4f6';
-
-export const COLORS: readonly string[] = [
-  DEFAULT_COLOR,
-  '#fde68a',
-  '#a7f3d0',
-  '#bfdbfe',
-  '#fecaca',
-  '#ddd6fe',
-  '#fed7aa',
-  '#99f6e4',
-  '#1e3a8a',
-];
-
 // Generated funds are called "<house> <strategy> <number>", e.g. "Atlas Credit 17".
 const HOUSES = [
   'Alpine',
@@ -88,21 +61,6 @@ const STRATEGIES = [
   'Property',
   'Macro',
 ];
-
-/** The subtitle of every node is the type of fund it is. */
-export const FUND_TYPES: readonly string[] = [
-  'Private equity',
-  'Venture capital',
-  'Hedge fund',
-  'Private credit',
-  'Real estate',
-  'Infrastructure',
-  'Fund of funds',
-  'Feeder fund',
-];
-
-/** Sizes of the randomly generated diagrams. */
-export const NODE_COUNTS: readonly number[] = [30, 100, 200, 500, 1000, 2000];
 
 const MAX_CHILDREN = 4;
 /** Cross-reference links per node, on top of the one hierarchy link each non-root node has. */

@@ -1,11 +1,7 @@
+import { Injector } from '@angular/core';
 import * as go from 'gojs/release/go';
-import {
-  IconClicks,
-  NodeModel,
-  createDiagram,
-  createModel,
-  showModel,
-} from '../app/diagram/diagram-factory';
+import { IconClicks, NodeModel, createDiagram, createModel } from '../app/diagram/diagram-factory';
+import { HistoryService } from '../app/diagram/history.service';
 import { LayoutType, createLayout } from '../app/diagram/layouts';
 import { LinkType } from '../app/diagram/link-types';
 import { LinkData, NodeData, createLinks, createNodes } from '../app/diagram/node-data';
@@ -13,12 +9,23 @@ import { LinkData, NodeData, createLinks, createNodes } from '../app/diagram/nod
 export interface TestDiagram {
   diagram: go.Diagram;
   model: NodeModel;
+  /** The undo history of the diagram, through the same service the page uses. */
+  history: HistoryService;
   /** What the diagram reported about clicks on icons, in order. */
   clicks: { icon: keyof IconClicks; key: number }[];
   /** Lets GoJS do everything it would do before the next frame: layout, routing, adornments. */
   settle: () => void;
   /** Clicks at a document point the way the mouse would, through the click-selecting tool. */
   clickAt: (point: go.Point) => void;
+}
+
+/**
+ * A history service of its own, made by Angular's injector as in the app, where
+ * the page provides one per diagram. A test may have several diagrams, so every
+ * call makes a new injector and with it a new service.
+ */
+export function createHistory(): HistoryService {
+  return Injector.create({ providers: [HistoryService] }).get(HistoryService);
 }
 
 /** A diagram on a detached-from-layout div, loaded and laid out, with icon clicks recorded. */
@@ -59,7 +66,9 @@ export function createTestDiagram(
     { nodes, links },
     { layoutType, linkType, name: 'Test diagram', description: '' },
   );
-  showModel(diagram, model);
+  const history = createHistory();
+  history.connect(diagram);
+  history.load(model);
 
   const settle = (): void => {
     for (let i = 0; i < 3; i++) diagram.maybeUpdate();
@@ -72,7 +81,8 @@ export function createTestDiagram(
     settle();
   };
   settle();
-  return { diagram, model, clicks, settle, clickAt };
+  history.markInitialState();
+  return { diagram, model, history, clicks, settle, clickAt };
 }
 
 /** The nodes of a diagram as an array. */

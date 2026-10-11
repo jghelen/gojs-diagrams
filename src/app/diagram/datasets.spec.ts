@@ -1,4 +1,5 @@
-import { BLANK_DATASET, DATASETS, DEFAULT_DATASET, findDataset } from './datasets';
+import { DATASETS, findDataset } from './datasets';
+import { BLANK_DATASET, DEFAULT_DATASET } from './constants';
 
 describe('datasets', () => {
   it('offers the sample fund structure and the generated sizes', () => {

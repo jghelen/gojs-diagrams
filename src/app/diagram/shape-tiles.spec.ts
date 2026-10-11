@@ -1,5 +1,5 @@
-import { SHAPES } from './node-data';
 import { SHAPE_TILES } from './shape-tiles';
+import { SHAPES } from './constants';
 
 describe('shape tiles', () => {
   it('has one tile for every node shape', () => {

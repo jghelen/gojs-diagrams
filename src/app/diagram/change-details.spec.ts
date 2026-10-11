@@ -1,5 +1,7 @@
 import { createTestDiagram } from '../../testing/diagram-harness';
-import { MAX_CHANGE_ROWS, describeChanges } from './change-details';
+import { describeChanges } from './change-details';
+import { NodeData } from './node-data';
+import { MAX_CHANGE_ROWS } from './constants';
 
 describe('describeChanges', () => {
   const lastChanges = (test: ReturnType<typeof createTestDiagram>, limit?: number) =>
@@ -99,20 +101,50 @@ describe('describeChanges', () => {
     });
   });
 
-  it('shortens long values and rounds numbers', () => {
+  it('rounds numbers, and cuts only values of extreme length', () => {
     const test = createTestDiagram();
     const node = test.model.nodeDataArray[0];
     test.model.commit((m) => {
-      m.set(node, 'comment', 'x'.repeat(500));
+      m.set(node, 'comment', 'x'.repeat(5000));
       m.set(node, 'shape', 'Diamond');
     }, 'edit');
     const details = lastChanges(test);
     for (const row of details.rows) {
-      expect(row.before.length).toBeLessThanOrEqual(60);
-      expect(row.after.length).toBeLessThanOrEqual(60);
+      expect(row.before.length).toBeLessThanOrEqual(2000);
+      expect(row.after.length).toBeLessThanOrEqual(2000);
       expect(row.after).not.toMatch(/\d\.\d{2,}/);
     }
+    expect(details.rows[0].after.length).toBe(2000);
     expect(details.rows[0].after.endsWith('…')).toBe(true);
+  });
+
+  it('shows the whole data of a removed relationship and of an added fund', () => {
+    const test = createTestDiagram();
+    const link = test.model.linkDataArray.find((candidate) => candidate.ownership !== undefined)!;
+    const fund: NodeData = {
+      key: 99,
+      title: 'A fund with a rather long name, to be shown to its end',
+      subtitle: 'Fund of funds',
+      shape: 'RoundedTopRectangle',
+      color: '#f3f4f6',
+      comment: 'Added for the test',
+    };
+    test.model.commit(() => {
+      test.model.removeLinkData(link);
+      test.model.addNodeData(fund);
+    }, 'edit');
+    const rows = lastChanges(test).rows;
+
+    const removed = JSON.parse(rows.find((row) => row.property === 'removed')!.before);
+    expect(removed).toEqual({
+      key: link.key,
+      from: link.from,
+      to: link.to,
+      category: link.category,
+      ownership: link.ownership,
+    });
+    const added = JSON.parse(rows.find((row) => row.property === 'added')!.after);
+    expect(added).toMatchObject(fund);
   });
 
   it('lists only the first changes of a big action, but counts them all', () => {

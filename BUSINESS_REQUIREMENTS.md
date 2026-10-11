@@ -201,6 +201,8 @@ Every icon without a text label shows its name when the user hovers over it.
   It is placed beside the line and clear of the node, so the whole figure
   can always be read.
 - **BR-6.7** Where no ownership is known, nothing is shown.
+- **BR-6.7a** Where several relationships end at the same fund, their percentages never cover
+  one another: each is moved to a free place beside its line.
 
 ### 6.3 Relationship details
 
@@ -218,7 +220,9 @@ Every icon without a text label shows its name when the user hovers over it.
   of it on screen, inside or just outside the node, draws a relationship at any zoom level; a drag
   from the middle of the node moves the node.
 - **BR-6.12** A hand-drawn relationship is dotted, has no info icon and no ownership.
-- **BR-6.13** More than one relationship between the same two funds is allowed.
+- **BR-6.13** A relationship cannot be drawn between two funds that already have one, whichever
+  way it points and whether it came from the data or was drawn by hand. Once that relationship is
+  removed, a new one can be drawn.
 - **BR-6.14** Drawing a relationship is one undo step.
 
 ### 6.5 Removing relationships
@@ -339,6 +343,9 @@ The **Styles** button (palette icon) opens a dialog that gives all funds of a ty
   snapshot"). The same check is made after redoing everything.
 - **BR-11.5** Things that only change what is shown are not undo steps: selection, highlight,
   search, zoom, scrolling, the loading animation.
+- **BR-11.5a** Undoing the first action after a diagram was opened must leave the diagram fully
+  usable. (The loading animation switches the diagram off and on; that switch is not part of any
+  undo step.)
 - **BR-11.6** Making a new change after an undo discards the steps that were undone, as in any
   editor.
 - **BR-11.7** Opening other data, Reset diagram and New diagram start with an empty history.
@@ -398,6 +405,8 @@ This part serves the evaluation of the technology rather than the end user.
   the data (what the action did) are told apart from changes to the drawing (what the screen
   adjusted as a result). A summary counts the changes per property; of a large operation the
   first 200 are listed one by one.
+- **BR-14.9** Values in that dialog are shown in full, including the complete data of an added
+  or removed fund or relationship.
 
 ## 15. Not available yet
 

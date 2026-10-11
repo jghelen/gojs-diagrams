@@ -2,8 +2,21 @@
 // slower debug build under `ng serve`, which would inflate the timings.
 import * as go from 'gojs/release/go';
 import { LayoutType } from './layouts';
+import { withoutUndo } from './history.service';
 import { LinkType, linkStyle, routingFor } from './link-types';
 import { LinkData, LinkKind, NodeData, formatOwnership } from './node-data';
+import {
+  DIMMED_OPACITY,
+  LINE_COLOR,
+  NODE_BORDER,
+  OWNERSHIP_COLOR,
+  REVEAL_GRACE_MS,
+  REVEAL_LARGE_FROM,
+  REVEAL_LARGE_MS,
+  REVEAL_MAX_MS,
+  REVEAL_STEP_MS,
+  SELECTION_GOLD,
+} from './constants';
 
 /** Model-wide settings. Kept in the model so that switching them is undone with everything else. */
 export interface ModelData {
@@ -46,8 +59,6 @@ function avoidNodeOverlap(part: go.Part, _newLoc: go.Point, snappedLoc: go.Point
 
 // Every node has this size whatever its shape and text, so editing a node never
 // makes it grow into its neighbours.
-/** Every node has a dark gray border. */
-const NODE_BORDER = '#555555';
 const NODE_WIDTH = 172;
 const NODE_HEIGHT = 96;
 /** Width of the band along the edge of a node from which a new link can be dragged. */
@@ -111,7 +122,6 @@ const COLOR_ICON = 'COLOR';
 const COMMENT_ICON = 'COMMENT';
 const BATCH_ICON = 'BATCH';
 const DELETE_ICON = 'DELETE';
-const SELECTION_GOLD = '#d4a017';
 const ARROWS = 'ARROWS';
 /** Room kept free of text on either side of a node, for the two arrows on its left. */
 const ARROW_COLUMN = 20;
@@ -320,6 +330,15 @@ function linkFromEdge(diagram: go.Diagram): void {
     const node = nodeWithEdgeNear(this.diagram, this.diagram.firstInput.documentPoint);
     return node ? node.port : findLinkablePort.call(this);
   };
+  // GoJS ends a new line at the nearest node it may go to within 100 units of
+  // where the mouse is let go. Dropped on a node it may not go to, the line would
+  // then jump to a neighbour of that node. Nodes are at least 40 units apart, so
+  // with this reach it can only end at the node it was dropped on or next to.
+  tool.portGravity = 20;
+  // Two funds that already have a relationship, whichever way it points and
+  // whoever made it, do not get a second one drawn between them.
+  tool.linkValidation = (from, _fromPort, to) =>
+    !from || !to || from.findLinksBetween(to).count === 0;
 }
 
 /** The x at the top right of a node. Clicks on it are handled in handleClicks. */
@@ -393,10 +412,6 @@ function createNodeTemplate(): go.Node {
         portId: '',
         fromLinkable: true,
         toLinkable: true,
-        // Two funds can be related in more than one way, so a second line between
-        // the same two nodes may be drawn.
-        fromLinkableDuplicates: true,
-        toLinkableDuplicates: true,
         cursor: 'crosshair',
       })
         .bind('figure', 'shape')
@@ -480,6 +495,8 @@ const ARROWHEAD = 'ARROW';
 /** Free space between the percentage and the node the line ends at, and the line itself. */
 const OWNERSHIP_GAP_TO_NODE = 6;
 const OWNERSHIP_GAP_TO_LINE = 3;
+/** Room between two percentages that stand one behind the other along the same line. */
+const OWNERSHIP_GAP_TO_LABEL = 3;
 
 /** The percentage at the end of a line: how much of the fund it points at is owned. */
 function createOwnershipLabel(): go.Adornment {
@@ -494,7 +511,7 @@ function createOwnershipLabel(): go.Adornment {
       name: OWNERSHIP_TEXT,
       margin: new go.Margin(0, 2),
       font: 'bold 10px system-ui, sans-serif',
-      stroke: '#166534',
+      stroke: OWNERSHIP_COLOR,
     }),
   );
 }
@@ -537,12 +554,11 @@ class RelationshipLink extends go.Link {
     if (same(this.fromShortLength, -fromGap) && same(this.toShortLength, -toGap)) return;
 
     // Display only: these follow from the route and the shapes, and are not undo steps.
-    const skips = diagram.skipsUndoManager;
-    diagram.skipsUndoManager = true;
-    this.fromShortLength = -fromGap;
-    this.toShortLength = -toGap;
-    if (arrow) arrow.segmentOffset = new go.Point(toGap, 0);
-    diagram.skipsUndoManager = skips;
+    withoutUndo(diagram, () => {
+      this.fromShortLength = -fromGap;
+      this.toShortLength = -toGap;
+      if (arrow) arrow.segmentOffset = new go.Point(toGap, 0);
+    });
   }
 
   /**
@@ -582,8 +598,11 @@ class RelationshipLink extends go.Link {
       const text = label.findObject(OWNERSHIP_TEXT);
       if (text instanceof go.TextBlock) text.text = formatOwnership(this.linkData.ownership);
       label.ensureBounds();
-      label.location = this.ownershipLabelPoint(label.actualBounds);
       label.opacity = this.opacity;
+      // Several lines may end at the same node, even along the same last stretch,
+      // so the percentages at a node are placed together.
+      if (this.toNode) placeOwnershipLabels(this.toNode);
+      else label.location = this.ownershipLabelPoint(label.actualBounds, 0);
     }
   }
 
@@ -601,8 +620,13 @@ class RelationshipLink extends go.Link {
   /**
    * Where the centre of the percentage goes: beside the last stretch of the line,
    * and far enough back from its end that the whole label stays clear of the node.
+   *
+   * `place` picks among the places a label can have, for when the first is taken
+   * by the percentage of another line: 0 is beside the line next to the node, 1
+   * the same on the other side of the line, 2 and 3 one label further back from
+   * the node, and so on.
    */
-  private ownershipLabelPoint(label: go.Rect): go.Point {
+  ownershipLabelPoint(label: go.Rect, place: number): go.Point {
     const end = this.getPoint(this.pointsCount - 1);
     const before = this.getPoint(this.pointsCount - 2);
     const length = Math.hypot(end.x - before.x, end.y - before.y) || 1;
@@ -611,9 +635,50 @@ class RelationshipLink extends go.Link {
     // Half of the label's size along the line and across it.
     const along = (Math.abs(ux) * label.width + Math.abs(uy) * label.height) / 2;
     const across = (Math.abs(uy) * label.width + Math.abs(ux) * label.height) / 2;
-    const back = along + OWNERSHIP_GAP_TO_NODE;
-    const aside = across + OWNERSHIP_GAP_TO_LINE;
+    const stepsBack = Math.floor(place / 2);
+    const back = along + OWNERSHIP_GAP_TO_NODE + stepsBack * (2 * along + OWNERSHIP_GAP_TO_LABEL);
+    const side = place % 2 === 0 ? 1 : -1;
+    const aside = side * (across + OWNERSHIP_GAP_TO_LINE);
     return new go.Point(end.x - ux * back - uy * aside, end.y - uy * back + ux * aside);
+  }
+}
+
+/** How many places are tried for a percentage before it has to share one. */
+const OWNERSHIP_PLACES = 12;
+
+/**
+ * Places the percentages of all lines that end at this node, so that none of
+ * them covers another. The lines take their turn in the order of their keys, and
+ * each gets the first place that is still free; that way the outcome does not
+ * depend on which line GoJS happened to draw first.
+ */
+function placeOwnershipLabels(node: go.Node): void {
+  const lines: RelationshipLink[] = [];
+  node.findLinksInto().each((link) => {
+    if (link instanceof RelationshipLink && link.pointsCount >= 2) lines.push(link);
+  });
+  lines.sort((a, b) => Number(a.key) - Number(b.key));
+
+  const taken: go.Rect[] = [];
+  for (const line of lines) {
+    const label = line.findAdornment(OWNERSHIP_ADORNMENT);
+    if (!label) continue;
+    label.ensureBounds();
+    const size = label.actualBounds;
+    let centre = line.ownershipLabelPoint(size, 0);
+    let box = new go.Rect();
+    for (let place = 0; place < OWNERSHIP_PLACES; place++) {
+      centre = line.ownershipLabelPoint(size, place);
+      box = new go.Rect(
+        centre.x - size.width / 2,
+        centre.y - size.height / 2,
+        size.width,
+        size.height,
+      );
+      if (!taken.some((other) => other.intersectsRect(box))) break;
+    }
+    label.location = centre;
+    taken.push(box);
   }
 }
 
@@ -648,8 +713,6 @@ function createLink(...parts: go.GraphObject[]): go.Link {
     );
 }
 
-/** Every relationship line is black; the kinds differ in thickness and dashing only. */
-const LINE_COLOR = '#000000';
 /** Name of the visible line in every link template (there is a wide invisible one for clicking too). */
 const LINE = 'LINE';
 
@@ -903,9 +966,6 @@ export function showSearchHit(diagram: go.Diagram, node: go.Node | null): void {
   diagram.centerRect(node.actualBounds);
 }
 
-/** Opacity of everything outside the highlighted tree. */
-const DIMMED = 0.15;
-
 /**
  * Shows `node`, its ancestors up to the root, all of its descendants, and the
  * nodes it is joined to by a relationship the user drew, at full strength, each
@@ -924,7 +984,7 @@ export function highlightTree(diagram: go.Diagram, node: go.Node | null): void {
   });
   diagram.commit((d) => {
     const show = (part: go.Part) => {
-      part.opacity = !tree || tree.has(part) ? 1 : DIMMED;
+      part.opacity = !tree || tree.has(part) ? 1 : DIMMED_OPACITY;
       // A link's icon and percentage are parts of their own and have to be dimmed with it.
       for (const category of [INFO_ADORNMENT, OWNERSHIP_ADORNMENT]) {
         const adornment = part.findAdornment(category);
@@ -964,19 +1024,6 @@ export function createOverview(div: HTMLDivElement, diagram: go.Diagram): go.Ove
   return overview;
 }
 
-/** How long one node takes to appear, and the longest the whole reveal may take. */
-const REVEAL_STEP_MS = 40;
-const REVEAL_MAX_MS = 1500;
-/**
- * A diagram with more nodes than this is shown in REVEAL_LARGE_MS: its nodes are
- * too small to be told apart anyway, and opening it must not take noticeably
- * longer than drawing it does.
- */
-const REVEAL_LARGE_FROM = 200;
-const REVEAL_LARGE_MS = 500;
-/** How long after that everything is shown anyway, if no frames were drawn. */
-const REVEAL_GRACE_MS = 500;
-
 /**
  * Makes the nodes of a freshly loaded diagram appear one after another, each
  * relationship as soon as both of its ends are there, and calls `done` when
@@ -999,13 +1046,6 @@ export function revealNodesOneByOne(diagram: go.Diagram, done: () => void): () =
     return () => undefined;
   }
 
-  // Display only: none of this is recorded for undo.
-  const withoutUndo = (work: () => void) => {
-    const skips = diagram.skipsUndoManager;
-    diagram.skipsUndoManager = true;
-    work();
-    diagram.skipsUndoManager = skips;
-  };
   const show = (part: go.Part, visible: boolean) => {
     part.opacity = visible ? 1 : 0;
     for (const category of [INFO_ADORNMENT, OWNERSHIP_ADORNMENT]) {
@@ -1014,8 +1054,12 @@ export function revealNodesOneByOne(diagram: go.Diagram, done: () => void): () =
     }
   };
 
-  diagram.isEnabled = false;
-  withoutUndo(() => {
+  // Display only, here and below: none of this is recorded for undo. That goes
+  // for switching the diagram off and on as well. GoJS records that like any
+  // other change, and would put it into the next thing the user does; undoing
+  // that would then switch the diagram off again.
+  withoutUndo(diagram, () => {
+    diagram.isEnabled = false;
     nodes.forEach((node) => show(node, false));
     diagram.links.each((link) => show(link, false));
   });
@@ -1035,7 +1079,7 @@ export function revealNodesOneByOne(diagram: go.Diagram, done: () => void): () =
   const step = (all = false): void => {
     const progress = all ? 1 : Math.min(1, (performance.now() - start) / duration);
     const target = Math.max(shown + 1, Math.ceil(progress * nodes.length));
-    withoutUndo(() => {
+    withoutUndo(diagram, () => {
       for (; shown < Math.min(target, nodes.length); shown++) {
         const node = nodes[shown];
         show(node, true);
@@ -1049,7 +1093,7 @@ export function revealNodesOneByOne(diagram: go.Diagram, done: () => void): () =
       return;
     }
     stop();
-    diagram.isEnabled = true;
+    withoutUndo(diagram, () => (diagram.isEnabled = true));
     done();
   };
   frame = requestAnimationFrame(() => step());
@@ -1057,15 +1101,4 @@ export function revealNodesOneByOne(diagram: go.Diagram, done: () => void): () =
   // stay disabled because of that, so a timer shows whatever is still missing.
   timer = window.setTimeout(() => step(true), duration + REVEAL_GRACE_MS);
   return stop;
-}
-
-/** Shows `model` in the diagram with an empty, unlimited undo history. */
-export function showModel(diagram: go.Diagram, model: NodeModel): void {
-  diagram.model = model;
-  // Configure the UndoManager only after the assignment: assigning a model
-  // overwrites these settings with the ones of the model it replaces.
-  model.undoManager.isEnabled = true;
-  // The default of 999 drops the oldest transactions, which would make it
-  // impossible to undo all the way back to the initial state.
-  model.undoManager.maxHistoryLength = -1;
 }

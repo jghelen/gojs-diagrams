@@ -1,0 +1,152 @@
+/**
+ * The fixed values that describe what the app offers and where its limits are:
+ * the choices a user gets, the defaults a diagram starts with, the sizes from
+ * which the app behaves differently, colours, timings and texts.
+ *
+ * A value belongs here when it is a decision about the product, something one
+ * might be asked to change ("add a colour", "allow 500 rows", "make the outline
+ * blue"). Numbers that only fine-tune one drawing routine, such as a gap of
+ * three pixels between a line and its label, stay next to that routine.
+ */
+import * as go from 'gojs/release/go';
+import type { LayoutType } from './layouts';
+import type { LinkType } from './link-types';
+
+// ----- What a fund can look like -----
+
+/**
+ * The shapes a node can have.
+ *
+ * Only figures that come with GoJS itself, and only ones that reach the left
+ * and right edge of their bounds half way up: lines that are routed around
+ * nodes would cut through the empty corners of, say, a triangle.
+ */
+export const SHAPES: readonly go.FigureName[] = [
+  go.Figures.Rectangle,
+  go.Figures.RoundedRectangle,
+  go.Figures.Ellipse,
+  go.Figures.Diamond,
+  go.Figures.Capsule,
+  go.Figures.RoundedTopRectangle,
+];
+
+/** Every node starts out as a rectangle… */
+export const DEFAULT_SHAPE: go.FigureName = go.Figures.Rectangle;
+/** …in a very light gray. */
+export const DEFAULT_COLOR = '#f3f4f6';
+
+/** The colours offered as swatches. Any other colour can be picked with the colour chooser. */
+export const COLORS: readonly string[] = [
+  DEFAULT_COLOR,
+  '#fde68a',
+  '#a7f3d0',
+  '#bfdbfe',
+  '#fecaca',
+  '#ddd6fe',
+  '#fed7aa',
+  '#99f6e4',
+  '#1e3a8a',
+];
+
+/** The kinds of fund. A node shows its fund type as its subtitle. */
+export const FUND_TYPES: readonly string[] = [
+  'Private equity',
+  'Venture capital',
+  'Hedge fund',
+  'Private credit',
+  'Real estate',
+  'Infrastructure',
+  'Fund of funds',
+  'Feeder fund',
+];
+
+// ----- Colours of the diagram -----
+
+/** The border of every node: dark gray. */
+export const NODE_BORDER = '#555555';
+/** Every relationship line is black; the kinds differ in thickness and dashing only. */
+export const LINE_COLOR = '#000000';
+/** The outline of a selected node, of the nodes of a highlighted tree and of a search result. */
+export const SELECTION_GOLD = '#d4a017';
+/** The ownership percentages at the ends of lines: dark green. */
+export const OWNERSHIP_COLOR = '#166534';
+/** How much is left to see (1 = everything) of what lies outside a highlighted tree. */
+export const DIMMED_OPACITY = 0.15;
+
+// ----- What a diagram starts with -----
+
+/** How many funds the generated diagrams of the Data dropdown have. */
+export const NODE_COUNTS: readonly number[] = [30, 100, 200, 500, 1000, 2000];
+/** The diagram the app opens with: its id in the Data dropdown. */
+export const DEFAULT_DATASET = '30';
+/** The id of the dataset with nothing in it, for building a diagram from scratch. */
+export const BLANK_DATASET = 'blank';
+/** The layout a diagram is first shown in. */
+export const DEFAULT_LAYOUT: LayoutType = 'top-bottom';
+/** The line type a diagram is first shown with: orthogonal, rounded, routed around nodes. */
+export const DEFAULT_LINK_TYPE: LinkType = 'avoid';
+
+// ----- Sizes from which the app behaves differently -----
+
+/**
+ * Lines are routed around the nodes on diagrams with fewer nodes than this.
+ * Doing that for every line takes about a second at 200 nodes, seven at 500 and
+ * minutes beyond that, during which the page does not respond.
+ */
+export const AVOID_NODES_BELOW = 500;
+
+/** Up to this many nodes, a tree is drawn in the classic organisation-chart style. */
+export const CLASSIC_TREE_LIMIT = 60;
+
+/**
+ * Upper limit for runs × nodes of one bulk edit ("N × randomize all"). Beyond
+ * it the page would be blocked for too long.
+ */
+export const BULK_EDIT_BUDGET = 40_000;
+
+// ----- The loading animation -----
+
+/** How long one node takes to appear, in milliseconds. */
+export const REVEAL_STEP_MS = 40;
+/** The longest the whole animation may take, however many nodes there are. */
+export const REVEAL_MAX_MS = 1500;
+/**
+ * A diagram with more nodes than this is shown in REVEAL_LARGE_MS instead: its
+ * nodes are too small to be told apart anyway, and opening it must not take
+ * noticeably longer than drawing it does.
+ */
+export const REVEAL_LARGE_FROM = 200;
+export const REVEAL_LARGE_MS = 500;
+/**
+ * How long after the animation should have ended everything is shown anyway.
+ * That is for a page in the background, where the browser draws no frames.
+ */
+export const REVEAL_GRACE_MS = 500;
+
+// ----- Benchmark statistics -----
+
+/** How many operations the statistics table keeps; older ones drop off the end. */
+export const MAX_LOG_ENTRIES = 30;
+/**
+ * How many changes of an operation are listed one by one in the Changes dialog.
+ * An action on a big diagram makes thousands; those are only counted.
+ */
+export const MAX_CHANGE_ROWS = 200;
+
+// ----- Export and print -----
+
+/**
+ * A picture of the diagram is drawn at twice the size of the diagram, so that
+ * small text stays sharp, also on high-resolution screens.
+ */
+export const IMAGE_SCALE = 2;
+/** Very large diagrams are drawn smaller, so that no side of the picture exceeds this many pixels. */
+export const IMAGE_MAX_SIDE = 10_000;
+
+// ----- Texts and keys -----
+
+/** Shown above the diagram after an action failed and its changes were taken back. */
+export const FAILURE_NOTICE =
+  'That action could not be completed and was undone. You can keep working on the diagram.';
+/** The name under which the browser remembers whether the benchmark statistics are open. */
+export const LOG_OPEN_KEY = 'gojs-diagrams.benchmark-statistics-open';

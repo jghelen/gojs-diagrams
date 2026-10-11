@@ -14,14 +14,8 @@ import {
   showSearchHit,
   textColorFor,
 } from './diagram-factory';
-import {
-  DEFAULT_COLOR,
-  DEFAULT_SHAPE,
-  LinkData,
-  NodeData,
-  SHAPES,
-  formatOwnership,
-} from './node-data';
+import { LinkData, NodeData, formatOwnership } from './node-data';
+import { DEFAULT_COLOR, DEFAULT_SHAPE, SHAPES } from './constants';
 
 const NODE_SIZE = { width: 173.5, height: 97.5 };
 
@@ -395,6 +389,84 @@ describe('relationship lines', () => {
     }
   });
 
+  /** The percentages of the lines that end at each node, per node. */
+  const labelsPerNode = (diagram: go.Diagram): go.Rect[][] =>
+    nodesOf(diagram).map((node) => {
+      const labels: go.Rect[] = [];
+      node.findLinksInto().each((link) => {
+        const label = link.findAdornment('Ownership');
+        if (label) labels.push(label.actualBounds);
+      });
+      return labels;
+    });
+  const overlaps = (labels: go.Rect[]): number => {
+    let count = 0;
+    for (let i = 0; i < labels.length; i++) {
+      for (let j = i + 1; j < labels.length; j++) {
+        if (labels[i].intersectsRect(labels[j])) count++;
+      }
+    }
+    return count;
+  };
+
+  it('never write one percentage over another when several lines end at the same node', () => {
+    for (const layout of ['top-bottom', 'bottom-top', 'grid', 'circle'] as const) {
+      for (const linkType of ['avoid', 'straight'] as const) {
+        const { diagram } = createTestDiagram({ count: 100, layout, linkType });
+        const perNode = labelsPerNode(diagram);
+        // The test means something only if nodes do have several percentages.
+        expect(perNode.some((labels) => labels.length >= 3)).toBe(true);
+        for (const labels of perNode) expect(overlaps(labels)).toBe(0);
+      }
+    }
+  });
+
+  it('keep the percentages apart even when lines run exactly on top of each other', () => {
+    const node = (key: number): NodeData => ({
+      key,
+      title: `Fund ${key}`,
+      subtitle: 'Hedge fund',
+      shape: 'Rectangle',
+      color: '#f3f4f6',
+      comment: '',
+    });
+    const stake = (key: number, ownership: number): LinkData => ({
+      key,
+      from: 1,
+      to: 2,
+      category: 'relation',
+      ownership,
+    });
+    // Five lines between the same two funds: the same route, five percentages.
+    const test = createTestDiagram({
+      nodes: [node(1), node(2)],
+      links: [stake(1, 44.65), stake(2, 42.15), stake(3, 81.94), stake(4, 8.5), stake(5, 15.75)],
+    });
+    const target = test.diagram.findNodeForKey(2)!;
+    const [labels] = labelsPerNode(test.diagram).filter((found) => found.length > 0);
+    expect(labels.length).toBe(5);
+    expect(overlaps(labels)).toBe(0);
+    for (const label of labels) expect(target.actualBounds.intersectsRect(label)).toBe(false);
+    const texts = linksOf(test.diagram).map(
+      (link) => (link.findAdornment('Ownership')!.findObject('OWNERSHIP') as go.TextBlock).text,
+    );
+    expect(texts.sort()).toEqual(['15.75%', '42.15%', '44.65%', '8.50%', '81.94%'].sort());
+  });
+
+  it('keep the percentages apart after a node was moved and after its shape changed', () => {
+    const test = createTestDiagram({ count: 100 });
+    const busiest = nodesOf(test.diagram)
+      .map((node) => ({ node, lines: node.findLinksInto().count }))
+      .sort((a, b) => b.lines - a.lines)[0].node;
+    test.model.commit((m) => m.set(busiest.data as NodeData, 'shape', 'Ellipse'), 'shape');
+    test.settle();
+    test.diagram.commit(() => {
+      busiest.location = new go.Point(busiest.location.x + 900, busiest.location.y + 300);
+    }, 'move');
+    test.settle();
+    for (const labels of labelsPerNode(test.diagram)) expect(overlaps(labels)).toBe(0);
+  });
+
   it('are drawn right up to the outline of a diamond, an ellipse and a capsule', () => {
     const test = createTestDiagram();
     // How far the line is drawn past its end point; GoJS expresses that as a negative "short length".
@@ -532,6 +604,31 @@ describe('revealNodesOneByOne', () => {
     vi.advanceTimersByTime(3000);
     expect(test.model.undoManager.history.count).toBe(0);
     expect(test.model.toJson()).toBe(initial);
+  });
+
+  it('does not slip the switching off and on of the diagram into the next undo step', () => {
+    const test = createTestDiagram();
+    setHidden(false);
+    vi.useFakeTimers();
+    revealNodesOneByOne(test.diagram, () => undefined);
+    vi.advanceTimersByTime(3000);
+    expect(test.diagram.isEnabled).toBe(true);
+
+    // The first thing the user does afterwards, and its undo.
+    const node = test.model.nodeDataArray[0];
+    test.history.record('edit', () => test.model.set(node, 'title', 'Renamed'));
+    const recorded: string[] = [];
+    test.model.undoManager.history
+      .last()!
+      .changes.each((change) => recorded.push(String(change.propertyName)));
+    expect(recorded).not.toContain('isEnabled');
+    expect(recorded).not.toContain('opacity');
+
+    test.history.undo();
+    expect(test.diagram.isEnabled).toBe(true);
+    for (const shown of nodesOf(test.diagram)) expect(shown.opacity).toBe(1);
+    test.history.redo();
+    expect(test.diagram.isEnabled).toBe(true);
   });
 
   it('skips the animation when the page is hidden, where no frames are drawn', () => {
@@ -723,14 +820,62 @@ describe('drawing a relationship', () => {
     expect(manualLinks(test)).toEqual([[4, 9]]);
   });
 
-  it('can be drawn twice between the same two nodes', () => {
+  /** Whether any relationship joins these two nodes, in either direction. */
+  const linked = (test: TestDiagram, a: number, b: number): boolean =>
+    test.model.linkDataArray.some(
+      (link) => (link.from === a && link.to === b) || (link.from === b && link.to === a),
+    );
+  const dragBetween = (test: TestDiagram, from: number, to: number): void =>
+    drag(test, edgeOf(test, from), test.diagram.findNodeForKey(to)!.actualBounds.center);
+
+  it('is not drawn a second time between two nodes it already joins, in either direction', () => {
     const test = createTestDiagram();
-    const target = test.diagram.findNodeForKey(9)!.actualBounds.center;
-    drag(test, edgeOf(test, 4), target);
-    drag(test, edgeOf(test, 4), target);
+    expect(linked(test, 4, 9)).toBe(false);
+    dragBetween(test, 4, 9);
+    expect(manualLinks(test)).toEqual([[4, 9]]);
+
+    dragBetween(test, 4, 9);
+    dragBetween(test, 9, 4);
+    expect(manualLinks(test)).toEqual([[4, 9]]);
+    expect(test.model.undoManager.history.count).toBe(1);
+  });
+
+  it('is not drawn between two nodes that the data already links, in either direction', () => {
+    const test = createTestDiagram();
+    const count = test.model.linkDataArray.length;
+    const existing = test.model.linkDataArray.filter((link) => link.category !== 'manual');
+    const hierarchy = existing.find((link) => link.category === 'hierarchy')!;
+    const relation = existing.find((link) => link.category === 'relation')!;
+    for (const link of [hierarchy, relation]) {
+      dragBetween(test, link.from, link.to);
+      dragBetween(test, link.to, link.from);
+    }
+    expect(manualLinks(test)).toEqual([]);
+    expect(test.model.linkDataArray.length).toBe(count);
+    expect(test.model.undoManager.history.count).toBe(0);
+  });
+
+  it('can be drawn again once the relationship between the two nodes was removed', () => {
+    const test = createTestDiagram();
+    dragBetween(test, 4, 9);
+    const drawn = test.model.linkDataArray.find((link) => link.category === 'manual')!;
+    test.model.commit(() => test.model.removeLinkData(drawn), 'remove');
+    test.settle();
+    dragBetween(test, 9, 4);
+    expect(manualLinks(test)).toEqual([[9, 4]]);
+  });
+
+  it('is still drawn from a node that has relationships to other nodes', () => {
+    const test = createTestDiagram();
+    dragBetween(test, 4, 9);
+    // 4 and 9 are both linked now, but not to 12.
+    const other = [12, 13, 14, 15].find((key) => !linked(test, 4, key) && !linked(test, 9, key))!;
+    dragBetween(test, 4, other);
+    dragBetween(test, other, 9);
     expect(manualLinks(test)).toEqual([
       [4, 9],
-      [4, 9],
+      [4, other],
+      [other, 9],
     ]);
   });
 

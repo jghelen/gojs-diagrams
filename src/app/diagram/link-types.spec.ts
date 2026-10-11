@@ -1,13 +1,6 @@
 import * as go from 'gojs/release/go';
-import {
-  AVOID_NODES_BELOW,
-  DEFAULT_LINK_TYPE,
-  LINK_TYPES,
-  avoidsNodes,
-  linkStyle,
-  routingFor,
-  tooBigToAvoidNodes,
-} from './link-types';
+import { LINK_TYPES, avoidsNodes, linkStyle, routingFor, tooBigToAvoidNodes } from './link-types';
+import { AVOID_NODES_BELOW, DEFAULT_LINK_TYPE } from './constants';
 
 describe('link types', () => {
   it('offers two orthogonal types, straight and curved', () => {

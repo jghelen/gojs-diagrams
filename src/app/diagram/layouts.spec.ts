@@ -5,7 +5,8 @@ import {
   linksOf,
   nodesOf,
 } from '../../testing/diagram-harness';
-import { DEFAULT_LAYOUT, LAYOUTS, LayoutType, createLayout, resetPortSpots } from './layouts';
+import { LAYOUTS, LayoutType, createLayout, resetPortSpots } from './layouts';
+import { DEFAULT_LAYOUT } from './constants';
 
 const ALL_LAYOUTS = LAYOUTS.map((layout) => layout.type);
 

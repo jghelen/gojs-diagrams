@@ -1,8 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import * as go from 'gojs/release/go';
 import { NodeModel } from '../diagram/diagram-factory';
-import { DEFAULT_COLOR, DEFAULT_SHAPE, LinkData, NodeData } from '../diagram/node-data';
+import { LinkData, NodeData } from '../diagram/node-data';
 import { PerfDiagram } from './perf-diagram';
+import { DEFAULT_COLOR, DEFAULT_SHAPE } from '../diagram/constants';
 
 /** The parts of the component these tests drive; most of them are not public. */
 interface Bench {
@@ -197,6 +198,38 @@ describe('PerfDiagram', () => {
       await drawFrames(performance.now() + 60_000);
       expect(bench.stats()).toMatchObject({ nodes: 24, historyLength: 0, historyIndex: -1 });
       expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
+    });
+
+    it('leaves the diagram usable when the first action after loading is undone', async () => {
+      const onScreen = (visible: boolean) =>
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => !visible });
+      /** Loads with the animation, then goes on without waiting for frames after each action. */
+      const loadAndReveal = async (dataset: string) => {
+        onScreen(true);
+        bench.reset(dataset);
+        await settle();
+        await drawFrames(performance.now() + 60_000);
+        onScreen(false);
+      };
+
+      await loadAndReveal('fund-structure');
+      expect(diagram.isEnabled).toBe(true);
+      await bench.randomizeAll();
+      await bench.undo();
+      // Undo must not switch the diagram off again, as the loading animation had it.
+      expect(diagram.isEnabled).toBe(true);
+      expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
+      await bench.redo();
+      expect(diagram.isEnabled).toBe(true);
+
+      // And the same after other data was loaded in the middle of an animation.
+      onScreen(true);
+      bench.reset('30');
+      await settle();
+      await loadAndReveal('fund-structure');
+      await bench.randomizeOne();
+      await bench.undo();
+      expect(diagram.isEnabled).toBe(true);
     });
 
     it('starts over when other data is loaded while nodes are still appearing', async () => {
@@ -1391,7 +1424,7 @@ describe('PerfDiagram', () => {
     const level = () => model().undoManager.transactionLevel;
     /** Makes the next change to the model fail halfway, the way an error inside GoJS would. */
     const failNextCommit = () =>
-      vi.spyOn(model(), 'commit').mockImplementationOnce(() => {
+      vi.spyOn(diagram, 'commit').mockImplementationOnce(() => {
         model().startTransaction('doomed');
         model().set(nodeData(1), 'title', 'half done');
         throw new RangeError('Maximum call stack size exceeded');
