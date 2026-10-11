@@ -2520,6 +2520,70 @@ describe('DiagramPage', () => {
       expect(bench.busy()).toBe(false);
     });
 
+    it('opens an empty diagram when data could not be opened, so that other data can be', async () => {
+      await bench.changeLayout('grid');
+      const broken = diagram;
+      /** The diagram that is in use now, which is a new one after the failure. */
+      const current = () => bench.diagram;
+      const settleCurrent = async () => {
+        for (let i = 0; i < 3; i++) current().maybeUpdate();
+        await fixture.whenStable();
+        current().maybeUpdate();
+      };
+
+      // The layout of the next diagram fails, the way GoJS failed on one too big for it.
+      const layout = vi.spyOn(go.GridLayout.prototype, 'doLayout').mockImplementationOnce(() => {
+        throw new RangeError('Array buffer allocation failed');
+      });
+      bench.reset('100');
+      expect(() => diagram.maybeUpdate()).toThrow('Array buffer allocation failed');
+      expect(bench.busy()).toBe(true);
+      // The browser reports such an error to the page.
+      window.dispatchEvent(new ErrorEvent('error', { message: 'Array buffer allocation failed' }));
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      current().viewSize = new go.Size(1000, 700);
+      await settleCurrent();
+      layout.mockRestore();
+
+      // A new diagram, empty, unlocked, and back in the default layout.
+      expect(current()).not.toBe(broken);
+      expect(bench.busy()).toBe(false);
+      expect(bench.datasetId()).toBe('blank');
+      expect(bench.stats()).toMatchObject({ nodes: 0, historyLength: 0 });
+      expect(bench.layoutType()).toBe('top-bottom');
+      expect(notice()!.textContent).toContain('could not be opened');
+      const data = page.querySelector<HTMLSelectElement>('header select')!;
+      expect(data.disabled).toBe(false);
+      expect(data.value).toBe('blank');
+      expect(page.querySelectorAll('.diagram canvas').length).toBe(1);
+
+      // Opening other data works again, and takes the notice away.
+      bench.reset('fund-structure');
+      await settleCurrent();
+      expect(bench.busy()).toBe(false);
+      expect(bench.stats()).toMatchObject({ nodes: 24, historyLength: 0 });
+      expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
+      expect(notice()).toBeNull();
+      current().nodes.each((node) => expect(node.position.isReal()).toBe(true));
+
+      // And so does working on it: an action, its undo, and the keyboard.
+      await bench.randomizeOne();
+      expect(bench.stats()?.historyLength).toBe(1);
+      await bench.undo();
+      expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
+    });
+
+    it('does not give up on a diagram that arrives although an error was reported meanwhile', async () => {
+      bench.reset('100');
+      window.dispatchEvent(new ErrorEvent('error', { message: 'ResizeObserver loop' }));
+      await settle();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      await settle();
+      expect(bench.busy()).toBe(false);
+      expect(bench.stats()?.nodes).toBe(100);
+      expect(notice()).toBeNull();
+    });
+
     it('recovers from an error in the diagram itself, outside any action', async () => {
       const title = nodeData(3).title;
       model().startTransaction('left open');

@@ -202,6 +202,9 @@ export const IMAGE_MAX_SIDE = 10_000;
 /** Shown above the diagram after an action failed and its changes were taken back. */
 export const FAILURE_NOTICE =
   'That action could not be completed and was undone. You can keep working on the diagram.';
+/** Shown above the diagram when data could not be opened completely. */
+export const LOAD_FAILURE_NOTICE =
+  'That diagram could not be opened. An empty one was opened instead; choose other data to go on.';
 /** The name under which the browser remembers whether the developer tools are shown. */
 export const DEVELOPER_TOOLS_KEY = 'gojs-diagrams.developer-tools-shown';
 /** The name under which the browser remembers whether the benchmark statistics are open. */

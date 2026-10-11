@@ -82,6 +82,36 @@ describe('createLayout', () => {
   );
 });
 
+describe('force-directed layout', () => {
+  it('stays compact, also when it starts from nodes that stand in line', () => {
+    // Started from a tree, as after a switch of layout, some nodes pull straight at
+    // each other and end up almost on one spot. That must not blow the whole diagram
+    // up: it once came out half a million units wide, too big to route lines in.
+    for (const count of [30, 200, 500]) {
+      const test = createTestDiagram({ count, layout: 'top-bottom', linkType: 'straight' });
+      test.history.record('change layout', () => {
+        const layout = createLayout('force', count);
+        test.diagram.layout = layout;
+        layout.isValidLayout = false;
+      });
+      test.settle();
+      const { width, height } = test.diagram.documentBounds;
+      // Generous limits; what they keep out is a diagram a hundred times that size.
+      expect(width, `${count} nodes`).toBeLessThan(4000 + count * 40);
+      expect(height, `${count} nodes`).toBeLessThan(4000 + count * 40);
+      expect(countNodeOverlaps(test.diagram)).toBe(0);
+    }
+  });
+
+  it('is the same every time for the same diagram', () => {
+    const places = () =>
+      nodesOf(createTestDiagram({ count: 100, layout: 'force', linkType: 'straight' }).diagram).map(
+        (node) => node.location.toString(),
+      );
+    expect(places()).toEqual(places());
+  });
+});
+
 describe('grid layout', () => {
   it('puts 20 nodes in a row, however wide the view is', () => {
     const { diagram } = createTestDiagram({ count: 100, layout: 'grid', linkType: 'straight' });

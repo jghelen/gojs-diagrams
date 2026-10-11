@@ -21,7 +21,7 @@ import {
   NodeData,
   randomPatch,
 } from '../diagram/node-data';
-import { Operation, OperationRunner, once } from './operation-runner';
+import { Operation, OperationRunner, once } from './operation-runner/operation-runner';
 
 /** "1 node", "3 nodes". */
 function countOf(count: number, one: string, many: string): string {

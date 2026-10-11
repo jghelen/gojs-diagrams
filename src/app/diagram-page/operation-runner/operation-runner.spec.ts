@@ -1,5 +1,5 @@
-import { TestDiagram, createTestDiagram } from '../../testing/diagram-harness';
-import { HistoryService } from '../diagram/history.service';
+import { TestDiagram, createTestDiagram } from '../../../testing/diagram-harness';
+import { HistoryService } from '../../diagram/history.service';
 import { OperationRunner, once } from './operation-runner';
 
 describe('once', () => {

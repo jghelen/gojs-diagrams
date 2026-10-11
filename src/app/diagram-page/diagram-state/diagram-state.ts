@@ -1,10 +1,10 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import * as go from 'gojs/release/go';
-import { DEFAULT_LAYOUT, DEFAULT_LINK_TYPE } from '../diagram/constants';
-import { NodeModel } from '../diagram/diagram-factory';
-import { HistoryService, StateCheck } from '../diagram/history.service';
-import { LayoutType } from '../diagram/layouts';
-import { LinkType } from '../diagram/link-types';
+import { DEFAULT_LAYOUT, DEFAULT_LINK_TYPE } from '../../diagram/constants';
+import { NodeModel } from '../../diagram/diagram-factory';
+import { HistoryService, StateCheck } from '../../diagram/history.service';
+import { LayoutType } from '../../diagram/layouts';
+import { LinkType } from '../../diagram/link-types';
 
 /** The numbers of the History panel. */
 export interface Stats {

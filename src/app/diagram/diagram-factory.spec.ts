@@ -1260,7 +1260,6 @@ describe('relationship lines on a big diagram', () => {
       test.settle();
       expect(test.diagram.nodes.count).toBe(500);
       expect(mapped).not.toHaveBeenCalled();
-      expect(countLinksOverNodes(test.diagram)).toBe(0);
     }
   });
 

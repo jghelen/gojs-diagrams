@@ -14,6 +14,8 @@ import {
   BLANK_DATASET,
   DEFAULT_DATASET,
   DEFAULT_LAYOUT,
+  DEFAULT_LINK_TYPE,
+  LOAD_FAILURE_NOTICE,
   QUICK_LAYOUTS,
   SLOW_LAYOUTS_FROM,
 } from '../diagram/constants';
@@ -42,12 +44,15 @@ import { ToolStrip } from './components/tool-strip';
 import { DeveloperTools } from './developer-tools';
 import { DiagramActions } from './diagram-actions';
 import { diagramPicture, downloadDiagramPng } from './diagram-picture';
-import { DiagramState } from './diagram-state';
+import { DiagramState } from './diagram-state/diagram-state';
 import { FundStyles } from './fund-styles';
 import { LinkInfoCard } from './link-info-card';
 import { NodeSearch } from './node-search';
-import { OperationRunner } from './operation-runner';
+import { OperationRunner } from './operation-runner/operation-runner';
 import { SelectionState } from './selection-state';
+
+/** How long after an error a diagram that is being opened is given to arrive after all. */
+const LOAD_PATIENCE_MS = 100;
 
 /**
  * The page. It creates the diagram, loads data into it, and keeps everything
@@ -134,6 +139,8 @@ export class DiagramPage {
   /** Stops the animation in which a loaded diagram's nodes appear one by one. */
   private stopReveal: () => void = () => undefined;
   private stopWatchingErrors: () => void = () => undefined;
+  /** True from the moment data is opened until GoJS has arranged it for the first time. */
+  private loading = false;
 
   constructor() {
     afterNextRender(() => this.init());
@@ -203,6 +210,7 @@ export class DiagramPage {
   private listenToDiagram(): void {
     // The initial layout gives every node its place, so the starting state is saved after it.
     this.diagram.addDiagramListener('InitialLayoutCompleted', () => {
+      this.loading = false;
       this.history.markInitialState();
       // GoJS clears the history right after this event; read the numbers once it has.
       queueMicrotask(() => this.refresh());
@@ -233,6 +241,12 @@ export class DiagramPage {
   /** Errors inside GoJS's own mouse and keyboard handling arrive here, not in an operation. */
   private watchForErrors(): void {
     const onError = (): void => {
+      if (this.loading) {
+        // Perhaps the error had nothing to do with the diagram; a moment shows whether
+        // the diagram still arrives.
+        setTimeout(() => this.giveUpLoading(), LOAD_PATIENCE_MS);
+        return;
+      }
       // A drag that is under way keeps its transaction, whatever went wrong elsewhere.
       if (this.diagram.currentTool !== this.diagram.defaultTool) return;
       if (this.runner.isMeasuring || !this.history.hasUnfinishedTransaction) return;
@@ -241,6 +255,32 @@ export class DiagramPage {
     };
     window.addEventListener('error', onError);
     this.stopWatchingErrors = () => window.removeEventListener('error', onError);
+  }
+
+  /**
+   * An error stopped a diagram on its way in. After an error inside a layout
+   * GoJS arranges nothing any more, in this diagram or in any data opened in it
+   * later, and it is the end of the first layout that unlocks the page. Without
+   * this, every control would stay disabled until the page is reloaded.
+   *
+   * So the diagram is thrown away and a new, empty one put in its place, in the
+   * default layout and line type in case one of those was the cause. The page
+   * says what happened, and the user can open other data.
+   */
+  private giveUpLoading(): void {
+    if (!this.loading) return;
+    this.loading = false;
+    this.stopReveal();
+    this.stopWatchingErrors();
+    this.overview.div = null;
+    this.diagram.div = null;
+
+    this.datasetId.set(BLANK_DATASET);
+    this.state.layoutType.set(DEFAULT_LAYOUT);
+    this.state.linkType.set(DEFAULT_LINK_TYPE);
+    this.runner.clearLog();
+    this.init();
+    this.failure.set(LOAD_FAILURE_NOTICE);
   }
 
   // ----- Loading data -----
@@ -288,6 +328,7 @@ export class DiagramPage {
       subtitleField: null,
     };
     this.runner.busy.set(true);
+    this.loading = true;
     // A new model gets new parts: none of them dimmed, none of them a search result.
     this.selection.forgetHighlight();
     this.nodeSearch.clear();

@@ -89,6 +89,9 @@ const NORMAL_GAPS: Gaps = { across: NODE_GAP, down: NODE_GAP };
  */
 const CARD_GAPS: Gaps = { across: 200, down: 110 };
 
+/** The most a force-directed layout is enlarged as a whole to give its nodes room. */
+const MAX_SPREAD = 3;
+
 /**
  * A force-directed result can still have overlapping nodes when the graph is as
  * densely linked as this one, so this spreads the finished layout out evenly
@@ -148,6 +151,10 @@ class SpacedForceDirectedLayout extends go.ForceDirectedLayout {
         scale = Math.max(scale, Math.min(needX / Math.max(dx, 1), needY / Math.max(dy, 1)));
       }
     }
+    // Two nodes that ended up almost on the same spot would ask for the whole layout
+    // to be made hundreds of times larger. Spreading is for a layout that is a bit
+    // tight everywhere; the few pairs that are still too close are pushed apart below.
+    scale = Math.min(scale, MAX_SPREAD);
     if (scale > 1) {
       for (const vertex of vertexes) {
         vertex.centerX *= scale;

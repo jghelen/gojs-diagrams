@@ -495,6 +495,13 @@ diamond is much narrower near its tips than a rectangle); longer text is cut off
 
 ### Things learned about GoJS along the way
 
+- GoJS's router for lines around nodes maps out the whole area the diagram covers. A layout that
+  spreads the nodes over hundreds of thousands of units makes that map too big to allocate
+  ("Array buffer allocation failed"). The force-directed layout did that when two nodes started
+  on almost the same spot, because it enlarged the whole layout to part them; that enlargement is
+  now capped and such pairs are pushed apart one by one instead.
+- While another model is being loaded, new links can for a moment be routed with the settings of
+  the old one. GoJS's router is therefore told directly never to run on a big diagram.
 - A `GridLayout` without a `wrappingWidth` wraps at the width of the window and arranges the
   nodes anew whenever that width changes, by a zoom for instance, outside of any transaction.
   Nodes then move without an undo step. Setting `wrappingWidth: Infinity` stops that.
@@ -717,9 +724,17 @@ Read the [licence](#licence) section before publishing a build on the public int
   plain line when it finds no way around, for about one line in a hundred in some layouts. From
   500 nodes on a line crosses a node only if its own node is shut in by other nodes above and
   below, which the layouts never produce; it takes dragging nodes onto each other.
-- **Slow layouts on big diagrams.** The Circle, Layered digraph and Force-directed layouts take
-  many seconds from 1000 nodes on (Layered digraph about half a minute at 2000). That time is
-  spent inside GoJS's layout, not on the lines.
+- **Force-directed on big diagrams.** The app's router for big diagrams needs nodes that stand
+  in rows. In the Force-directed layout they do not, so on a diagram of 500 nodes or more in that
+  layout most orthogonal lines run across nodes; straight lines suit it better. Such a diagram
+  never opens in that layout by itself.
+- **When a diagram cannot be opened.** If an error stops a diagram while it is being arranged,
+  GoJS arranges nothing in that diagram any more. The app then throws the diagram away, opens an
+  empty one in the default layout and says so above the canvas; you can open other data at once.
+- **Slow layouts on big diagrams.** The Circle and Layered digraph layouts take many seconds from
+  1000 nodes on (Layered digraph about half a minute at 2000). That time is spent inside GoJS's
+  layout, not on the lines. A diagram of 500 nodes or more is therefore never opened in one of
+  them, or in Force-directed: it opens Top to bottom instead. You can still pick them by hand.
 - **Places after an undo.** When a move is undone, the lines of the moved node find their places
   again, but the lines of its neighbours keep theirs until they are next routed.
 - **The children of a deleted node** stay in the diagram without a parent; nothing re-attaches

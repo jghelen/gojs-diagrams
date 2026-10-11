@@ -1,9 +1,9 @@
 import { Injectable, inject, signal } from '@angular/core';
 import * as go from 'gojs/release/go';
-import { afterNextPaint, timeSteps } from '../diagram/benchmark';
-import { ChangeDetails, describeChanges } from '../diagram/change-details';
-import { FAILURE_NOTICE, MAX_LOG_ENTRIES } from '../diagram/constants';
-import { HistoryService } from '../diagram/history.service';
+import { afterNextPaint, timeSteps } from '../../diagram/benchmark';
+import { ChangeDetails, describeChanges } from '../../diagram/change-details';
+import { FAILURE_NOTICE, MAX_LOG_ENTRIES } from '../../diagram/constants';
+import { HistoryService } from '../../diagram/history.service';
 
 /**
  * Something the user asked for, cut into the steps whose time is measured: one

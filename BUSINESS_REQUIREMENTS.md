@@ -80,7 +80,8 @@ Every icon without a text label shows its name when the user hovers over it.
 - **BR-4.3** Every fund in a newly opened diagram is a very light gray square with a dark gray
   border.
 - **BR-4.4** A diagram opens laid out top to bottom, with lines that go around the nodes, whatever
-  its size. Opening other data keeps the layout and the line type that were chosen.
+  its size. Opening other data keeps the layout and the line type that were chosen, except for a
+  layout that would be slow on the new data (BR-9.2b).
 
 ### 4.2 Loading animation
 
@@ -390,6 +391,11 @@ diagram has no nodes (BR-4.15).
   named on hover: **Top to bottom**, **Bottom to top**, **Circle**, Layered digraph,
   Force-directed, Grid.
 - **BR-9.2** In every layout, nodes do not overlap.
+- **BR-9.2b** A diagram of 500 funds or more opens in a layout that is quick at that size (Top to
+  bottom, Bottom to top or Grid). If one of the other three was in use from a smaller diagram, it
+  opens Top to bottom. The user can still choose any layout by hand.
+- **BR-9.2c** The Force-directed layout keeps the diagram compact: it never spreads the funds over
+  an area many times larger than they need.
 - **BR-9.2a** The Grid layout always puts 20 nodes in a row. Zooming or resizing the window never
   moves a node.
 - **BR-9.3** Switching the layout rearranges the whole diagram and is one undo step.
@@ -402,6 +408,8 @@ diagram has no nodes (BR-4.15).
   on hover: Orthogonal rounded, Orthogonal square, Straight, Curved.
 - **BR-9.6** Straight and curved lines cannot go around nodes; their names say "(crosses
   nodes)". The two orthogonal types route lines around nodes on diagrams of every size.
+- **BR-9.6b** Going around nodes on a diagram of 500 funds or more needs funds that stand in rows,
+  as in every layout but Force-directed. In that layout lines of such a diagram may cross funds.
 - **BR-9.6a** Switching the line type must never freeze the screen, whatever the size of the
   diagram. On a diagram of 500 funds or more the lines are therefore routed by a faster method
   than on smaller ones; the result looks the same.
@@ -493,6 +501,9 @@ while the diagram has no nodes (BR-4.15).
   on without reloading the page. The changes the failed action had made so far are taken back, a
   notice above the diagram says that the action could not be completed and was undone, and all
   further actions, undo, redo and Reset diagram keep working.
+- **BR-13.6** If data cannot be opened because of an unexpected error, the page must not stay
+  locked. An empty diagram is opened instead, in the default layout and line type, a notice above
+  the canvas says that the diagram could not be opened, and the user can open other data at once.
 
 ## 14. Performance measurement
 
