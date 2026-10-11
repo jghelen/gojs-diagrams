@@ -288,6 +288,9 @@ All lines are equally thick.
   to remove that relationship. It is not a dialog: the diagram stays usable. The card goes away
   on a second click on the icon, on its x, on Escape, on a click on empty canvas, and whenever
   you select a node or do something else. It follows its icon when you scroll or zoom.
+- **Expand all** and **Collapse all** are disabled while no relationship has a card to show: on a
+  diagram of a single node, while none of the nodes is joined to another, and while the only
+  relationships are ones you drew yourself.
 - **Expand all**, near the bottom of the tool strip, shows a small card on every relationship at
   once: its kind, the two funds and the ownership. To make room, the diagram is arranged anew
   with the nodes further apart, so every card stands between the nodes and covers neither a
@@ -309,10 +312,16 @@ All lines are equally thick.
 
 Shown with the [developer tools](#developer-tools).
 
-- **Randomize 1 node** / **Randomize all** change title, legal entity type, shape and colour on one node
-  or on every node.
-- **N × randomize all** does that N times in a row, to build up a long history quickly. N can be
-  1 up to the number of nodes (fewer on big diagrams); other entries are corrected.
+- **Randomize 1 node** changes title, legal entity type, shape and colour of one node.
+- **Randomize all** does that for every node and, in the same undo step, switches to another
+  layout picked at random. Every node gets a new place and every line a new route, so this is
+  the biggest single change there is to undo. On a diagram of 500 nodes or more the layout is
+  picked among Top to bottom, Bottom to top and Grid only; the other three take many seconds
+  there.
+- **N × randomize all** changes the four fields of every node N times in a row, to build up a
+  long history quickly, and moves each node a little every time (at most 15 units from where it
+  stood), with its lines. It keeps the layout: N layouts in a row would take far too long. N can
+  be 1 up to the number of nodes (fewer on big diagrams); other entries are corrected.
 
 ### History panel
 
@@ -376,7 +385,7 @@ A `go.GraphLinksModel` holds everything that can be undone:
 
 | Part                     | Fields                                                                                                 |
 | ------------------------ | ------------------------------------------------------------------------------------------------------ |
-| Node                     | `key`, `title`, `legalEntityType`, `shape`, `color`, `comment`, `loc`                                  |
+| Node                     | `key`, `title`, `legalEntityType`, `shape`, `color`, `comment`, `loc` (where its top left corner is)   |
 | Link                     | `key`, `from`, `to`, `category` (`hierarchy`, `relation` or `manual`), `ownership` (percent, optional) |
 | Model-wide (`modelData`) | `layoutType`, `linkType`, `name`, `description`                                                        |
 
@@ -447,7 +456,7 @@ Auto arrange, but not after each edit. Otherwise every undo would include a full
 | Circle                        | `CircularLayout`                                                                                                                                                                                                                                                                                             |
 | Layered digraph               | `LayeredDigraphLayout` over the hierarchy links only                                                                                                                                                                                                                                                         |
 | Force-directed                | `ForceDirectedLayout`, then spread out evenly until no two nodes overlap                                                                                                                                                                                                                                     |
-| Grid                          | `GridLayout`, 20 columns                                                                                                                                                                                                                                                                                     |
+| Grid                          | `GridLayout`, always 20 nodes to a row, whatever the width of the window                                                                                                                                                                                                                                     |
 
 Nodes have a fixed size of 172 × 96 whatever their shape and text, so an edit never makes a node
 grow into its neighbour. The width allowed for the title and subtitle depends on the shape (a
@@ -486,6 +495,13 @@ diamond is much narrower near its tips than a rectangle); longer text is cut off
 
 ### Things learned about GoJS along the way
 
+- A `GridLayout` without a `wrappingWidth` wraps at the width of the window and arranges the
+  nodes anew whenever that width changes, by a zoom for instance, outside of any transaction.
+  Nodes then move without an undo step. Setting `wrappingWidth: Infinity` stops that.
+- Bind the data to a node's `position`, not its `location`. GoJS keeps the top left corner; the
+  middle is worked out from it, and a number that goes from corner to middle and back can come
+  out different in its sixteenth digit. A redo then left the data different from what it had
+  been before the undo, and the state check said "differs".
 - Assigning a model to a diagram copies the previous model's `UndoManager` settings onto it,
   including `isEnabled`. Enable undo **after** the assignment.
 - Set the node template **before** the model. Otherwise the nodes are first built without the

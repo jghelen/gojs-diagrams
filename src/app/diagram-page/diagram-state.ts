@@ -46,6 +46,12 @@ export class DiagramState {
   readonly description = signal('');
   /** Whether every relationship shows its card in the diagram ("expand all"). */
   readonly cardsExpanded = signal(false);
+  /**
+   * Whether there is any relationship with a card to show: one from the data.
+   * A diagram of a single node has none, nor has one whose nodes are not joined,
+   * or are joined by hand-drawn lines only, which have no card.
+   */
+  readonly hasCards = signal(false);
 
   connect(diagram: go.Diagram): void {
     this.diagram = diagram;
@@ -73,5 +79,6 @@ export class DiagramState {
     this.name.set(name);
     this.description.set(description);
     this.cardsExpanded.set(cardsExpanded);
+    this.hasCards.set(model.linkDataArray.some((link) => link.category !== 'manual'));
   }
 }

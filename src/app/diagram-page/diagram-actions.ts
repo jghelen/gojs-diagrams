@@ -177,7 +177,7 @@ export class DiagramActions {
   private nudged(data: NodeData): go.Point {
     const now = data.loc
       ? go.Point.parse(data.loc)
-      : (this.diagram.findNodeForData(data)?.location.copy() ?? new go.Point());
+      : (this.diagram.findNodeForData(data)?.position.copy() ?? new go.Point());
     let home = this.homes.get(data);
     const near = (a: number, b: number) => Math.abs(a - b) <= NODE_NUDGE + 0.5;
     if (!home || !near(home.x, now.x) || !near(home.y, now.y)) {

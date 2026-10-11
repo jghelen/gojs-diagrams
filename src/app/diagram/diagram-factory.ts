@@ -435,73 +435,79 @@ const SEARCH_ADORNMENT = 'Search';
 const SEARCH_OUTLINE_TEMPLATE = createGoldOutline(7);
 
 function createNodeTemplate(): go.Node {
-  return new go.Node(go.PanelTypes.Spot, {
-    locationSpot: go.Spot.Center,
-    dragComputation: avoidNodeOverlap,
-    selectionAdornmentTemplate: createGoldOutline(),
-  })
-    .bindTwoWay('location', 'loc', go.Point.parse, go.Point.stringify)
-    .add(
-      // The shape is the node's port. Only its rim is exposed, so a drag that
-      // starts there draws a link, while a drag from anywhere else moves the node.
-      new go.Shape({
-        desiredSize: new go.Size(NODE_WIDTH, NODE_HEIGHT),
-        stroke: NODE_BORDER,
-        strokeWidth: 1.5,
-        portId: '',
-        fromLinkable: true,
-        toLinkable: true,
-        cursor: 'crosshair',
-      })
-        .bind('figure', 'shape')
-        .bind('fill', 'color'),
-      new go.Shape({
-        desiredSize: new go.Size(NODE_WIDTH - 2 * LINK_RIM, NODE_HEIGHT - 2 * LINK_RIM),
-        fill: 'transparent',
-        stroke: null,
-      }).bind('figure', 'shape'),
-      new go.Panel(go.PanelTypes.Vertical).add(
-        new go.TextBlock({
-          ...NODE_TEXT,
-          font: 'bold 12px system-ui, sans-serif',
-          // Not editable on the node: a press on the text is for selecting and
-          // moving the node. The title is changed in the side panel.
-          toolTip: fullTextHint('title'),
-        })
-          .bind('text', 'title')
-          .bind('maxSize', 'shape', textLimit(TITLE_REACH))
-          .bind('stroke', 'color', textColorFor),
-        new go.TextBlock({
-          ...NODE_TEXT,
-          font: '10px system-ui, sans-serif',
-          toolTip: fullTextHint('legalEntityType'),
-        })
-          .bind('text', 'legalEntityType')
-          // Shown only once a legal entity field was chosen in the styles dialog.
-          .bindModel(
-            'visible',
-            'subtitleField',
-            (field: StyleFieldId | null | undefined) => !!field,
-          )
-          .bind('maxSize', 'shape', textLimit(SUBTITLE_REACH))
-          .bind('stroke', 'color', textColorFor),
-        // A thin rule between the text and the icons.
+  return (
+    new go.Node(go.PanelTypes.Spot, {
+      locationSpot: go.Spot.Center,
+      dragComputation: avoidNodeOverlap,
+      selectionAdornmentTemplate: createGoldOutline(),
+    })
+      // The data keeps the place of the node's top left corner, which is also what GoJS
+      // keeps. Its middle (`location`) is worked out from that, and a number that goes
+      // from corner to middle and back can come out different in its last digit: an
+      // undo followed by a redo would then leave the data changed where nothing had.
+      .bindTwoWay('position', 'loc', go.Point.parse, go.Point.stringify)
+      .add(
+        // The shape is the node's port. Only its rim is exposed, so a drag that
+        // starts there draws a link, while a drag from anywhere else moves the node.
         new go.Shape({
-          figure: go.Figures.LineH,
-          desiredSize: new go.Size(72, 1),
-          strokeWidth: 1,
-          opacity: 0.35,
-          margin: new go.Margin(3, 0, 0, 0),
-        }).bind('stroke', 'color', textColorFor),
-        new go.Panel(go.PanelTypes.Horizontal, { margin: new go.Margin(3, 0, 0, 0) }).add(
-          createColorIcon(),
-          createCommentIcon().set({ margin: new go.Margin(0, 0, 0, 7) }),
-          createBatchIcon().set({ margin: new go.Margin(0, 0, 0, 7) }),
+          desiredSize: new go.Size(NODE_WIDTH, NODE_HEIGHT),
+          stroke: NODE_BORDER,
+          strokeWidth: 1.5,
+          portId: '',
+          fromLinkable: true,
+          toLinkable: true,
+          cursor: 'crosshair',
+        })
+          .bind('figure', 'shape')
+          .bind('fill', 'color'),
+        new go.Shape({
+          desiredSize: new go.Size(NODE_WIDTH - 2 * LINK_RIM, NODE_HEIGHT - 2 * LINK_RIM),
+          fill: 'transparent',
+          stroke: null,
+        }).bind('figure', 'shape'),
+        new go.Panel(go.PanelTypes.Vertical).add(
+          new go.TextBlock({
+            ...NODE_TEXT,
+            font: 'bold 12px system-ui, sans-serif',
+            // Not editable on the node: a press on the text is for selecting and
+            // moving the node. The title is changed in the side panel.
+            toolTip: fullTextHint('title'),
+          })
+            .bind('text', 'title')
+            .bind('maxSize', 'shape', textLimit(TITLE_REACH))
+            .bind('stroke', 'color', textColorFor),
+          new go.TextBlock({
+            ...NODE_TEXT,
+            font: '10px system-ui, sans-serif',
+            toolTip: fullTextHint('legalEntityType'),
+          })
+            .bind('text', 'legalEntityType')
+            // Shown only once a legal entity field was chosen in the styles dialog.
+            .bindModel(
+              'visible',
+              'subtitleField',
+              (field: StyleFieldId | null | undefined) => !!field,
+            )
+            .bind('maxSize', 'shape', textLimit(SUBTITLE_REACH))
+            .bind('stroke', 'color', textColorFor),
+          // A thin rule between the text and the icons.
+          new go.Shape({
+            figure: go.Figures.LineH,
+            desiredSize: new go.Size(72, 1),
+            strokeWidth: 1,
+            opacity: 0.35,
+            margin: new go.Margin(3, 0, 0, 0),
+          }).bind('stroke', 'color', textColorFor),
+          new go.Panel(go.PanelTypes.Horizontal, { margin: new go.Margin(3, 0, 0, 0) }).add(
+            createColorIcon(),
+            createCommentIcon().set({ margin: new go.Margin(0, 0, 0, 7) }),
+            createBatchIcon().set({ margin: new go.Margin(0, 0, 0, 7) }),
+          ),
         ),
-      ),
-      createDeleteIcon(),
-      createArrows(),
-    );
+        createDeleteIcon(),
+        createArrows(),
+      )
+  );
 }
 
 const INFO_ICON = 'INFO';
@@ -1559,10 +1565,12 @@ function rerouteLinksAcross(moved: go.Set<go.Part>): void {
  */
 export function addNodeInView(diagram: go.Diagram, data: NodeData): void {
   const spot = findFreeSpot(diagram, diagram.viewportBounds.center);
-  data.loc = go.Point.stringify(spot);
   diagram.model.addNodeData(data);
   const node = diagram.findNodeForData(data);
   if (!node) return;
+  // With its middle on the free spot; the data then takes up where that puts its corner.
+  node.ensureBounds();
+  node.location = spot;
   node.ensureBounds();
   rerouteLinksAcross(new go.Set<go.Part>([node]));
 }

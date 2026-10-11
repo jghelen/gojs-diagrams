@@ -1327,6 +1327,78 @@ describe('DiagramPage', () => {
       ]);
     });
 
+    describe('expand all and collapse all without relationships', () => {
+      const tool = (label: 'Expand all' | 'Collapse all') =>
+        page.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
+      const bothDisabled = () => tool('Expand all').disabled && tool('Collapse all').disabled;
+
+      it('are offered on a diagram whose nodes are joined', () => {
+        expect(tool('Expand all').disabled).toBe(false);
+        expect(tool('Expand all').dataset['tip']).toBe(
+          'Expand all: show the card of every relationship',
+        );
+        // Nothing is expanded yet, so there is nothing to collapse.
+        expect(tool('Collapse all').disabled).toBe(true);
+      });
+
+      it('are both disabled on a diagram of a single node, and say why', async () => {
+        bench.reset('blank');
+        await settle();
+        await bench.addNode();
+        await settle();
+        expect(bench.stats()).toMatchObject({ nodes: 1, links: 0 });
+        expect(bothDisabled()).toBe(true);
+        expect(tool('Expand all').dataset['tip']).toBe('Expand all: there are no relationships');
+        expect(tool('Collapse all').dataset['tip']).toBe(
+          'Collapse all: there are no relationships',
+        );
+      });
+
+      it('are both disabled while none of several nodes is joined to another', async () => {
+        bench.reset('blank');
+        await settle();
+        await bench.addNode();
+        await bench.addNode();
+        await bench.addNode();
+        await settle();
+        expect(bench.stats()).toMatchObject({ nodes: 3, links: 0 });
+        expect(bothDisabled()).toBe(true);
+      });
+
+      it('stay disabled when the only relationships are hand-drawn, which have no card', async () => {
+        bench.reset('blank');
+        await settle();
+        await bench.addNode();
+        await bench.addNode();
+        const [first, second] = [diagram.findNodeForKey(1)!, diagram.findNodeForKey(2)!];
+        diagram.startTransaction('Linking');
+        diagram.toolManager.linkingTool.insertLink(first, first.port, second, second.port);
+        diagram.commitTransaction('Linking');
+        await settle();
+        expect(bench.stats()).toMatchObject({ nodes: 2, links: 1 });
+        expect(bothDisabled()).toBe(true);
+      });
+
+      it('are disabled once the last relationship is removed, also while the cards were shown', async () => {
+        bench.reset('fund-structure');
+        await settle();
+        await bench.expandCards();
+        await settle();
+        expect(tool('Collapse all').disabled).toBe(false);
+
+        diagram.selectCollection(diagram.links);
+        await bench.deleteSelection();
+        await settle();
+        expect(bench.stats()?.links).toBe(0);
+        expect(bothDisabled()).toBe(true);
+
+        // Undo brings the relationships back, and the tools with them.
+        await bench.undo();
+        await settle();
+        expect(tool('Collapse all').disabled).toBe(false);
+      });
+    });
+
     describe('expand all and collapse all', () => {
       const cards = () => {
         const found: go.Adornment[] = [];

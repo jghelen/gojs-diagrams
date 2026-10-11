@@ -42,6 +42,8 @@ export class ToolStrip {
   protected readonly layoutType = this.state.layoutType;
   protected readonly linkType = this.state.linkType;
   protected readonly cardsExpanded = this.state.cardsExpanded;
+  /** False when no relationship has a card: Expand all and Collapse all have nothing to do then. */
+  protected readonly hasCards = this.state.hasCards;
   /** The nodes the Shape tool would change; null when there are none. */
   protected readonly shapeScope = this.selection.shapeScope;
 

@@ -1,3 +1,4 @@
+import * as go from 'gojs/release/go';
 import { createTestDiagram, linksOf } from '../../testing/diagram-harness';
 import { createLayout } from './layouts';
 import { EDITABLE_FIELDS, LinkData, NodeData, randomPatch } from './node-data';
@@ -129,6 +130,50 @@ describe('undo history', () => {
     expect(model.modelData.layoutType).toBe('top-bottom');
     expect(model.modelData.linkType).toBe('avoid');
     expect(model.toJson()).toBe(initial);
+  });
+
+  it('puts moved nodes back to exactly the same place on redo, down to the last digit', () => {
+    // A layout like the circle puts nodes at places with many decimals. GoJS keeps a
+    // node's top left corner, the data keeps its middle, and going from one to the
+    // other and back can change the last digit. That must not show as a difference.
+    for (const layout of ['circle', 'force'] as const) {
+      const test = createTestDiagram({ count: 30 });
+      test.history.record('change layout', () => {
+        test.model.set(test.model.modelData, 'layoutType', layout);
+        const next = createLayout(layout, 30);
+        test.diagram.layout = next;
+        next.isValidLayout = false;
+      });
+      test.settle();
+      const arranged = test.model.toJson();
+
+      test.history.undo();
+      test.settle();
+      test.history.redo();
+      test.settle();
+      expect(test.model.toJson()).toBe(arranged);
+    }
+  });
+
+  it('keeps the place of a node exactly, through any number of undos and redos', () => {
+    const test = createTestDiagram({ count: 5 });
+    const node = test.diagram.findNodeForKey(3)!;
+    const data = node.data as NodeData;
+    // The numbers that once came back different in their last digit after a redo.
+    test.diagram.commit(() => {
+      node.location = new go.Point(840.4155888772582, 240.75846260198898);
+    }, 'move');
+    const stored = data.loc;
+    // The data says where the corner is, with every digit GoJS has for it.
+    expect(stored).toBe(go.Point.stringify(node.position));
+
+    for (let i = 0; i < 6; i++) {
+      test.history.undo();
+      expect(data.loc).not.toBe(stored);
+      test.history.redo();
+      expect(data.loc).toBe(stored);
+      expect(go.Point.stringify(node.position)).toBe(stored);
+    }
   });
 
   it('brings a deleted node back together with its relationships', () => {

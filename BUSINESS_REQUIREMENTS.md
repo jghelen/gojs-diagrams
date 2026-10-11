@@ -292,6 +292,9 @@ Every icon without a text label shows its name when the user hovers over it.
 - **BR-6.10e** Expand all and Collapse all are one undo step each. Undoing an expansion brings
   back the old positions of the nodes and hides the cards.
 - **BR-6.10f** When a line is selected by a click, its card is marked in gold.
+- **BR-6.10g** Expand all and Collapse all are disabled while no relationship has a card to show:
+  on a diagram of a single node, while none of the nodes is joined to another, and while the only
+  relationships are hand-drawn ones, which have no card. Their hover text then says so.
 - **BR-6.10g** The cards grow and shrink with the zoom, like the nodes. They stay shown while the
   diagram is edited, and when the layout is switched or arranged again. Opening other data
   starts collapsed.
@@ -387,6 +390,8 @@ diagram has no nodes (BR-4.15).
   named on hover: **Top to bottom**, **Bottom to top**, **Circle**, Layered digraph,
   Force-directed, Grid.
 - **BR-9.2** In every layout, nodes do not overlap.
+- **BR-9.2a** The Grid layout always puts 20 nodes in a row. Zooming or resizing the window never
+  moves a node.
 - **BR-9.3** Switching the layout rearranges the whole diagram and is one undo step.
 - **BR-9.4** **Auto arrange** (last item of the left navigation) applies the current layout again.
   It tidies the diagram after nodes were moved or added by hand, and is one undo step.
@@ -448,6 +453,8 @@ diagram has no nodes (BR-4.15).
 - **BR-11.4** After undoing everything, the diagram must be **exactly** as it was opened. The
   application checks this and reports it in the History panel ("Initial state: matches the startup
   snapshot"). The same check is made after redoing everything.
+- **BR-11.4a** That check compares everything down to the last digit, including where every node
+  stands. A node is put back to exactly the place it had, not to one that merely looks the same.
 - **BR-11.5** Things that only change what is shown are not undo steps: selection, highlight,
   search, zoom, scrolling, the loading animation.
 - **BR-11.5a** Undoing the first action after a diagram was opened must leave the diagram fully
@@ -504,6 +511,14 @@ called the **developer tools**.
 
 - **BR-14.1** The side panel can change one node or all nodes at random, and repeat "change all"
   a chosen number of times to build a long history quickly.
+- **BR-14.1a** **Randomize all** also switches the diagram to another layout, picked at random,
+  as part of the same undo step, so that one undo has to put back every field, every place and
+  every line. On a diagram of 500 funds or more it picks among the layouts that are quick there
+  (Top to bottom, Bottom to top, Grid).
+- **BR-14.1b** Each run of the repeated edit also moves every node a little, with its lines, but
+  never further than 15 units from where the node stood, however many runs there are. It does not
+  change the layout.
+- **BR-14.1c** Randomize 1 node changes the four fields of one node and moves nothing.
 - **BR-14.2** The number of repeats must be a whole number from 1 up to the number of nodes (less
   on very large diagrams, to keep the run within seconds). Invalid entries are corrected; they
   must never freeze the screen.

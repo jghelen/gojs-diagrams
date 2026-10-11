@@ -95,7 +95,7 @@ describe('DiagramActions', () => {
         expect(test.history.length).toBe(1);
         // The data says where the node is, like after a drag.
         expect(
-          go.Point.parse(node(1).loc!).equalsApprox(test.diagram.findNodeForKey(1)!.location),
+          go.Point.parse(node(1).loc!).equalsApprox(test.diagram.findNodeForKey(1)!.position),
         ).toBe(true);
       });
 

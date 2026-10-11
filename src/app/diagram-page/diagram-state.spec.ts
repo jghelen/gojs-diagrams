@@ -83,6 +83,31 @@ describe('DiagramState', () => {
     expect(state.stats()).toMatchObject({ canUndo: true, canRedo: false });
   });
 
+  it('knows whether any relationship has a card to show', () => {
+    state.refresh();
+    expect(state.hasCards()).toBe(true);
+
+    const lone = createTestDiagram({ count: 1, links: [] });
+    const loneState = lone.injector.get(DiagramState);
+    loneState.connect(lone.diagram);
+    loneState.refresh();
+    expect(loneState.hasCards()).toBe(false);
+
+    // A hand-drawn relationship has no card.
+    lone.history.record('add', () => {
+      lone.model.addNodeData({ ...lone.model.nodeDataArray[0], key: 2 });
+      lone.model.addLinkData({ key: 1, from: 1, to: 2, category: 'manual' });
+    });
+    loneState.refresh();
+    expect(loneState.hasCards()).toBe(false);
+
+    lone.history.record('add', () =>
+      lone.model.addLinkData({ key: 2, from: 1, to: 2, category: 'relation' }),
+    );
+    loneState.refresh();
+    expect(loneState.hasCards()).toBe(true);
+  });
+
   it('says that a diagram without nodes is empty', () => {
     const blank = createTestDiagram({ nodes: [], links: [] });
     const blankState = blank.injector.get(DiagramState);

@@ -185,9 +185,13 @@
   </button>
   <button
     type="button"
-    data-tip="Expand all: show the card of every relationship"
     aria-label="Expand all"
-    [disabled]="busy() || isEmpty() || cardsExpanded()"
+    [attr.data-tip]="
+      hasCards()
+        ? 'Expand all: show the card of every relationship'
+        : 'Expand all: there are no relationships'
+    "
+    [disabled]="busy() || !hasCards() || cardsExpanded()"
     (click)="expandCards()"
   >
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -196,9 +200,13 @@
   </button>
   <button
     type="button"
-    data-tip="Collapse all: hide the relationship cards"
     aria-label="Collapse all"
-    [disabled]="busy() || isEmpty() || !cardsExpanded()"
+    [attr.data-tip]="
+      hasCards()
+        ? 'Collapse all: hide the relationship cards'
+        : 'Collapse all: there are no relationships'
+    "
+    [disabled]="busy() || !hasCards() || !cardsExpanded()"
     (click)="collapseCards()"
   >
     <svg viewBox="0 0 24 24" aria-hidden="true">

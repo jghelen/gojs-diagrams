@@ -18,6 +18,7 @@ export interface NodeData {
   /** Free text attached to the node; empty when there is no comment. */
   comment: string;
   /** "x y", parsed by go.Point.parse. Written by the diagram layout, not by the generator. */
+  /** Where the node stands: "x y" of its top left corner. Written by the diagram. */
   loc?: string;
 }
 
