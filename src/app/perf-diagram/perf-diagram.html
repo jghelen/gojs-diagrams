@@ -132,6 +132,14 @@
     </div>
     <div class="diagram-area">
       <div #diagramHost class="diagram"></div>
+      @if (failure(); as message) {
+        <div class="failure" role="alert">
+          <span>{{ message }}</span>
+          <button type="button" aria-label="Dismiss" title="Dismiss" (click)="failure.set(null)">
+            ×
+          </button>
+        </div>
+      }
       <div
         #overviewHost
         class="overview"
@@ -287,39 +295,60 @@
       </nav>
     </div>
 
-    <div class="log">
-      <table>
-        <thead>
-          <tr>
-            <th>Operation</th>
-            <th>Transactions</th>
-            <th>Changes</th>
-            <th>Total ms</th>
-            <th>Avg ms</th>
-            <th>Min ms</th>
-            <th>Max ms</th>
-            <th>To paint ms</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (entry of log(); track entry.id) {
-            <tr>
-              <td>{{ entry.op }}</td>
-              <td>{{ entry.steps }}</td>
-              <td>{{ entry.changes }}</td>
-              <td>{{ formatMs(entry.totalMs) }}</td>
-              <td>{{ formatMs(entry.avgMs) }}</td>
-              <td>{{ formatMs(entry.minMs) }}</td>
-              <td>{{ formatMs(entry.maxMs) }}</td>
-              <td>{{ formatMs(entry.paintMs) }}</td>
-            </tr>
-          } @empty {
-            <tr>
-              <td colspan="8" class="empty">Timings appear here after the first operation.</td>
-            </tr>
-          }
-        </tbody>
-      </table>
+    <div class="log" [class.closed]="!logOpen()">
+      <button
+        type="button"
+        class="log-toggle"
+        aria-controls="benchmark-statistics"
+        [attr.aria-expanded]="logOpen()"
+        [disabled]="busy()"
+        [title]="logOpen() ? 'Close benchmark statistics' : 'Open benchmark statistics'"
+        (click)="toggleLog()"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path [attr.d]="logOpen() ? 'M6 9l6 6 6-6' : 'M9 6l6 6-6 6'" />
+        </svg>
+        <span>Benchmark statistics</span>
+        <span class="log-count">
+          {{ log().length }} {{ log().length === 1 ? 'operation' : 'operations' }}
+        </span>
+      </button>
+      @if (logOpen()) {
+        <div id="benchmark-statistics" class="log-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Operation</th>
+                <th>Transactions</th>
+                <th>Changes</th>
+                <th>Total ms</th>
+                <th>Avg ms</th>
+                <th>Min ms</th>
+                <th>Max ms</th>
+                <th>To paint ms</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (entry of log(); track entry.id) {
+                <tr>
+                  <td>{{ entry.op }}</td>
+                  <td>{{ entry.steps }}</td>
+                  <td>{{ entry.changes }}</td>
+                  <td>{{ formatMs(entry.totalMs) }}</td>
+                  <td>{{ formatMs(entry.avgMs) }}</td>
+                  <td>{{ formatMs(entry.minMs) }}</td>
+                  <td>{{ formatMs(entry.maxMs) }}</td>
+                  <td>{{ formatMs(entry.paintMs) }}</td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="8" class="empty">Timings appear here after the first operation.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
     </div>
   </section>
 

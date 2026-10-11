@@ -36,7 +36,7 @@ h1 {
 
 .canvas {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) 200px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
 }
 
@@ -86,6 +86,8 @@ h1 {
 .diagram-area {
   position: relative;
   min-height: 0;
+  /* Lets the tools ask how high the canvas is. */
+  container: canvas / size;
 }
 
 .diagram {
@@ -94,19 +96,72 @@ h1 {
   background: #fff;
 }
 
-/* The tools on the left edge of the canvas, starting below the GoJS notice in the corner. */
+/* Says that an action failed and was undone; sits over the top of the canvas. */
+.failure {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  z-index: 3;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 140px);
+  padding: 6px 8px 6px 12px;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #7f1d1d;
+  font-size: 13px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+}
+
+.failure button {
+  padding: 0 6px;
+  border-color: transparent;
+  background: transparent;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+/*
+ * The tools on the left edge of the canvas, starting below the GoJS notice in the
+ * corner. They stay inside the canvas: where it is too low for one column, they
+ * continue in a second one instead of reaching over what lies below the canvas.
+ */
 .canvas-nav {
   position: absolute;
   left: 10px;
   top: 76px;
   z-index: 2;
   display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(9, 32px);
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #fff;
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+}
+
+/* One column of nine tools needs 416px of canvas; lower canvases get more columns. */
+@container canvas (max-height: 415px) {
+  .canvas-nav {
+    grid-template-rows: repeat(5, 32px);
+  }
+}
+
+@container canvas (max-height: 271px) {
+  .canvas-nav {
+    grid-template-rows: repeat(3, 32px);
+  }
+}
+
+@container canvas (max-height: 199px) {
+  .canvas-nav {
+    grid-template-rows: repeat(2, 32px);
+  }
 }
 
 .canvas-nav button {
@@ -129,9 +184,53 @@ h1 {
 }
 
 .log {
-  overflow: auto;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 200px;
   border-top: 1px solid var(--border);
   background: var(--surface);
+}
+
+/* Closed, only its heading is left and the canvas takes the room. */
+.log.closed {
+  height: auto;
+}
+
+.log-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 0;
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.log:not(.closed) .log-toggle {
+  border-bottom: 1px solid var(--border);
+}
+
+.log-toggle svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.log-count {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.log-table {
+  overflow: auto;
 }
 
 table {

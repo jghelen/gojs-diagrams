@@ -1197,6 +1197,160 @@ describe('PerfDiagram', () => {
     });
   });
 
+  describe('recovering from a failed action', () => {
+    const notice = () => page.querySelector('.failure');
+    const level = () => model().undoManager.transactionLevel;
+    /** Makes the next change to the model fail halfway, the way an error inside GoJS would. */
+    const failNextCommit = () =>
+      vi.spyOn(model(), 'commit').mockImplementationOnce(() => {
+        model().startTransaction('doomed');
+        model().set(nodeData(1), 'title', 'half done');
+        throw new RangeError('Maximum call stack size exceeded');
+      });
+
+    beforeEach(() => {
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it('undoes the half-done changes, closes the transaction and says so', async () => {
+      const title = nodeData(1).title;
+      failNextCommit();
+      await bench.randomizeAll();
+      await settle();
+
+      expect(level()).toBe(0);
+      expect(nodeData(1).title).toBe(title);
+      expect(bench.busy()).toBe(false);
+      expect(bench.stats()).toMatchObject({ historyLength: 0 });
+      expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
+      expect(notice()!.textContent).toContain('could not be completed and was undone');
+      expect(notice()!.getAttribute('role')).toBe('alert');
+      expect(console.error).toHaveBeenCalled();
+    });
+
+    it('lets the user carry on: the next action, undo and redo all work', async () => {
+      failNextCommit();
+      await bench.randomizeAll();
+      await bench.randomizeAll();
+      await settle();
+      expect(notice()).toBeNull();
+      expect(bench.stats()).toMatchObject({ historyLength: 1, historyIndex: 0 });
+
+      await bench.undo();
+      expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
+      await bench.redo();
+      expect(bench.stateCheck()).toEqual({ label: LATEST, ok: true });
+    });
+
+    it('can be dismissed', async () => {
+      failNextCommit();
+      await bench.randomizeAll();
+      await settle();
+      notice()!.querySelector('button')!.click();
+      await settle();
+      expect(notice()).toBeNull();
+    });
+
+    it('closes a transaction that an earlier error left open before the next action', async () => {
+      const title = nodeData(2).title;
+      model().startTransaction('left open');
+      model().set(nodeData(2), 'title', 'half done');
+
+      await bench.randomizeOne();
+      await settle();
+      expect(level()).toBe(0);
+      expect(bench.stats()).toMatchObject({ historyLength: 1 });
+      await bench.undo();
+      expect(nodeData(2).title).toBe(title);
+      expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
+    });
+
+    it('can still load another diagram and reset while a transaction was left open', async () => {
+      model().startTransaction('left open');
+      bench.reset('fund-structure');
+      await settle();
+      expect(bench.stats()).toMatchObject({ nodes: 24, historyLength: 0 });
+      expect(level()).toBe(0);
+      expect(bench.busy()).toBe(false);
+    });
+
+    it('recovers from an error in the diagram itself, outside any action', async () => {
+      const title = nodeData(3).title;
+      model().startTransaction('left open');
+      model().set(nodeData(3), 'title', 'half done');
+      window.dispatchEvent(new ErrorEvent('error', { message: 'boom' }));
+      await settle();
+      expect(level()).toBe(0);
+      expect(nodeData(3).title).toBe(title);
+      expect(notice()).not.toBeNull();
+    });
+
+    it('leaves a drag or a text edit alone: their open transaction is not an error', async () => {
+      const tool = diagram.toolManager.textEditingTool;
+      diagram.currentTool = tool;
+      model().startTransaction('tool at work');
+      await bench.randomizeOne();
+      expect(level()).toBe(1);
+      expect(notice()).toBeNull();
+      model().commitTransaction('tool at work');
+      diagram.currentTool = diagram.defaultTool;
+    });
+  });
+
+  describe('benchmark statistics', () => {
+    const toggle = () => page.querySelector<HTMLButtonElement>('.log-toggle')!;
+    const table = () => page.querySelector('.log table');
+
+    afterEach(() => localStorage.clear());
+
+    it('are open at first, under a heading that counts the operations', async () => {
+      expect(table()).not.toBeNull();
+      expect(toggle().getAttribute('aria-expanded')).toBe('true');
+      expect(toggle().textContent).toContain('Benchmark statistics');
+      expect(toggle().textContent).toContain('0 operations');
+      await bench.randomizeOne();
+      await settle();
+      expect(toggle().textContent).toContain('1 operation');
+      expect(table()!.querySelectorAll('tbody tr').length).toBe(1);
+    });
+
+    it('can be closed, which leaves only the heading, and opened again', async () => {
+      toggle().click();
+      await settle();
+      expect(table()).toBeNull();
+      expect(toggle().getAttribute('aria-expanded')).toBe('false');
+      expect(page.querySelector('.log')!.classList.contains('closed')).toBe(true);
+
+      toggle().click();
+      await settle();
+      expect(table()).not.toBeNull();
+      expect(toggle().getAttribute('aria-expanded')).toBe('true');
+    });
+
+    it('keep recording while closed', async () => {
+      toggle().click();
+      await settle();
+      await bench.randomizeOne();
+      await settle();
+      expect(toggle().textContent).toContain('1 operation');
+      toggle().click();
+      await settle();
+      expect(table()!.querySelector('tbody td')!.textContent).toBe('Randomize 1 node');
+    });
+
+    it('stay closed the next time the page is opened', async () => {
+      toggle().click();
+      await settle();
+      const again = TestBed.createComponent(PerfDiagram);
+      again.detectChanges();
+      await again.whenStable();
+      expect((again.nativeElement as HTMLElement).querySelector('.log table')).toBeNull();
+      again.destroy();
+    });
+  });
+
   describe('actions menu', () => {
     const menu = () => page.querySelector<HTMLSelectElement>('select[aria-label="Actions"]')!;
     const pick = (value: string) => {
@@ -1249,8 +1403,37 @@ describe('PerfDiagram', () => {
       expect(drawn.has(selectionMark)).toBe(false);
       diagram.nodes.each((node) => expect(node.opacity).toBe(1));
 
-      expect(downloads).toEqual(['fund-diagram.png']);
+      // The file is named after the diagram.
+      expect(downloads).toEqual(['30 generated funds.png']);
       expect(menu().value).toBe('');
+      click.mockRestore();
+    });
+
+    it('names the exported file after the diagram, replacing what a file name cannot contain', async () => {
+      const downloads: string[] = [];
+      const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+        this: HTMLAnchorElement,
+      ) {
+        downloads.push(this.download);
+      });
+      URL.createObjectURL ??= () => 'blob:test';
+      URL.revokeObjectURL ??= () => undefined;
+      vi.spyOn(diagram, 'makeImageData').mockImplementation(((options: {
+        callback: (blob: Blob) => void;
+      }) => options.callback(new Blob(['png']))) as never);
+      const rename = async (name: string) => {
+        const input = page.querySelector<HTMLInputElement>('.diagram-name')!;
+        input.value = name;
+        input.dispatchEvent(new Event('change'));
+        await settle();
+      };
+
+      await rename('Meridian SICAV: structure 2026/Q3 "draft"?');
+      pick('export-png');
+      await rename('***');
+      pick('export-png');
+
+      expect(downloads).toEqual(['Meridian SICAV- structure 2026-Q3 -draft.png', 'diagram.png']);
       click.mockRestore();
     });
 

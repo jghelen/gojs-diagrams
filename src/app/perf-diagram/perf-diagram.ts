@@ -26,6 +26,7 @@ import {
   showSearchHit,
   textColorFor,
 } from '../diagram/diagram-factory';
+import { downloadFileName } from '../diagram/file-name';
 import { BLANK_DATASET, DATASETS, DEFAULT_DATASET, findDataset } from '../diagram/datasets';
 import {
   DEFAULT_LAYOUT,
@@ -142,6 +143,31 @@ interface Operation {
 
 const MAX_LOG_ENTRIES = 30;
 
+/** Shown above the diagram after an action failed and its changes were taken back. */
+const FAILURE_NOTICE =
+  'That action could not be completed and was undone. You can keep working on the diagram.';
+
+/** Where the browser remembers whether the benchmark statistics are open. */
+const LOG_OPEN_KEY = 'gojs-diagrams.benchmark-statistics-open';
+
+/** A yes/no setting remembered by the browser; `fallback` when there is none or storage is blocked. */
+function readFlag(key: string, fallback: boolean): boolean {
+  try {
+    const stored = localStorage.getItem(key);
+    return stored === null ? fallback : stored === 'true';
+  } catch {
+    return fallback;
+  }
+}
+
+function writeFlag(key: string, value: boolean): void {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch {
+    // Not remembered, then; the setting still works until the page is closed.
+  }
+}
+
 /**
  * A picture of the diagram, for export and print, is drawn at twice the size of
  * the diagram so that small text stays sharp, also on high-resolution screens.
@@ -218,6 +244,10 @@ export class PerfDiagram {
   /** Number of relationships attached to the selected nodes. */
   protected readonly linksOfSelectedNodes = signal(0);
   protected readonly log = signal<LogEntry[]>([]);
+  /** What to tell the user after an action failed; null when the last action went well. */
+  protected readonly failure = signal<string | null>(null);
+  /** Whether the table of timings below the canvas is shown; closing it gives the canvas its room. */
+  protected readonly logOpen = signal(readFlag(LOG_OPEN_KEY, true));
 
   /** A picture of the diagram while it is being printed. */
   protected readonly printImage = signal<string | null>(null);
@@ -300,6 +330,7 @@ export class PerfDiagram {
   private nextLogId = 1;
   /** Stops the animation in which a loaded diagram's nodes appear one by one. */
   private stopReveal: () => void = () => undefined;
+  private stopWatchingErrors: () => void = () => undefined;
   /** True while a node's tree is highlighted and the rest of the diagram dimmed. */
   private highlighted = false;
   private queue: Promise<void> = Promise.resolve();
@@ -308,6 +339,7 @@ export class PerfDiagram {
     afterNextRender(() => this.init());
     inject(DestroyRef).onDestroy(() => {
       this.stopReveal();
+      this.stopWatchingErrors();
       if (this.overview) this.overview.div = null;
       if (this.diagram) this.diagram.div = null;
     });
@@ -371,6 +403,15 @@ export class PerfDiagram {
     this.diagram.addDiagramListener('ViewportBoundsChanged', (e) => {
       if (e.subject.scale !== this.diagram.scale) this.clearHighlight();
     });
+
+    // Errors inside GoJS's own mouse and keyboard handling arrive here, not in runOperation.
+    const onError = (): void => {
+      if (this.measuring || this.undoManager.transactionLevel === 0) return;
+      this.recoverFrom('An error left a transaction open.');
+      this.refresh();
+    };
+    window.addEventListener('error', onError);
+    this.stopWatchingErrors = () => window.removeEventListener('error', onError);
 
     this.loadModel(this.datasetId());
     this.refresh();
@@ -887,6 +928,14 @@ export class PerfDiagram {
     }));
   }
 
+  /** Opens or closes the benchmark statistics below the canvas, and remembers the choice. */
+  protected toggleLog(): void {
+    this.logOpen.update((open) => !open);
+    writeFlag(LOG_OPEN_KEY, this.logOpen());
+    // The canvas grows or shrinks with it; GoJS has to be told once the page is laid out again.
+    requestAnimationFrame(() => this.diagram.requestUpdate());
+  }
+
   /** Carries out what was picked in the Actions dropdown and puts the dropdown back. */
   protected runAction(menu: HTMLSelectElement): void {
     const action = menu.value;
@@ -895,7 +944,7 @@ export class PerfDiagram {
     if (action === 'print') this.print();
   }
 
-  /** Downloads a picture of the whole diagram as a PNG file. */
+  /** Downloads a picture of the whole diagram as a PNG file named after the diagram. */
   protected exportPng(): void {
     this.diagram.makeImageData({
       ...this.imageOptions(),
@@ -903,7 +952,7 @@ export class PerfDiagram {
       callback: (blob: Blob) => {
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = 'fund-diagram.png';
+        link.download = downloadFileName(this.model.modelData.name, 'png');
         link.click();
         URL.revokeObjectURL(link.href);
       },
@@ -1105,6 +1154,11 @@ export class PerfDiagram {
     // A reveal of the previous diagram that is still running has nothing left to show.
     this.stopReveal();
     this.diagram.isEnabled = true;
+    // GoJS refuses to replace a model in the middle of a transaction, whether a
+    // tool is using it or an error left it open.
+    this.diagram.currentTool.doCancel();
+    this.closeStrayTransactions();
+    this.failure.set(null);
     const dataset = findDataset(datasetId);
     const data = dataset.create();
     // A big diagram's lines are not routed around its nodes, and orthogonal lines
@@ -1162,6 +1216,9 @@ export class PerfDiagram {
   private async runOperation(plan: () => Operation): Promise<void> {
     // Busy at this point means a model is still loading.
     if (this.busy()) return;
+    // A drag or a text edit is in the middle of its own transaction; let it finish first.
+    if (!this.closeStrayTransactions()) return;
+    this.failure.set(null);
     this.clearHighlight();
     const { name, hasNext, step, range, showBusyFirst } = plan();
     this.busy.set(true);
@@ -1189,11 +1246,39 @@ export class PerfDiagram {
         };
         this.log.update((entries) => [entry, ...entries].slice(0, MAX_LOG_ENTRIES));
       }
+    } catch (error) {
+      this.recoverFrom(error);
     } finally {
       this.measuring = false;
       this.refresh();
       this.busy.set(false);
     }
+  }
+
+  /**
+   * Ends the transactions that an error left open, taking back their half-done
+   * changes. While a transaction stays open GoJS records no undo steps, refuses
+   * undo and redo and refuses to load another diagram, so without this the
+   * diagram would be stuck until the page is reloaded.
+   *
+   * Returns false, and leaves everything alone, while a tool such as a drag or a
+   * text edit is busy: the transaction that is open then is the tool's own.
+   */
+  private closeStrayTransactions(): boolean {
+    const um = this.undoManager;
+    if (um.transactionLevel === 0) return true;
+    if (this.diagram.currentTool !== this.diagram.defaultTool) return false;
+    while (um.transactionLevel > 0) um.rollbackTransaction();
+    return true;
+  }
+
+  /** After an action failed: undoes what it had done so far, so that work can go on, and says so. */
+  private recoverFrom(error: unknown): void {
+    console.error('The action failed and was undone.', error);
+    this.measuring = false;
+    this.diagram.currentTool.doCancel();
+    this.closeStrayTransactions();
+    this.failure.set(FAILURE_NOTICE);
   }
 
   /** Remembers the newest state before the first undo away from it, so "redo all" can be verified. */

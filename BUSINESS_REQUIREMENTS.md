@@ -341,6 +341,10 @@ The **Actions** menu in the header offers Save, Save As, Export PNG and Print.
 - **BR-12.2** The picture is sharp: it is drawn at twice the diagram's size so that small text
   remains readable.
 - **BR-12.3** The picture shows the diagram as it is, without selection outlines or dimming.
+- **BR-12.3a** The downloaded file is named after the diagram, with the ending `.png`. Characters
+  that a file name cannot contain (such as `/ \ : * ? " < > |`) and other special characters are
+  replaced by a dash, so that the download always works. Letters of any alphabet, digits, spaces
+  and `. _ - ( )` are kept. If nothing usable is left, the file is called `diagram.png`.
 - **BR-12.4** **Print** opens the browser's print dialog with a picture of the whole diagram.
 - **BR-12.5** **Save** and **Save As** are listed but disabled.
 
@@ -352,6 +356,10 @@ The **Actions** menu in the header offers Save, Save As, Export PNG and Print.
 - **BR-13.3** The **Delete** button in the delete confirmation is **dark red**.
 - **BR-13.4** A button is disabled whenever its action cannot be carried out (for example Save
   without text, Apply without a choice, Undo without history).
+- **BR-13.5** If an action fails because of an unexpected error, the user must be able to carry
+  on without reloading the page. The changes the failed action had made so far are taken back, a
+  notice above the diagram says that the action could not be completed and was undone, and all
+  further actions, undo, redo and Reset diagram keep working.
 
 ## 14. Performance measurement
 
@@ -367,6 +375,13 @@ This part serves the evaluation of the technology rather than the end user.
   was on screen.
 - **BR-14.4** The History panel shows the number of nodes and relationships, the length of the
   history and the current position in it.
+- **BR-14.5** The timing table sits under the heading **Benchmark statistics**, which shows the
+  number of recorded operations. Clicking the heading closes the table, so that the canvas gets
+  its room and the left navigation no longer reaches over the table; clicking it again opens it.
+- **BR-14.6** Operations are recorded while the table is closed. The browser remembers whether
+  the table was left open or closed.
+- **BR-14.7** The left navigation always stays inside the canvas. Where the canvas is too low
+  for one column of icons, they continue in a second column; they never cover the statistics.
 
 ## 15. Not available yet
 

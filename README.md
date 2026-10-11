@@ -86,8 +86,10 @@ there.
 
 The **Actions** menu in the top bar has four entries:
 
-- **Export PNG** downloads a picture of the whole diagram, not just the part on screen, as
-  `fund-diagram.png`. It is drawn at twice the size of the diagram so that small text stays
+- **Export PNG** downloads a picture of the whole diagram, not just the part on screen. The file
+  is named after the diagram, for example `Sample fund structure.png`; characters a file name
+  cannot hold, such as `/ : ? "`, and other symbols are replaced by a dash, and a name with
+  nothing usable in it becomes `diagram.png`. The picture is drawn at twice the size of the diagram so that small text stays
   sharp, and without the gold outlines and dimming of a selection.
 - **Print** opens the browser's print dialog with a picture of the whole diagram.
 - **Save** and **Save As** are shown but not available yet.
@@ -225,6 +227,12 @@ There are three kinds of line. All are black and end in an arrowhead.
   memory the page uses (Chrome only).
 
 ### Reading the timing table
+
+The table sits below the canvas under the heading **Benchmark statistics**, which also counts the
+operations recorded so far. Click the heading to close the table and give the canvas its room (on
+a low window the tool strip continues in a second column to stay inside the canvas), and click it
+again to open it.
+Operations are recorded while it is closed, and the browser remembers whether you left it open.
 
 | Column                     | Meaning                                            |
 | -------------------------- | -------------------------------------------------- |
@@ -453,6 +461,12 @@ Read the [licence](#licence) section before publishing a build on the public int
 
 ## Known limits
 
+- **When an action fails.** If an error interrupts an action halfway, the app takes back what the
+  action had changed so far, closes the open transaction and shows a notice above the diagram:
+  "That action could not be completed and was undone." Work can go on at once, and undo, redo and
+  Reset diagram keep working. Without this GoJS would stay inside the unfinished transaction and
+  the diagram would be stuck until the page is reloaded. The error itself is written to the
+  browser console.
 - **Large diagrams and node-avoiding lines.** Routing every line around the nodes takes about a
   second at 200 nodes, about seven seconds at 500 and minutes beyond that, and the page does not
   respond meanwhile. Lines are therefore routed around nodes only on diagrams of fewer than 500
