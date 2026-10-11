@@ -1,6 +1,7 @@
 import { Injector } from '@angular/core';
 import * as go from 'gojs/release/go';
 import { IconClicks, NodeModel, createDiagram, createModel } from '../app/diagram/diagram-factory';
+import { StyleFieldId } from '../app/diagram/constants';
 import { HistoryService } from '../app/diagram/history.service';
 import { DiagramActions } from '../app/perf-diagram/diagram-actions';
 import { FundStyles } from '../app/perf-diagram/fund-styles';
@@ -64,6 +65,11 @@ export function createTestDiagram(
     linkType?: LinkType;
     /** Shows the cards of all relationships, with the nodes further apart to make room for them. */
     cardsExpanded?: boolean;
+    /**
+     * The field the nodes show as their subtitle. Shown by default here, so that
+     * tests can look at it; the app itself starts without (null).
+     */
+    subtitleField?: StyleFieldId | null;
   } = {},
 ): TestDiagram {
   const count = options.count ?? 30;
@@ -93,7 +99,15 @@ export function createTestDiagram(
   diagram.layout = createLayout(layoutType, nodes.length, cardsExpanded);
   const model = createModel(
     { nodes, links },
-    { layoutType, linkType, name: 'Test diagram', description: '', cardsExpanded },
+    {
+      layoutType,
+      linkType,
+      name: 'Test diagram',
+      description: '',
+      cardsExpanded,
+      subtitleField:
+        options.subtitleField === undefined ? 'legalEntityType' : options.subtitleField,
+    },
   );
   const injector = createPageInjector();
   const history = injector.get(HistoryService);

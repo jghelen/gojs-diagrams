@@ -44,6 +44,7 @@ describe('HistoryService', () => {
           name: 'Other',
           description: '',
           cardsExpanded: false,
+          subtitleField: null,
         },
       );
       history.load(model);

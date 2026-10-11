@@ -14,7 +14,7 @@
   <div class="bar-end">
     <button
       type="button"
-      title="Set color and shape per fund type"
+      title="Set color and shape per legal entity field"
       [disabled]="busy()"
       (click)="openStyles()"
     >
@@ -760,18 +760,33 @@
 </dialog>
 
 <dialog #stylesDialog class="modal styles">
-  <h2>Styles by fund type</h2>
+  <h2>Styles by legal entity field</h2>
   <div class="style-grid">
     <div>
-      <label class="pick-all">
-        <input
-          type="checkbox"
-          [checked]="allStyleTypesSelected()"
-          [indeterminate]="styleTypes().size > 0 && !allStyleTypesSelected()"
-          (change)="selectAllStyleTypes($any($event.target).checked)"
-        />
-        Select all
-      </label>
+      <select
+        class="style-field"
+        aria-label="Legal entity field"
+        (change)="chooseStyleField($any($event.target).value)"
+      >
+        <!-- Shown in the closed dropdown while nothing is chosen, but not offered in its list. -->
+        <option value="" hidden disabled [selected]="styleField() === null">Select a field</option>
+        @for (field of styleFields; track field.id) {
+          <option [value]="field.id" [selected]="field.id === styleField()">
+            {{ field.label }}
+          </option>
+        }
+      </select>
+      @if (styleField()) {
+        <label class="pick-all">
+          <input
+            type="checkbox"
+            [checked]="allStyleTypesSelected()"
+            [indeterminate]="styleTypes().size > 0 && !allStyleTypesSelected()"
+            (change)="selectAllStyleTypes($any($event.target).checked)"
+          />
+          Select all
+        </label>
+      }
       <ul class="types">
         @for (row of styleRows(); track row.type) {
           <li>
@@ -802,12 +817,16 @@
     </div>
     <div class="style-editor">
       <p class="hint">
-        @if (styleNodeCount() === 0) {
-          Click one or more fund types, pick a color, a shape or both, then press Apply.
+        @if (!styleField()) {
+          Select a legal entity field on the left to see its values. Its value is then shown on
+          every node, under the name, once you press Apply.
+        } @else if (styleNodeCount() === 0) {
+          Press Apply to show this field on every node. Color and shape are for values of the field:
+          click one or more values on the left to be able to pick them.
         } @else {
           {{ styleNodeCount() === 1 ? '1 node' : styleNodeCount() + ' nodes' }} in
-          {{ styleTypes().size === 1 ? '1 fund type' : styleTypes().size + ' fund types' }}. Nothing
-          changes until you press Apply.
+          {{ styleTypes().size === 1 ? '1 value' : styleTypes().size + ' values' }}. Nothing changes
+          until you press Apply.
         }
       </p>
       <section class="style-section">
@@ -821,6 +840,7 @@
               [style.background]="color"
               [attr.aria-label]="'Color ' + color"
               [attr.aria-pressed]="color === styleDraft().color"
+              [disabled]="!canPickStyle()"
               (click)="chooseStyle('color', color)"
             ></button>
           }
@@ -829,6 +849,7 @@
             title="Custom color"
             aria-label="Custom color"
             [value]="styleDraft().color ?? '#ffffff'"
+            [disabled]="!canPickStyle()"
             (change)="chooseStyle('color', $any($event.target).value)"
           />
         </div>
@@ -842,6 +863,7 @@
               class="shape-tile"
               [class.current]="tile.figure === styleDraft().shape"
               [attr.aria-pressed]="tile.figure === styleDraft().shape"
+              [disabled]="!canPickStyle()"
               (click)="chooseStyle('shape', tile.figure)"
             >
               <svg viewBox="0 0 44 26" width="44" height="26" aria-hidden="true">
@@ -890,7 +912,9 @@
             </svg>
             <div class="node-preview-text" [style.color]="nodePreview().textColor">
               <strong>Fund name</strong>
-              <span>{{ nodePreview().subtitle }}</span>
+              @if (nodePreview().subtitle; as subtitle) {
+                <span>{{ subtitle }}</span>
+              }
               <hr />
               <!-- The same three icons a node has in the diagram: color, comment, batch. -->
               <span class="node-preview-icons" aria-hidden="true">
@@ -959,8 +983,8 @@
 <dialog #resetDialog class="modal">
   <h2>Reset all styles?</h2>
   <p class="hint">
-    Every node goes back to a light gray square, whatever its fund type. You can bring the styles
-    back with Undo.
+    Every node goes back to a light gray square, and the legal entity field is unselected, so the
+    nodes show their name only. You can bring it all back with Undo.
   </p>
   <div class="actions">
     <button type="button" autofocus (click)="cancelResetStyles()">Cancel</button>

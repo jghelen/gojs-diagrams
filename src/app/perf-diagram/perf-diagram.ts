@@ -21,6 +21,7 @@ import {
   DEFAULT_LINK_TYPE,
   LOG_OPEN_KEY,
   MAX_CHANGE_ROWS,
+  STYLE_FIELDS,
 } from '../diagram/constants';
 import { DATASETS, findDataset } from '../diagram/datasets';
 import {
@@ -146,6 +147,9 @@ export class PerfDiagram {
   protected readonly searchSummary = this.nodeSearch.summary;
   /** The relationship whose card is open. */
   protected readonly linkInfo = this.linkCard.info;
+  protected readonly styleFields = STYLE_FIELDS;
+  /** The legal entity field the styles dialog groups the nodes by; null until one is chosen. */
+  protected readonly styleField = this.styles.field;
   protected readonly styleRows = this.styles.rows;
   protected readonly styleTypes = this.styles.types;
   protected readonly styleDraft = this.styles.draft;
@@ -153,6 +157,8 @@ export class PerfDiagram {
   protected readonly styleNodeCount = this.styles.nodeCount;
   protected readonly nodePreview = this.styles.nodePreview;
   protected readonly canApplyStyle = this.styles.canApply;
+  /** Color and shape can only be picked once a value of the field is ticked. */
+  protected readonly canPickStyle = this.styles.canPickStyle;
 
   // ----- State of the page itself -----
 
@@ -384,8 +390,10 @@ export class PerfDiagram {
       // A loaded diagram starts out named after its data; the user can rename it.
       name: datasetId === BLANK_DATASET ? 'Untitled diagram' : dataset.label,
       description: '',
-      // A newly loaded diagram starts with its relationship cards put away.
+      // A newly loaded diagram starts with its relationship cards put away,
+      // and with nodes that show their name only.
       cardsExpanded: false,
+      subtitleField: null,
     };
     this.busy.set(true);
     // A new model gets new parts: none of them dimmed, none of them a search result.
@@ -411,6 +419,7 @@ export class PerfDiagram {
       heapMb: memory ? memory.usedJSHeapSize / 1048576 : null,
     });
     if (this.stylesDialog().nativeElement.open) this.styles.refresh(this.model.nodeDataArray);
+    this.styles.shownField.set(this.model.modelData.subtitleField);
     this.nodeSearch.update();
     // The limit follows the node count, so a number typed for a bigger diagram may now be too high.
     if (this.bulkRuns() > this.maxBulkRuns()) this.bulkRuns.set(this.maxBulkRuns());
@@ -622,15 +631,19 @@ export class PerfDiagram {
 
   // ----- Styles by fund type -----
 
-  /** Opens the dialog in which color and shape are set per fund type. */
+  /** Opens the dialog in which color and shape are set per value of a legal entity field. */
   protected openStyles(): void {
-    this.styles.refresh(this.model.nodeDataArray);
-    this.styles.clearDraft();
+    this.styles.open(this.model.nodeDataArray, this.model.modelData.subtitleField);
     this.stylesDialog().nativeElement.showModal();
   }
 
   protected closeStyles(): void {
     this.stylesDialog().nativeElement.close();
+  }
+
+  /** Takes over the field picked in the dropdown of the styles dialog; "" means none. */
+  protected chooseStyleField(field: string): void {
+    this.styles.chooseField(field || null);
   }
 
   protected stylePreview(row: StyleRow): { path: string; fill: string; mixed: boolean } {
@@ -650,15 +663,17 @@ export class PerfDiagram {
   }
 
   /**
-   * Gives every node of the ticked fund types the picked color and shape, as one
-   * undo step, and closes the dialog. Nothing in the diagram changes before this
-   * is called.
+   * Applies the styles dialog as one undo step and closes it: the chosen field
+   * is shown as the subtitle of every node, and the nodes of the ticked values
+   * get the picked color and shape. Either of the two can be done alone. Nothing
+   * in the diagram changes before this is called.
    */
   protected applyStyles(): Promise<void> {
+    const field = this.styleField();
     const types = this.styleTypes();
     const { color, shape } = this.styleDraft();
     this.closeStyles();
-    return this.actions.applyStyle(types, color, shape).then(() => this.styles.clearDraft());
+    return this.actions.applyStyle(field, types, color, shape).then(() => this.styles.clearDraft());
   }
 
   /** Asks before resetting every node's style. */
@@ -670,7 +685,10 @@ export class PerfDiagram {
     this.resetDialog().nativeElement.close();
   }
 
-  /** Resets every node's style and closes both dialogs, so the styles dialog starts afresh next time. */
+  /**
+   * Resets every node's style, unselects the legal entity field, and closes both
+   * dialogs, so the styles dialog starts afresh next time.
+   */
   protected confirmResetStyles(): Promise<void> {
     this.cancelResetStyles();
     this.closeStyles();

@@ -1,6 +1,12 @@
 import { Injectable, inject } from '@angular/core';
 import * as go from 'gojs/release/go';
-import { DEFAULT_COLOR, DEFAULT_SHAPE, FUND_TYPES } from '../diagram/constants';
+import {
+  DEFAULT_COLOR,
+  DEFAULT_SHAPE,
+  FUND_TYPES,
+  STYLE_FIELDS,
+  StyleFieldId,
+} from '../diagram/constants';
 import { NodeModel, addNodeInView } from '../diagram/diagram-factory';
 import { HistoryService } from '../diagram/history.service';
 import { LAYOUTS, LayoutType, createLayout, resetPortSpots } from '../diagram/layouts';
@@ -157,10 +163,16 @@ export class DiagramActions {
   }
 
   /**
-   * Gives every node of the given fund types a color, a shape, or both; null
-   * leaves that one as it is.
+   * Applies what was put together in the styles dialog, as one undo step. It
+   * can do either of two things, or both:
+   *
+   * - show the value of a legal entity field as the subtitle of every node
+   *   (`field`; null shows none),
+   * - give every node of the given types a color, a shape, or both (null leaves
+   *   that one as it is).
    */
   applyStyle(
+    field: StyleFieldId | null,
     types: ReadonlySet<string>,
     color: string | null,
     shape: go.FigureName | null,
@@ -171,28 +183,40 @@ export class DiagramActions {
           types.has(node.subtitle) &&
           ((color !== null && node.color !== color) || (shape !== null && node.shape !== shape)),
       );
-      return this.changing(
-        `Style ${countOf(nodes.length, 'node', 'nodes')}`,
-        nodes.length > 0,
-        () =>
-          this.history.record('apply styles', () => {
-            for (const node of nodes) {
-              if (color !== null) this.model.set(node, 'color', color);
-              if (shape !== null) this.model.set(node, 'shape', shape);
-            }
-          }),
+      const fieldChanges = field !== this.model.modelData.subtitleField;
+      const label = STYLE_FIELDS.find((candidate) => candidate.id === field)?.label;
+      const name =
+        nodes.length > 0
+          ? `Style ${countOf(nodes.length, 'node', 'nodes')}`
+          : label
+            ? `Show ${label.toLowerCase()} on nodes`
+            : 'Hide subtitle on nodes';
+      return this.changing(name, fieldChanges || nodes.length > 0, () =>
+        this.history.record('apply styles', () => {
+          if (fieldChanges) this.model.set(this.model.modelData, 'subtitleField', field);
+          for (const node of nodes) {
+            if (color !== null) this.model.set(node, 'color', color);
+            if (shape !== null) this.model.set(node, 'shape', shape);
+          }
+        }),
       );
     });
   }
 
-  /** Turns every node back into a gray rectangle. */
+  /**
+   * Takes back everything the styles dialog can do, as one undo step: every node
+   * becomes a gray rectangle again, and no legal entity field is shown on the
+   * nodes any more.
+   */
   resetStyles(): Promise<void> {
     return this.runner.run(() => {
       const nodes = this.model.nodeDataArray.filter(
         (node) => node.shape !== DEFAULT_SHAPE || node.color !== DEFAULT_COLOR,
       );
-      return this.changing('Reset styles', nodes.length > 0, () =>
+      const fieldShown = this.model.modelData.subtitleField !== null;
+      return this.changing('Reset styles', nodes.length > 0 || fieldShown, () =>
         this.history.record('reset styles', () => {
+          if (fieldShown) this.model.set(this.model.modelData, 'subtitleField', null);
           for (const node of nodes) {
             this.model.set(node, 'shape', DEFAULT_SHAPE);
             this.model.set(node, 'color', DEFAULT_COLOR);

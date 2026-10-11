@@ -11,7 +11,7 @@ the [README](README.md).
 - [5. Nodes (funds)](#5-nodes-funds)
 - [6. Relationships](#6-relationships)
 - [7. Selecting and highlighting](#7-selecting-and-highlighting)
-- [8. Styling by fund type](#8-styling-by-fund-type)
+- [8. Styling by legal entity field](#8-styling-by-legal-entity-field)
 - [9. Layout and lines](#9-layout-and-lines)
 - [10. Finding your way around](#10-finding-your-way-around)
 - [11. Undo and redo](#11-undo-and-redo)
@@ -112,7 +112,9 @@ Every icon without a text label shows its name when the user hovers over it.
 
 ### 5.1 What a node shows
 
-- **BR-5.1** A node shows the fund's **name** (title) and, below it, its **fund type** (subtitle).
+- **BR-5.1** A node shows the fund's **name** (title). Below it, it can show the value of a legal
+  entity field (subtitle), such as its legal entity type. A newly opened diagram shows no
+  subtitle; it appears once a field is applied in the styles dialog (see BR-8.0a).
 - **BR-5.2** All nodes have the same size, whatever their shape.
 - **BR-5.3** A name or fund type that does not fit is cut off with "…". Hovering over it shows the
   full text. Text never runs outside the node.
@@ -305,12 +307,27 @@ Every icon without a text label shows its name when the user hovers over it.
   anything else (zoom, auto arrange, undo, an edit).
 - **BR-7.8** Highlighting is display only. It is never an undo step.
 
-## 8. Styling by fund type
+## 8. Styling by legal entity field
 
-The **Styles** button (palette icon) opens a dialog that gives all funds of a type the same look.
+The **Styles** button (palette icon) opens the dialog **Styles by legal entity field**, which
+gives all nodes with the same value of a field the same look.
 
-- **BR-8.1** The dialog lists every fund type present in the diagram with the number of funds of
-  that type.
+- **BR-8.0** A dropdown at the top left of the dialog, above **Select all**, chooses the legal
+  entity field the nodes are grouped by. For now it offers one field, **Legal entity type**.
+  Until a field is chosen, no values are listed and nothing can be applied.
+- **BR-8.0a** Applying the dialog with a field chosen shows that field's value on every node, as
+  a subtitle under the name. The user can apply the field alone, without ticking a value or
+  picking a colour or shape; apply a colour or shape alone, when the field is shown already; or
+  do both at once. Either way it is one undo step.
+- **BR-8.0b** While no field is chosen the dropdown reads "Select a field". That text is not
+  offered in the opened list, which holds the fields only. The field is unselected again with
+  **Reset all** (BR-8.8). The dialog opens on the field the nodes currently show.
+- **BR-8.0c** Colour and shape can be picked only while at least one value of the field is
+  ticked; until then their controls are disabled. When the last value is unticked, the colour and
+  shape that were picked are forgotten.
+- **BR-8.1** Once **Legal entity type** is chosen, the dialog lists every legal entity type
+  present in the diagram (Feeder fund, Fund of funds, Private equity and so on) with the number
+  of nodes of that type.
 - **BR-8.2** Each row starts with a small picture of that type's shape and colour. The picture
   follows the choices made in the dialog, before they are applied.
 - **BR-8.3** One or several fund types can be selected by clicking their rows. A **Select all**
@@ -319,13 +336,15 @@ The **Styles** button (palette icon) opens a dialog that gives all funds of a ty
   Capsule, Rounded top. Colours are offered as swatches.
 - **BR-8.5** A **preview** shows a complete node as it will look, including its icons, arrows,
   line and x.
-- **BR-8.6** **Nothing in the diagram changes until Apply is pressed.** Apply is disabled until at
-  least one fund type and at least a colour or a shape are chosen.
-- **BR-8.7** Apply changes every fund of the selected types, closes the dialog, and is one undo
-  step.
+- **BR-8.6** **Nothing in the diagram changes until Apply is pressed.** Apply is disabled while
+  there is nothing to apply: no other field than the one shown, and no colour or shape for a
+  ticked value.
+- **BR-8.7** Apply changes every node of the ticked values, shows the chosen field on the nodes,
+  closes the dialog, and is one undo step.
 - **BR-8.8** **Reset all to gray square** asks for confirmation. When confirmed, every node goes
-  back to the default light gray square; the dialog then shows the defaults again. This is one
-  undo step and can be redone after an undo.
+  back to the default light gray square **and the legal entity field is unselected**: the nodes
+  show their name only, and the dropdown is back on "Select a field". This is one undo step and
+  can be redone after an undo.
 
 ## 9. Layout and lines
 

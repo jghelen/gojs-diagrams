@@ -58,6 +58,7 @@ describe('createModel', () => {
       name: 'My funds',
       description: 'A test',
       cardsExpanded: false,
+      subtitleField: null,
     } as const;
     const model = createModel({ nodes: [], links: [] }, settings);
     expect(model.modelData).toEqual(settings);
@@ -167,6 +168,33 @@ describe('nodes', () => {
     const cut = (test.diagram.findNodeForKey(1)!.elt(2) as go.Panel).elt(0) as go.TextBlock;
     expect(cut.isOverflowed).toBe(true);
     expect(cut.naturalBounds.width).toBeGreaterThan(cut.maxSize.width * 0.7);
+  });
+
+  it('show their subtitle only while the model names a field to show', () => {
+    const subtitleOf = (test: TestDiagram, key: number) =>
+      (test.diagram.findNodeForKey(key)!.elt(2) as go.Panel).elt(1) as go.TextBlock;
+
+    const hidden = createTestDiagram({ subtitleField: null });
+    for (const node of hidden.model.nodeDataArray) {
+      expect(subtitleOf(hidden, node.key).visible).toBe(false);
+    }
+    // The title is still there, and the node keeps its size.
+    const title = (hidden.diagram.findNodeForKey(1)!.elt(2) as go.Panel).elt(0) as go.TextBlock;
+    expect(title.visible).toBe(true);
+    expect(hidden.diagram.findNodeForKey(1)!.actualBounds.width).toBeCloseTo(NODE_SIZE.width, 1);
+    expect(hidden.diagram.findNodeForKey(1)!.actualBounds.height).toBeCloseTo(NODE_SIZE.height, 1);
+
+    hidden.history.record('show', () =>
+      hidden.model.set(hidden.model.modelData, 'subtitleField', 'legalEntityType'),
+    );
+    hidden.settle();
+    for (const node of hidden.model.nodeDataArray) {
+      expect(subtitleOf(hidden, node.key).visible).toBe(true);
+      expect(subtitleOf(hidden, node.key).text).toBe(node.subtitle);
+    }
+    hidden.history.undo();
+    hidden.settle();
+    expect(subtitleOf(hidden, 1).visible).toBe(false);
   });
 
   it('have a rule between the text and the icons', () => {
@@ -792,6 +820,13 @@ describe('relationship cards', () => {
       expect(overlapping(cardsOf(test).map((card) => card.actualBounds))).toBe(0);
     }
   });
+
+  it('stay clear of the nodes and of each other on a diagram of 500 funds', () => {
+    const test = expanded({ count: 500, linkType: 'straight' });
+    expect(cardsOf(test)).toHaveLength(test.model.linkDataArray.length);
+    expect(onNodes(test)).toBe(0);
+    expect(overlapping(cardsOf(test).map((card) => card.actualBounds))).toBe(0);
+  }, 20_000);
 
   it('are set apart even on lines that run exactly on top of each other', () => {
     const stake = (key: number): LinkData => ({

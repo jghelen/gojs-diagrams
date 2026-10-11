@@ -60,7 +60,7 @@ interface Bench {
   chooseStyle(field: 'color' | 'shape', value: string): void;
   styleDraft(): { color: string | null; shape: string | null };
   canApplyStyle(): boolean;
-  nodePreview(): { fill: string; subtitle: string };
+  nodePreview(): { fill: string; subtitle: string | null };
   applyStyles(): Promise<void>;
   expandCards(): Promise<void>;
   collapseCards(): Promise<void>;
@@ -739,142 +739,415 @@ describe('PerfDiagram', () => {
     });
   });
 
-  describe('styles by fund type', () => {
+  describe('styles by legal entity field', () => {
     const typeOf = (index: number) => bench.styleRows()[index].type;
     const nodesOfType = (type: string) =>
       model().nodeDataArray.filter((node) => node.subtitle === type);
+    const styles = () => dialog('Styles by legal entity field');
+    const fieldSelect = () => styles().querySelector<HTMLSelectElement>('select.style-field')!;
+    const listed = () =>
+      Array.from(styles().querySelectorAll('.types .name')).map((name) => name.textContent!.trim());
+    const pickField = async (value: string) => {
+      fieldSelect().value = value;
+      fieldSelect().dispatchEvent(new Event('change'));
+      await settle();
+    };
 
     beforeEach(async () => {
       bench.openStyles();
       await settle();
     });
 
-    it('lists every fund type in the diagram with its number of nodes', () => {
-      const types = new Set(model().nodeDataArray.map((node) => node.subtitle));
-      expect(bench.styleRows().map((row) => row.type)).toEqual([...types].sort());
-      for (const row of bench.styleRows()) expect(row.count).toBe(nodesOfType(row.type).length);
-      expect(dialog('Styles by fund type').open).toBe(true);
+    describe('choosing the field', () => {
+      it('is titled "Styles by legal entity field"', () => {
+        expect(styles().open).toBe(true);
+        expect(styles().querySelector('h2')!.textContent).toBe('Styles by legal entity field');
+      });
+
+      it('offers one field for now, "Legal entity type", in a dropdown above Select all', async () => {
+        // "Select a field" is what the closed dropdown says; the opened list offers the field only.
+        expect(fieldSelect().value).toBe('');
+        expect(fieldSelect().selectedOptions[0].textContent!.trim()).toBe('Select a field');
+        const placeholder = fieldSelect().options[0];
+        expect(placeholder.hidden).toBe(true);
+        expect(placeholder.disabled).toBe(true);
+        const offered = Array.from(fieldSelect().options).filter(
+          (option) => !option.hidden && !option.disabled,
+        );
+        expect(offered.map((option) => option.textContent!.trim())).toEqual(['Legal entity type']);
+
+        await pickField('legalEntityType');
+        const selectAll = styles().querySelector('.pick-all')!;
+        // The dropdown comes before the checkbox in the dialog.
+        expect(
+          fieldSelect().compareDocumentPosition(selectAll) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      });
+
+      it('shows no list, and no Select all, until a field is chosen', () => {
+        expect(listed()).toEqual([]);
+        expect(styles().querySelector('.pick-all')).toBeNull();
+        expect(bench.canApplyStyle()).toBe(false);
+        expect(styles().textContent).toContain('Select a legal entity field');
+      });
+
+      it('lists the legal entity types of the diagram once "Legal entity type" is chosen', async () => {
+        await pickField('legalEntityType');
+        const types = [...new Set(model().nodeDataArray.map((node) => node.subtitle))].sort();
+        expect(listed()).toEqual(types);
+        expect(listed()).toContain('Fund of funds');
+        expect(listed()).toContain('Feeder fund');
+        expect(styles().querySelector('.pick-all')).not.toBeNull();
+      });
+
+      it('opens on the field the nodes show: none before Apply, the applied one after', async () => {
+        await pickField('legalEntityType');
+        // Closed without Apply: nothing was chosen for the diagram.
+        styles().close();
+        bench.openStyles();
+        await settle();
+        expect(fieldSelect().value).toBe('');
+        expect(listed()).toEqual([]);
+
+        await pickField('legalEntityType');
+        await bench.applyStyles();
+        bench.openStyles();
+        await settle();
+        expect(fieldSelect().value).toBe('legalEntityType');
+        expect(listed().length).toBeGreaterThan(0);
+      });
     });
 
-    it('changes nothing until Apply is pressed', () => {
-      bench.toggleStyleType(typeOf(0));
-      bench.chooseStyle('color', '#bfdbfe');
-      bench.chooseStyle('shape', 'Diamond');
-      expect(bench.canApplyStyle()).toBe(true);
-      expect(bench.stats()?.historyLength).toBe(0);
-      for (const node of model().nodeDataArray) expect(node.color).toBe(DEFAULT_COLOR);
+    describe('the subtitle of the nodes', () => {
+      /** How many nodes show a line of text under their name. */
+      const withSubtitle = () => {
+        let count = 0;
+        diagram.nodes.each((node) => {
+          const subtitle = (node.elt(2) as go.Panel).elt(1) as go.TextBlock;
+          if (subtitle.visible) count++;
+        });
+        return count;
+      };
+      const subtitleOf = (key: number) =>
+        ((diagram.findNodeForKey(key)!.elt(2) as go.Panel).elt(1) as go.TextBlock).text;
+
+      it('is not shown at first: a node shows its name only', () => {
+        expect(model().modelData.subtitleField).toBeNull();
+        expect(withSubtitle()).toBe(0);
+      });
+
+      it('is shown on every node once a field is chosen and applied, without any style', async () => {
+        await pickField('legalEntityType');
+        // Nothing ticked, no color, no shape: the field alone can be applied.
+        expect(bench.styleTypes().size).toBe(0);
+        expect(bench.canApplyStyle()).toBe(true);
+        expect(withSubtitle()).toBe(0);
+
+        await bench.applyStyles();
+        await settle();
+        expect(styles().open).toBe(false);
+        expect(withSubtitle()).toBe(30);
+        expect(subtitleOf(1)).toBe(nodeData(1).subtitle);
+        expect(subtitleOf(1)).toBe('Fund of funds');
+        for (const node of model().nodeDataArray) {
+          expect(node).toMatchObject({ color: DEFAULT_COLOR, shape: DEFAULT_SHAPE });
+        }
+        expect(bench.stats()).toMatchObject({ historyLength: 1 });
+        expect(bench.log()[0].op).toBe('Show legal entity type on nodes');
+      });
+
+      it('goes away again on undo, and comes back on redo', async () => {
+        await pickField('legalEntityType');
+        await bench.applyStyles();
+        await bench.undo();
+        await settle();
+        expect(withSubtitle()).toBe(0);
+        expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
+        await bench.redo();
+        await settle();
+        expect(withSubtitle()).toBe(30);
+      });
+
+      it('can be shown together with a color and a shape, in one undo step', async () => {
+        await pickField('legalEntityType');
+        const type = typeOf(0);
+        bench.toggleStyleType(type);
+        bench.chooseStyle('color', '#bfdbfe');
+        bench.chooseStyle('shape', 'Diamond');
+        await bench.applyStyles();
+        await settle();
+
+        expect(withSubtitle()).toBe(30);
+        for (const node of nodesOfType(type)) {
+          expect(node).toMatchObject({ color: '#bfdbfe', shape: 'Diamond' });
+        }
+        expect(bench.stats()).toMatchObject({ historyLength: 1 });
+
+        await bench.undo();
+        await settle();
+        expect(withSubtitle()).toBe(0);
+        for (const node of nodesOfType(type)) expect(node.color).toBe(DEFAULT_COLOR);
+      });
+
+      it('leaves Apply disabled when the field is shown already and no style is picked', async () => {
+        await pickField('legalEntityType');
+        await bench.applyStyles();
+        bench.openStyles();
+        await settle();
+        expect(bench.canApplyStyle()).toBe(false);
+        bench.toggleStyleType(typeOf(0));
+        expect(bench.canApplyStyle()).toBe(false);
+        bench.chooseStyle('shape', 'Ellipse');
+        expect(bench.canApplyStyle()).toBe(true);
+      });
+
+      it('is in the preview only while a field is chosen', async () => {
+        expect(bench.nodePreview().subtitle).toBeNull();
+        expect(
+          styles().querySelector('.node-preview-text span:not(.node-preview-icons)'),
+        ).toBeNull();
+        await pickField('legalEntityType');
+        expect(bench.nodePreview().subtitle).toBe('Legal entity type');
+      });
+
+      it('is taken off the nodes by Reset all, which unselects the field as well', async () => {
+        await pickField('legalEntityType');
+        const type = typeOf(0);
+        bench.toggleStyleType(type);
+        bench.chooseStyle('color', '#fecaca');
+        await bench.applyStyles();
+        await settle();
+        expect(withSubtitle()).toBe(30);
+
+        bench.openStyles();
+        await settle();
+        bench.askToResetStyles();
+        await bench.confirmResetStyles();
+        await settle();
+        expect(model().modelData.subtitleField).toBeNull();
+        expect(withSubtitle()).toBe(0);
+        for (const node of model().nodeDataArray) expect(node.color).toBe(DEFAULT_COLOR);
+        // One undo step for both, on top of the one that applied them.
+        expect(bench.stats()).toMatchObject({ historyLength: 2 });
+
+        bench.openStyles();
+        await settle();
+        expect(fieldSelect().value).toBe('');
+        expect(listed()).toEqual([]);
+        styles().close();
+
+        // One undo brings back the field and the colors together.
+        await bench.undo();
+        await settle();
+        expect(withSubtitle()).toBe(30);
+        for (const node of nodesOfType(type)) expect(node.color).toBe('#fecaca');
+      });
+
+      it('is unselected by Reset all also when only the field was applied', async () => {
+        await pickField('legalEntityType');
+        await bench.applyStyles();
+        bench.openStyles();
+        await settle();
+        bench.askToResetStyles();
+        await bench.confirmResetStyles();
+        await settle();
+        expect(withSubtitle()).toBe(0);
+        expect(bench.log()[0].op).toBe('Reset styles');
+        expect(bench.stateCheck().ok).not.toBe(false);
+      });
+
+      it('is unselected in the dialog by Reset all even when it was chosen but not applied', async () => {
+        await pickField('legalEntityType');
+        bench.askToResetStyles();
+        await bench.confirmResetStyles();
+        await settle();
+        expect(bench.styleTypes().size).toBe(0);
+        bench.openStyles();
+        await settle();
+        expect(fieldSelect().value).toBe('');
+        // Nothing had been applied, so there was nothing to reset and nothing to undo.
+        expect(bench.stats()).toMatchObject({ historyLength: 0 });
+      });
+
+      it('is hidden again in a newly loaded diagram', async () => {
+        await pickField('legalEntityType');
+        await bench.applyStyles();
+        bench.reset('fund-structure');
+        await settle();
+        expect(model().modelData.subtitleField).toBeNull();
+        expect(withSubtitle()).toBe(0);
+      });
     });
 
-    it('cannot apply without a fund type, or without a color or shape', () => {
-      expect(bench.canApplyStyle()).toBe(false);
-      bench.toggleStyleType(typeOf(0));
-      expect(bench.canApplyStyle()).toBe(false);
-      bench.chooseStyle('shape', 'Ellipse');
-      expect(bench.canApplyStyle()).toBe(true);
-      bench.toggleStyleType(typeOf(0));
-      expect(bench.canApplyStyle()).toBe(false);
-    });
+    describe('with "Legal entity type" chosen', () => {
+      beforeEach(async () => {
+        await pickField('legalEntityType');
+      });
 
-    it('applies color and shape to every node of several fund types at once, and closes', async () => {
-      const [first, second, other] = [typeOf(0), typeOf(1), typeOf(2)];
-      bench.toggleStyleType(first);
-      bench.toggleStyleType(second);
-      bench.chooseStyle('color', '#bfdbfe');
-      bench.chooseStyle('shape', 'Diamond');
-      await bench.applyStyles();
+      it('lists every legal entity type in the diagram with its number of nodes', () => {
+        const types = new Set(model().nodeDataArray.map((node) => node.subtitle));
+        expect(bench.styleRows().map((row) => row.type)).toEqual([...types].sort());
+        for (const row of bench.styleRows()) expect(row.count).toBe(nodesOfType(row.type).length);
+        expect(styles().open).toBe(true);
+      });
 
-      for (const node of [...nodesOfType(first), ...nodesOfType(second)]) {
-        expect(node).toMatchObject({ color: '#bfdbfe', shape: 'Diamond' });
-      }
-      for (const node of nodesOfType(other)) expect(node.color).toBe(DEFAULT_COLOR);
-      expect(bench.stats()?.historyLength).toBe(1);
-      expect(dialog('Styles by fund type').open).toBe(false);
+      it('changes nothing until Apply is pressed', () => {
+        bench.toggleStyleType(typeOf(0));
+        bench.chooseStyle('color', '#bfdbfe');
+        bench.chooseStyle('shape', 'Diamond');
+        expect(bench.canApplyStyle()).toBe(true);
+        expect(bench.stats()?.historyLength).toBe(0);
+        for (const node of model().nodeDataArray) expect(node.color).toBe(DEFAULT_COLOR);
+      });
 
-      await bench.undo();
-      expect(bench.stateCheck().ok).toBe(true);
-    });
+      it('can be applied as soon as the field is chosen, also with nothing ticked or picked', () => {
+        // The nodes do not show the field yet, so applying it alone is something to do.
+        expect(bench.canApplyStyle()).toBe(true);
+        bench.toggleStyleType(typeOf(0));
+        bench.chooseStyle('shape', 'Ellipse');
+        expect(bench.canApplyStyle()).toBe(true);
+      });
 
-    it('shows in the preview what Apply would do', () => {
-      bench.toggleStyleType(typeOf(0));
-      bench.chooseStyle('color', '#fde68a');
-      expect(bench.nodePreview()).toMatchObject({ fill: '#fde68a', subtitle: typeOf(0) });
-      bench.toggleStyleType(typeOf(1));
-      expect(bench.nodePreview().subtitle).toBe('2 fund types');
-    });
+      it('applies color and shape to every node of several fund types at once, and closes', async () => {
+        const [first, second, other] = [typeOf(0), typeOf(1), typeOf(2)];
+        bench.toggleStyleType(first);
+        bench.toggleStyleType(second);
+        bench.chooseStyle('color', '#bfdbfe');
+        bench.chooseStyle('shape', 'Diamond');
+        await bench.applyStyles();
 
-    it('takes a choice back when it is picked a second time', () => {
-      bench.chooseStyle('shape', 'Capsule');
-      bench.chooseStyle('shape', 'Capsule');
-      expect(bench.styleDraft().shape).toBeNull();
-    });
+        for (const node of [...nodesOfType(first), ...nodesOfType(second)]) {
+          expect(node).toMatchObject({ color: '#bfdbfe', shape: 'Diamond' });
+        }
+        for (const node of nodesOfType(other)) expect(node.color).toBe(DEFAULT_COLOR);
+        expect(bench.stats()?.historyLength).toBe(1);
+        expect(styles().open).toBe(false);
 
-    it('selects and unselects all fund types at once', () => {
-      bench.selectAllStyleTypes(true);
-      expect(bench.allStyleTypesSelected()).toBe(true);
-      expect(bench.styleTypes().size).toBe(bench.styleRows().length);
-      bench.selectAllStyleTypes(false);
-      expect(bench.styleTypes().size).toBe(0);
-    });
+        await bench.undo();
+        expect(bench.stateCheck().ok).toBe(true);
+      });
 
-    it('can undo a reset and then redo it', async () => {
-      bench.selectAllStyleTypes(true);
-      bench.chooseStyle('color', '#fecaca');
-      bench.chooseStyle('shape', 'Ellipse');
-      await bench.applyStyles();
-      bench.askToResetStyles();
-      await bench.confirmResetStyles();
-      await settle();
-      expect(nodeData(1)).toMatchObject({ color: DEFAULT_COLOR, shape: DEFAULT_SHAPE });
+      it('shows in the preview what Apply would do', () => {
+        bench.toggleStyleType(typeOf(0));
+        bench.chooseStyle('color', '#fde68a');
+        expect(bench.nodePreview()).toMatchObject({ fill: '#fde68a', subtitle: typeOf(0) });
+        bench.toggleStyleType(typeOf(1));
+        expect(bench.nodePreview().subtitle).toBe('2 legal entity types');
+      });
 
-      await bench.undo();
-      await settle();
-      expect(nodeData(1)).toMatchObject({ color: '#fecaca', shape: 'Ellipse' });
-      expect(bench.stats()).toMatchObject({ historyLength: 2, historyIndex: 0 });
-      expect(diagram.model.undoManager.canRedo()).toBe(true);
+      it('takes a choice back when it is picked a second time', () => {
+        bench.toggleStyleType(typeOf(0));
+        bench.chooseStyle('shape', 'Capsule');
+        expect(bench.styleDraft().shape).toBe('Capsule');
+        bench.chooseStyle('shape', 'Capsule');
+        expect(bench.styleDraft().shape).toBeNull();
+      });
 
-      await bench.redo();
-      await settle();
-      expect(nodeData(1)).toMatchObject({ color: DEFAULT_COLOR, shape: DEFAULT_SHAPE });
-      expect(bench.stats()).toMatchObject({ historyLength: 2, historyIndex: 1 });
-    });
+      it('offers color and shape only once a value of the field is ticked', async () => {
+        const controls = () =>
+          Array.from(
+            styles().querySelectorAll<HTMLButtonElement | HTMLInputElement>(
+              '.swatches button, .swatches input, .shape-tiles button',
+            ),
+          );
+        expect(controls().length).toBeGreaterThan(10);
+        for (const control of controls()) expect(control.disabled).toBe(true);
+        // Picking one anyway does nothing.
+        bench.chooseStyle('color', '#bfdbfe');
+        expect(bench.styleDraft()).toEqual({ color: null, shape: null });
 
-    it('can redo styles that were undone', async () => {
-      bench.toggleStyleType(typeOf(0));
-      bench.chooseStyle('shape', 'Diamond');
-      await bench.applyStyles();
-      await settle();
-      await bench.undo();
-      await settle();
-      expect(diagram.model.undoManager.canRedo()).toBe(true);
-      await bench.redo();
-      await settle();
-      expect(nodesOfType(typeOf(0))[0].shape).toBe('Diamond');
-    });
+        bench.toggleStyleType(typeOf(0));
+        await settle();
+        for (const control of controls()) expect(control.disabled).toBe(false);
+        bench.chooseStyle('color', '#bfdbfe');
+        expect(bench.styleDraft().color).toBe('#bfdbfe');
 
-    it('resets every node to a gray rectangle only after confirmation', async () => {
-      bench.selectAllStyleTypes(true);
-      bench.chooseStyle('color', '#fecaca');
-      bench.chooseStyle('shape', 'Ellipse');
-      await bench.applyStyles();
+        // Unticking the value disables them again and forgets what was picked.
+        bench.toggleStyleType(typeOf(0));
+        await settle();
+        for (const control of controls()) expect(control.disabled).toBe(true);
+        expect(bench.styleDraft()).toEqual({ color: null, shape: null });
+      });
 
-      bench.askToResetStyles();
-      await settle();
-      expect(dialog('Reset all styles').open).toBe(true);
-      bench.cancelResetStyles();
-      expect(nodeData(1).shape).toBe('Ellipse');
+      it('offers neither color nor shape while no field is chosen', async () => {
+        bench.askToResetStyles();
+        await bench.confirmResetStyles();
+        bench.openStyles();
+        await settle();
+        const disabled = Array.from(
+          styles().querySelectorAll<HTMLButtonElement>('.swatches button, .shape-tiles button'),
+        ).map((control) => control.disabled);
+        expect(disabled.every(Boolean)).toBe(true);
+      });
 
-      bench.askToResetStyles();
-      await bench.confirmResetStyles();
-      for (const node of model().nodeDataArray) {
-        expect(node).toMatchObject({ color: DEFAULT_COLOR, shape: DEFAULT_SHAPE });
-      }
-      expect(bench.styleTypes().size).toBe(0);
-      expect(bench.log()[0].op).toBe('Reset styles');
+      it('selects and unselects all fund types at once', () => {
+        bench.selectAllStyleTypes(true);
+        expect(bench.allStyleTypesSelected()).toBe(true);
+        expect(bench.styleTypes().size).toBe(bench.styleRows().length);
+        bench.selectAllStyleTypes(false);
+        expect(bench.styleTypes().size).toBe(0);
+      });
 
-      bench.openStyles();
-      for (const row of bench.styleRows()) {
-        expect(row).toMatchObject({ color: DEFAULT_COLOR, shape: DEFAULT_SHAPE });
-      }
+      it('can undo a reset and then redo it', async () => {
+        bench.selectAllStyleTypes(true);
+        bench.chooseStyle('color', '#fecaca');
+        bench.chooseStyle('shape', 'Ellipse');
+        await bench.applyStyles();
+        bench.askToResetStyles();
+        await bench.confirmResetStyles();
+        await settle();
+        expect(nodeData(1)).toMatchObject({ color: DEFAULT_COLOR, shape: DEFAULT_SHAPE });
+
+        await bench.undo();
+        await settle();
+        expect(nodeData(1)).toMatchObject({ color: '#fecaca', shape: 'Ellipse' });
+        expect(bench.stats()).toMatchObject({ historyLength: 2, historyIndex: 0 });
+        expect(diagram.model.undoManager.canRedo()).toBe(true);
+
+        await bench.redo();
+        await settle();
+        expect(nodeData(1)).toMatchObject({ color: DEFAULT_COLOR, shape: DEFAULT_SHAPE });
+        expect(bench.stats()).toMatchObject({ historyLength: 2, historyIndex: 1 });
+      });
+
+      it('can redo styles that were undone', async () => {
+        bench.toggleStyleType(typeOf(0));
+        bench.chooseStyle('shape', 'Diamond');
+        await bench.applyStyles();
+        await settle();
+        await bench.undo();
+        await settle();
+        expect(diagram.model.undoManager.canRedo()).toBe(true);
+        await bench.redo();
+        await settle();
+        expect(nodesOfType(typeOf(0))[0].shape).toBe('Diamond');
+      });
+
+      it('resets every node to a gray rectangle only after confirmation', async () => {
+        bench.selectAllStyleTypes(true);
+        bench.chooseStyle('color', '#fecaca');
+        bench.chooseStyle('shape', 'Ellipse');
+        await bench.applyStyles();
+
+        bench.askToResetStyles();
+        await settle();
+        expect(dialog('Reset all styles').open).toBe(true);
+        bench.cancelResetStyles();
+        expect(nodeData(1).shape).toBe('Ellipse');
+
+        bench.askToResetStyles();
+        await bench.confirmResetStyles();
+        for (const node of model().nodeDataArray) {
+          expect(node).toMatchObject({ color: DEFAULT_COLOR, shape: DEFAULT_SHAPE });
+        }
+        expect(bench.styleTypes().size).toBe(0);
+        expect(bench.log()[0].op).toBe('Reset styles');
+
+        bench.openStyles();
+        for (const row of bench.styleRows()) {
+          expect(row).toMatchObject({ color: DEFAULT_COLOR, shape: DEFAULT_SHAPE });
+        }
+      });
     });
   });
 

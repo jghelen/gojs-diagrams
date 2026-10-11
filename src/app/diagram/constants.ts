@@ -60,6 +60,13 @@ export const FUND_TYPES: readonly string[] = [
   'Feeder fund',
 ];
 
+/**
+ * The fields of a legal entity by which the styles dialog can group the nodes,
+ * to give all nodes with the same value the same look. For now there is one.
+ */
+export const STYLE_FIELDS = [{ id: 'legalEntityType', label: 'Legal entity type' }] as const;
+export type StyleFieldId = (typeof STYLE_FIELDS)[number]['id'];
+
 // ----- Colours of the diagram -----
 
 /** The border of every node: dark gray. */

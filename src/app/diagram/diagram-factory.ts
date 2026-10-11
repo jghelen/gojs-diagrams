@@ -17,6 +17,7 @@ import {
   REVEAL_MAX_MS,
   REVEAL_STEP_MS,
   SELECTION_GOLD,
+  StyleFieldId,
 } from './constants';
 
 /** Model-wide settings. Kept in the model so that switching them is undone with everything else. */
@@ -32,6 +33,12 @@ export interface ModelData {
    * expansion has to bring back both the old positions and the hidden cards.
    */
   cardsExpanded: boolean;
+  /**
+   * The legal entity field whose value every node shows as its subtitle; null
+   * while none is shown, which is how a diagram starts. It is chosen in the
+   * styles dialog and is part of the model, so that undo and redo reach it.
+   */
+  subtitleField: StyleFieldId | null;
 }
 
 export type NodeModel = go.GraphLinksModel<NodeData, LinkData, ModelData>;
@@ -465,6 +472,12 @@ function createNodeTemplate(): go.Node {
           toolTip: fullTextHint('subtitle'),
         })
           .bind('text', 'subtitle')
+          // Shown only once a legal entity field was chosen in the styles dialog.
+          .bindModel(
+            'visible',
+            'subtitleField',
+            (field: StyleFieldId | null | undefined) => !!field,
+          )
           .bind('maxSize', 'shape', textLimit(SUBTITLE_REACH))
           .bind('stroke', 'color', textColorFor),
         // A thin rule between the text and the icons.

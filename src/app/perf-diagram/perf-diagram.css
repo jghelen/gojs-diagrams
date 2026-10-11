@@ -611,6 +611,13 @@ button.link-button {
   overflow: auto;
 }
 
+/* The dropdown that says by which legal entity field the nodes are grouped. */
+.modal select.style-field {
+  box-sizing: border-box;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
 .modal label.pick-all {
   display: flex;
   align-items: center;
