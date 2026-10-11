@@ -3,7 +3,8 @@
   "version": 1,
   "cli": {
     "packageManager": "npm",
-    "analytics": "ef2422ef-a5e3-4e13-ad0a-b639cfe93ef0"
+    "analytics": "ef2422ef-a5e3-4e13-ad0a-b639cfe93ef0",
+    "schematicCollections": ["angular-eslint"]
   },
   "newProjectRoot": "projects",
   "projects": {
@@ -99,6 +100,12 @@
             "prebundle": {
               "exclude": ["gojs", "gojs-extensions"]
             }
+          }
+        },
+        "lint": {
+          "builder": "@angular-eslint/builder:lint",
+          "options": {
+            "lintFilePatterns": ["src/**/*.ts", "src/**/*.html"]
           }
         }
       }

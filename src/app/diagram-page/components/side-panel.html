@@ -1,54 +1,61 @@
 <aside class="side">
-  <section>
-    <h2>History</h2>
-    <p class="state" [class.ok]="stateCheck().ok === true" [class.bad]="stateCheck().ok === false">
-      {{ stateCheck().label }}
-    </p>
-    @if (stats(); as s) {
-      <dl>
-        <dt>Nodes</dt>
-        <dd>{{ s.nodes }}</dd>
-        <dt>Links</dt>
-        <dd>{{ s.links }}</dd>
-        <dt>Transactions in history</dt>
-        <dd>{{ s.historyLength }}</dd>
-        <dt>History index</dt>
-        <dd>{{ s.historyIndex }}</dd>
-        <dt>Recorded changes</dt>
-        <dd>{{ s.changedEvents }}</dd>
-        @if (s.heapMb !== null) {
-          <dt>JS heap</dt>
-          <dd>{{ s.heapMb.toFixed(1) }} MB</dd>
-        }
-      </dl>
-    }
-  </section>
+  <!-- For measuring, not for editing: shown with the developer tools only. -->
+  @if (developerTools.shown()) {
+    <section>
+      <h2>History</h2>
+      <p
+        class="state"
+        [class.ok]="stateCheck().ok === true"
+        [class.bad]="stateCheck().ok === false"
+      >
+        {{ stateCheck().label }}
+      </p>
+      @if (stats(); as s) {
+        <dl>
+          <dt>Nodes</dt>
+          <dd>{{ s.nodes }}</dd>
+          <dt>Links</dt>
+          <dd>{{ s.links }}</dd>
+          <dt>Transactions in history</dt>
+          <dd>{{ s.historyLength }}</dd>
+          <dt>History index</dt>
+          <dd>{{ s.historyIndex }}</dd>
+          <dt>Recorded changes</dt>
+          <dd>{{ s.changedEvents }}</dd>
+          @if (s.heapMb !== null) {
+            <dt>JS heap</dt>
+            <dd>{{ s.heapMb.toFixed(1) }} MB</dd>
+          }
+        </dl>
+      }
+    </section>
 
-  <section>
-    <h2>Edits</h2>
-    <div class="buttons">
-      <button type="button" [disabled]="busy()" (click)="randomizeOne()">Randomize 1 node</button>
-      <button type="button" [disabled]="busy()" (click)="randomizeAll()">Randomize all</button>
-    </div>
-    <div class="bulk">
-      <input
-        #bulkInput
-        type="number"
-        min="1"
-        step="1"
-        aria-label="Number of bulk transactions"
-        [max]="maxBulkRuns()"
-        [value]="bulkRuns()"
-        [disabled]="busy()"
-        (change)="setBulkRuns(bulkInput)"
-      />
-      <button type="button" [disabled]="busy()" (click)="runBulk()">× randomize all</button>
-    </div>
-    <p class="hint">
-      Each run is one transaction that changes all four fields on every node. Runs: 1 to
-      {{ maxBulkRuns() }}; other entries are corrected.
-    </p>
-  </section>
+    <section>
+      <h2>Edits</h2>
+      <div class="buttons">
+        <button type="button" [disabled]="busy()" (click)="randomizeOne()">Randomize 1 node</button>
+        <button type="button" [disabled]="busy()" (click)="randomizeAll()">Randomize all</button>
+      </div>
+      <div class="bulk">
+        <input
+          #bulkInput
+          type="number"
+          min="1"
+          step="1"
+          aria-label="Number of bulk transactions"
+          [max]="maxBulkRuns()"
+          [value]="bulkRuns()"
+          [disabled]="busy()"
+          (change)="setBulkRuns(bulkInput)"
+        />
+        <button type="button" [disabled]="busy()" (click)="runBulk()">× randomize all</button>
+      </div>
+      <p class="hint">
+        Each run is one transaction that changes all four fields on every node. Runs: 1 to
+        {{ maxBulkRuns() }}; other entries are corrected.
+      </p>
+    </section>
+  }
 
   <section>
     <h2>Selected relationships</h2>

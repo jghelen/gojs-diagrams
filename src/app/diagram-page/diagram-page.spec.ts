@@ -2,7 +2,7 @@ import { Type } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import * as go from 'gojs/release/go';
-import { DEFAULT_COLOR, DEFAULT_SHAPE } from '../diagram/constants';
+import { DEFAULT_COLOR, DEFAULT_SHAPE, DEVELOPER_TOOLS_KEY } from '../diagram/constants';
 import { NodeModel } from '../diagram/diagram-factory';
 import { LinkData, NodeData } from '../diagram/node-data';
 import { BenchmarkStatistics } from './components/benchmark-statistics';
@@ -142,6 +142,8 @@ describe('DiagramPage', () => {
   const settle = async () => {
     for (let i = 0; i < 3; i++) diagram.maybeUpdate();
     await fixture.whenStable();
+    // The percentages were placed in the meantime; in a browser the next frame draws them.
+    diagram.maybeUpdate();
   };
   /** What a click on the info icon of a relationship does. */
   const showLinkInfo = (link: LinkData) =>
@@ -152,6 +154,9 @@ describe('DiagramPage', () => {
   };
 
   beforeEach(async () => {
+    // Most tests look at the statistics or the history numbers, so they have the developer
+    // tools shown, as if that had been chosen on an earlier visit.
+    localStorage.setItem(DEVELOPER_TOOLS_KEY, 'true');
     TestBed.configureTestingModule({ imports: [DiagramPage] });
     fixture = TestBed.createComponent(DiagramPage);
     fixture.detectChanges();
@@ -163,6 +168,8 @@ describe('DiagramPage', () => {
     diagram.viewSize = new go.Size(1000, 700);
     await settle();
   });
+
+  afterEach(() => localStorage.clear());
 
   describe('loading', () => {
     it('opens with the 30-node diagram, laid out top to bottom with lines that avoid nodes', () => {
@@ -1720,11 +1727,17 @@ describe('DiagramPage', () => {
   });
 
   describe('header', () => {
-    it('ends, at the right, with Styles, then Actions, then a reload icon that resets the diagram', async () => {
+    it('ends, at the right, with Styles, Actions, reset, new diagram and the developer tools switch', async () => {
       const controls = Array.from(page.querySelectorAll<HTMLElement>('header .bar-end > *')).map(
         (control) => control.getAttribute('aria-label') ?? control.textContent?.trim(),
       );
-      expect(controls).toEqual(['Styles', 'Actions', 'Reset diagram', 'New diagram']);
+      expect(controls).toEqual([
+        'Styles',
+        'Actions',
+        'Reset diagram',
+        'New diagram',
+        'Developer tools',
+      ]);
 
       const resetButton = page.querySelector<HTMLButtonElement>(
         'header button[aria-label="Reset diagram"]',
@@ -2330,6 +2343,117 @@ describe('DiagramPage', () => {
       expect(notice()).toBeNull();
       model().commitTransaction('tool at work');
       diagram.currentTool = diagram.defaultTool;
+    });
+  });
+
+  describe('developer tools', () => {
+    /** The page as someone sees it who never asked for the developer tools. */
+    let plain: ComponentFixture<DiagramPage>;
+    let plainPage: HTMLElement;
+    let plainBench: Bench;
+
+    const toolsSwitch = () =>
+      plainPage.querySelector<HTMLButtonElement>('header button[aria-label="Developer tools"]')!;
+    const headings = () =>
+      Array.from(plainPage.querySelectorAll('.side h2')).map((heading) => heading.textContent);
+    const calm = async () => {
+      const plainDiagram = plainBench.diagram;
+      for (let i = 0; i < 3; i++) plainDiagram.maybeUpdate();
+      await plain.whenStable();
+    };
+
+    beforeEach(async () => {
+      localStorage.clear();
+      plain = TestBed.createComponent(DiagramPage);
+      plain.detectChanges();
+      await plain.whenStable();
+      plainPage = plain.nativeElement as HTMLElement;
+      plainBench = benchOf(plain);
+      plainBench.diagram.viewSize = new go.Size(1000, 700);
+      await calm();
+    });
+
+    afterEach(() => plain.destroy());
+
+    it('are hidden at first: the page shows the editor only', () => {
+      expect(toolsSwitch().getAttribute('aria-pressed')).toBe('false');
+      expect(toolsSwitch().title).toBe(
+        'Developer tools: timings, history numbers and random edits',
+      );
+      expect(plainPage.querySelector('.log')).toBeNull();
+      expect(headings()).toEqual(['Selected relationships', 'Selected nodes']);
+      expect(plainPage.textContent).not.toContain('Randomize');
+      expect(plainPage.textContent).not.toContain('Benchmark statistics');
+    });
+
+    it('leave the whole editor in place while hidden', () => {
+      expect(plainPage.querySelector('nav.canvas-nav')).not.toBeNull();
+      expect(plainPage.querySelector('.canvas-bar')).not.toBeNull();
+      expect(plainPage.querySelector('.overview')).not.toBeNull();
+      expect(plainPage.querySelector('button[aria-label="Undo"]')).not.toBeNull();
+    });
+
+    it('come with the switch in the top bar, and go with it again', async () => {
+      toolsSwitch().click();
+      await calm();
+      expect(toolsSwitch().getAttribute('aria-pressed')).toBe('true');
+      expect(toolsSwitch().title).toBe('Hide the developer tools');
+      expect(plainPage.querySelector('.log table')).not.toBeNull();
+      expect(headings()).toEqual(['History', 'Edits', 'Selected relationships', 'Selected nodes']);
+
+      toolsSwitch().click();
+      await calm();
+      expect(toolsSwitch().getAttribute('aria-pressed')).toBe('false');
+      expect(plainPage.querySelector('.log')).toBeNull();
+      expect(headings()).toEqual(['Selected relationships', 'Selected nodes']);
+    });
+
+    it('list what was done while they were hidden', async () => {
+      await plainBench.addNode();
+      await plainBench.undo();
+      await calm();
+      expect(plainPage.querySelector('.log')).toBeNull();
+
+      toolsSwitch().click();
+      await calm();
+      const operations = Array.from(plainPage.querySelectorAll('.log tbody tr')).map(
+        (row) => row.querySelector('td')!.textContent,
+      );
+      expect(operations).toEqual(['Undo', 'Add node']);
+      expect(plainPage.querySelector('.state')!.textContent).toContain('Initial state');
+    });
+
+    it('tell the diagram that the canvas has a new height', async () => {
+      const frames: FrameRequestCallback[] = [];
+      const frame = vi
+        .spyOn(window, 'requestAnimationFrame')
+        .mockImplementation((callback) => frames.push(callback));
+      const update = vi.spyOn(plainBench.diagram, 'requestUpdate');
+
+      toolsSwitch().click();
+      await plain.whenStable();
+      frames.forEach((callback) => callback(0));
+      expect(update).toHaveBeenCalled();
+      frame.mockRestore();
+    });
+
+    it('are remembered for the next visit', async () => {
+      toolsSwitch().click();
+      await calm();
+      const again = TestBed.createComponent(DiagramPage);
+      again.detectChanges();
+      await again.whenStable();
+      const againPage = again.nativeElement as HTMLElement;
+      expect(againPage.querySelector('.log table')).not.toBeNull();
+      expect(againPage.querySelector('.side h2')!.textContent).toBe('History');
+      again.destroy();
+    });
+
+    it('cannot be switched while a diagram is loading', () => {
+      plainBench.reset('100');
+      plain.detectChanges();
+      expect(plainBench.busy()).toBe(true);
+      expect(toolsSwitch().disabled).toBe(true);
     });
   });
 

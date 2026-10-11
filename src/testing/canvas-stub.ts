@@ -33,6 +33,7 @@ function createContextStub(canvas: HTMLCanvasElement): CanvasRenderingContext2D 
 }
 
 /** A path that accepts every drawing instruction and keeps none of them. */
+/* eslint-disable @typescript-eslint/no-empty-function -- doing nothing is the point of this class */
 class Path2DStub {
   addPath(): void {}
   moveTo(): void {}
@@ -46,6 +47,7 @@ class Path2DStub {
   roundRect(): void {}
   closePath(): void {}
 }
+/* eslint-enable @typescript-eslint/no-empty-function */
 
 /** Makes every canvas hand out the stand-in context. Call once before creating a diagram. */
 export function installCanvasStub(): void {

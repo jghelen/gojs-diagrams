@@ -749,6 +749,105 @@ describe('relationship lines', () => {
     for (const labels of labelsPerNode(test.diagram)) expect(overlaps(labels)).toBe(0);
   });
 
+  /** All percentages of a diagram, whichever node their line ends at. */
+  const allLabels = (diagram: go.Diagram): go.Rect[] =>
+    linksOf(diagram)
+      .map((link) => link.findAdornment('Ownership'))
+      .filter((label) => label !== null)
+      .map((label) => label.actualBounds);
+  /** How many percentages lie on a node, where the node would hide them. */
+  const hiddenByNodes = (diagram: go.Diagram): number => {
+    const nodes = nodesOf(diagram).map((node) => node.actualBounds);
+    return allLabels(diagram).filter((label) => nodes.some((node) => node.intersectsRect(label)))
+      .length;
+  };
+
+  it('never write one percentage over another, also when their lines end at different nodes', () => {
+    for (const layout of ['top-bottom', 'layered', 'grid', 'circle', 'force'] as const) {
+      for (const linkType of ['avoid', 'orthogonal', 'straight', 'curved'] as const) {
+        const { diagram } = createTestDiagram({ count: 100, layout, linkType });
+        expect(allLabels(diagram).length).toBeGreaterThan(100);
+        expect(overlaps(allLabels(diagram)), `${layout}, ${linkType}`).toBe(0);
+      }
+    }
+  });
+
+  it('never write a percentage on a node, where the node would hide it', () => {
+    for (const count of [30, 100]) {
+      for (const layout of ['top-bottom', 'layered', 'grid', 'circle'] as const) {
+        // Straight lines run across nodes; their percentages must not end up under one.
+        for (const linkType of ['avoid', 'straight'] as const) {
+          const { diagram } = createTestDiagram({ count, layout, linkType });
+          expect(hiddenByNodes(diagram), `${count}, ${layout}, ${linkType}`).toBe(0);
+        }
+      }
+    }
+  });
+
+  it('move a percentage back along its line, round the bends, when the place at the node is taken', () => {
+    // Side by side in one row, 60 apart: a line into a fund arrives through the gap
+    // beside it, and straight back from its end lies the neighbouring fund.
+    const { diagram } = createTestDiagram({ count: 30, layout: 'layered', linkType: 'avoid' });
+    expect(overlaps(allLabels(diagram))).toBe(0);
+    expect(hiddenByNodes(diagram)).toBe(0);
+    // Every percentage still stands beside its own line.
+    for (const link of linksOf(diagram)) {
+      const label = link.findAdornment('Ownership');
+      if (!label) continue;
+      let nearest = Infinity;
+      for (let i = 1; i < link.pointsCount; i++) {
+        const [a, b] = [link.getPoint(i - 1), link.getPoint(i)];
+        const centre = label.actualBounds.center;
+        nearest = Math.min(
+          nearest,
+          Math.sqrt(go.Point.distanceLineSegmentSquared(centre.x, centre.y, a.x, a.y, b.x, b.y)),
+        );
+      }
+      expect(nearest).toBeLessThan(label.actualBounds.width);
+    }
+  });
+
+  it('place the percentages by themselves a moment after a line changed', async () => {
+    const test = createTestDiagram({ count: 100, layout: 'circle', linkType: 'straight' });
+    const labelsInto = (node: go.Node) => {
+      const labels: go.Rect[] = [];
+      node.findLinksInto().each((link) => {
+        const label = link.findAdornment('Ownership');
+        if (label) labels.push(label.actualBounds);
+      });
+      return labels;
+    };
+    // The fund with the most known stakes in it.
+    const busiest = nodesOf(test.diagram).sort(
+      (a, b) => labelsInto(b).length - labelsInto(a).length,
+    )[0];
+    const labelsOfBusiest = () => labelsInto(busiest);
+    test.diagram.commit(() => {
+      busiest.location = new go.Point(busiest.location.x + 2000, busiest.location.y);
+    }, 'move');
+    // Only what GoJS does in a frame, without the helper that places the percentages.
+    for (let i = 0; i < 3; i++) test.diagram.maybeUpdate();
+
+    // At once, each percentage is back at the end of its line, not where the line used to end.
+    const reach = busiest.actualBounds.copy().inflate(120, 120);
+    expect(labelsOfBusiest().length).toBeGreaterThan(1);
+    for (const label of labelsOfBusiest()) expect(reach.intersectsRect(label)).toBe(true);
+
+    // A moment later they are sorted out among each other.
+    await Promise.resolve();
+    test.diagram.maybeUpdate();
+    expect(overlaps(allLabels(test.diagram))).toBe(0);
+    expect(hiddenByNodes(test.diagram)).toBe(0);
+  });
+
+  it('place the percentages the same way every time', () => {
+    const places = () =>
+      allLabels(
+        createTestDiagram({ count: 100, layout: 'top-bottom', linkType: 'straight' }).diagram,
+      ).map((label) => label.toString());
+    expect(places()).toEqual(places());
+  });
+
   it('are drawn right up to the outline of a diamond, an ellipse and a capsule', () => {
     const test = createTestDiagram();
     // How far the line is drawn past its end point; GoJS expresses that as a negative "short length".

@@ -1,0 +1,46 @@
+# Checks every push to main and every pull request: formatting, lint, build, unit tests.
+# The same checks run locally with `npm run verify`.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch makes the run for the older one pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Format, lint, build, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # The Node version the project is developed with.
+          node-version-file: .nvmrc
+          cache: npm
+
+      # Exactly the versions of package-lock.json.
+      - run: npm ci
+
+      - name: Formatting
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      # The tests run in jsdom, so no browser has to be installed.
+      - name: Unit tests
+        run: npm test -- --watch=false

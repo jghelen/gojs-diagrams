@@ -871,10 +871,18 @@ class RelationshipLink extends go.Link {
       if (text instanceof go.TextBlock) text.text = formatOwnership(this.linkData.ownership);
       label.ensureBounds();
       label.opacity = this.opacity;
-      // Several lines may end at the same node, even along the same last stretch,
-      // so the percentages at a node are placed together.
-      if (this.toNode) placeOwnershipLabels(this.toNode);
-      else label.location = this.ownershipLabelPoint(label.actualBounds, 0);
+      // Where the percentage finally goes depends on the other percentages and on
+      // the nodes around, so all percentages of the diagram are placed together, in
+      // a moment. Until then it must not stay behind where the line used to end:
+      // unless it already stands at one of the places this line offers, it goes to
+      // the first of them.
+      const places = this.ownershipLabelPlaces(label.actualBounds);
+      const { x, y } = label.location;
+      const inPlace = places.some(
+        (place) => Math.abs(place.x - x) < 0.5 && Math.abs(place.y - y) < 0.5,
+      );
+      if (!inPlace) label.location = places[0];
+      if (this.diagram) scheduleOwnershipPlacement(this.diagram);
     }
   }
 
@@ -953,67 +961,148 @@ class RelationshipLink extends go.Link {
   }
 
   /**
-   * Where the centre of the percentage goes: beside the last stretch of the line,
-   * and far enough back from its end that the whole label stays clear of the node.
+   * The places the percentage of this line can have, best first; each is where
+   * the centre of the label would go.
    *
-   * `place` picks among the places a label can have, for when the first is taken
-   * by the percentage of another line: 0 is beside the line next to the node, 1
-   * the same on the other side of the line, 2 and 3 one label further back from
-   * the node, and so on.
+   * The first is beside the last stretch of the line, just far enough back from
+   * its end that the whole label stays clear of the node the line ends at. The
+   * second is the same on the other side of the line. After that come pairs of
+   * places further and further back along the route, round its bends, for when
+   * the nearer ones are taken by another percentage or lie on a node.
    */
-  ownershipLabelPoint(label: go.Rect, place: number): go.Point {
+  ownershipLabelPlaces(label: go.Rect): go.Point[] {
+    // Half of the label's size along a line that travels in direction (ux, uy), and across it.
+    const along = (ux: number, uy: number) =>
+      (Math.abs(ux) * label.width + Math.abs(uy) * label.height) / 2;
+    const across = (ux: number, uy: number) =>
+      (Math.abs(uy) * label.width + Math.abs(ux) * label.height) / 2;
+    const besides = (x: number, y: number, ux: number, uy: number) => {
+      const aside = across(ux, uy) + OWNERSHIP_GAP_TO_LINE;
+      return [
+        new go.Point(x - uy * aside, y + ux * aside),
+        new go.Point(x + uy * aside, y - ux * aside),
+      ];
+    };
+
+    // Next to the node: straight back from the end, also where the last stretch is short.
     const end = this.getPoint(this.pointsCount - 1);
     const before = this.getPoint(this.pointsCount - 2);
     const length = Math.hypot(end.x - before.x, end.y - before.y) || 1;
-    const ux = (end.x - before.x) / length;
-    const uy = (end.y - before.y) / length;
-    // Half of the label's size along the line and across it.
-    const along = (Math.abs(ux) * label.width + Math.abs(uy) * label.height) / 2;
-    const across = (Math.abs(uy) * label.width + Math.abs(ux) * label.height) / 2;
-    const stepsBack = Math.floor(place / 2);
-    const back = along + OWNERSHIP_GAP_TO_NODE + stepsBack * (2 * along + OWNERSHIP_GAP_TO_LABEL);
-    const side = place % 2 === 0 ? 1 : -1;
-    const aside = side * (across + OWNERSHIP_GAP_TO_LINE);
-    return new go.Point(end.x - ux * back - uy * aside, end.y - uy * back + ux * aside);
+    const lastX = (end.x - before.x) / length;
+    const lastY = (end.y - before.y) / length;
+    const first = along(lastX, lastY) + OWNERSHIP_GAP_TO_NODE;
+    const places = besides(end.x - lastX * first, end.y - lastY * first, lastX, lastY);
+
+    // Further back: one label's length at a time, following the route.
+    let back = first;
+    let ux = lastX;
+    let uy = lastY;
+    while (places.length < OWNERSHIP_PLACES) {
+      back += 2 * along(ux, uy) + OWNERSHIP_GAP_TO_LABEL;
+      const at = this.backFromEnd(back);
+      if (!at) break;
+      ({ ux, uy } = at);
+      places.push(...besides(at.x, at.y, ux, uy));
+    }
+
+    // A line too short for that still needs places to choose from, for when several
+    // lines end at the same spot: they continue straight back, past where it starts.
+    const step = 2 * along(lastX, lastY) + OWNERSHIP_GAP_TO_LABEL;
+    for (let steps = 1; places.length < OWNERSHIP_PLACES; steps++) {
+      const beyond = first + steps * step;
+      places.push(...besides(end.x - lastX * beyond, end.y - lastY * beyond, lastX, lastY));
+    }
+    return places;
+  }
+
+  /**
+   * The point that lies `distance` before the end of this line, measured along
+   * its route, and the direction in which the line travels there. Null when the
+   * line is not that long.
+   */
+  private backFromEnd(distance: number): { x: number; y: number; ux: number; uy: number } | null {
+    let remaining = distance;
+    for (let i = this.pointsCount - 1; i > 0; i--) {
+      const to = this.getPoint(i);
+      const from = this.getPoint(i - 1);
+      const length = Math.hypot(to.x - from.x, to.y - from.y);
+      if (length === 0) continue;
+      if (remaining <= length) {
+        const ux = (to.x - from.x) / length;
+        const uy = (to.y - from.y) / length;
+        return { x: to.x - ux * remaining, y: to.y - uy * remaining, ux, uy };
+      }
+      remaining -= length;
+    }
+    return null;
   }
 }
 
 /** How many places are tried for a percentage before it has to share one. */
-const OWNERSHIP_PLACES = 12;
+const OWNERSHIP_PLACES = 16;
+
+/** The diagrams whose percentages are waiting to be placed again. */
+const ownershipPlacementPending = new WeakSet<go.Diagram>();
+
+/** Places the percentages once, shortly, however many lines ask for it in the same moment. */
+function scheduleOwnershipPlacement(diagram: go.Diagram): void {
+  if (ownershipPlacementPending.has(diagram)) return;
+  ownershipPlacementPending.add(diagram);
+  queueMicrotask(() => {
+    ownershipPlacementPending.delete(diagram);
+    if (diagram.div) placeOwnershipLabels(diagram);
+  });
+}
 
 /**
- * Places the percentages of all lines that end at this node, so that none of
- * them covers another. The lines take their turn in the order of their keys, and
- * each gets the first place that is still free; that way the outcome does not
- * depend on which line GoJS happened to draw first.
+ * Places the percentages of all lines of the diagram, so that each can be read:
+ * none of them covers another, whichever nodes their lines end at, and none of
+ * them lies on a node, where it would be hidden behind it.
+ *
+ * The lines take their turn in the order of their keys, and each gets the first
+ * of its places (see `ownershipLabelPlaces`) that is free; that way the outcome
+ * does not depend on which line GoJS happened to draw first. Should every place
+ * of a line lie on some node, its percentage at least keeps clear of the other
+ * percentages and of the node its line ends at.
+ *
+ * The diagram calls this itself after every change to a line. It is exported
+ * for tests, which do not wait for that moment.
  */
-function placeOwnershipLabels(node: go.Node): void {
+export function placeOwnershipLabels(diagram: go.Diagram): void {
+  const nodes = new RectIndex();
+  diagram.nodes.each((node) => nodes.add(node.actualBounds));
+  const labels = new RectIndex();
+
   const lines: RelationshipLink[] = [];
-  node.findLinksInto().each((link) => {
+  diagram.links.each((link) => {
     if (link instanceof RelationshipLink && link.pointsCount >= 2) lines.push(link);
   });
   lines.sort((a, b) => Number(a.key) - Number(b.key));
 
-  const taken: go.Rect[] = [];
   for (const line of lines) {
     const label = line.findAdornment(OWNERSHIP_ADORNMENT);
     if (!label) continue;
     label.ensureBounds();
     const size = label.actualBounds;
-    let centre = line.ownershipLabelPoint(size, 0);
-    let box = new go.Rect();
-    for (let place = 0; place < OWNERSHIP_PLACES; place++) {
-      centre = line.ownershipLabelPoint(size, place);
-      box = new go.Rect(
+    const places = line.ownershipLabelPlaces(size).map((centre) => {
+      const box = new go.Rect(
         centre.x - size.width / 2,
         centre.y - size.height / 2,
         size.width,
         size.height,
       );
-      if (!taken.some((other) => other.intersectsRect(box))) break;
-    }
-    label.location = centre;
-    taken.push(box);
+      return { centre, box };
+    });
+    const free = (place: { box: go.Rect }) => !labels.overlaps(place.box);
+    const target = line.toNode?.actualBounds;
+    const best =
+      places.find((place) => free(place) && !nodes.overlaps(place.box)) ??
+      // Hemmed in by nodes on all sides: then at least not on the node the line ends at.
+      places.find((place) => free(place) && !target?.intersectsRect(place.box)) ??
+      places.find(free) ??
+      places[0];
+    label.location = best.centre;
+    labels.add(best.box);
   }
 }
 

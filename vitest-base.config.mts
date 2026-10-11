@@ -12,5 +12,9 @@ export default defineConfig({
   },
   test: {
     server: { deps: { inline: [/gojs/] } },
+    // Some tests lay out hundreds of nodes or record a thousand undo steps. They
+    // take a second or two here and several times that on a busy or shared
+    // machine, such as the one the CI workflow runs on.
+    testTimeout: 30_000,
   },
 });

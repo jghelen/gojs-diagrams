@@ -1,8 +1,15 @@
 import { Injector } from '@angular/core';
 import * as go from 'gojs/release/go';
-import { IconClicks, NodeModel, createDiagram, createModel } from '../app/diagram/diagram-factory';
+import {
+  IconClicks,
+  NodeModel,
+  createDiagram,
+  createModel,
+  placeOwnershipLabels,
+} from '../app/diagram/diagram-factory';
 import { StyleFieldId } from '../app/diagram/constants';
 import { HistoryService } from '../app/diagram/history.service';
+import { DeveloperTools } from '../app/diagram-page/developer-tools';
 import { DiagramActions } from '../app/diagram-page/diagram-actions';
 import { DiagramState } from '../app/diagram-page/diagram-state';
 import { FundStyles } from '../app/diagram-page/fund-styles';
@@ -53,6 +60,7 @@ function createPageInjector(): Injector {
       NodeSearch,
       LinkInfoCard,
       FundStyles,
+      DeveloperTools,
     ],
   });
 }
@@ -118,6 +126,9 @@ export function createTestDiagram(
 
   const settle = (): void => {
     for (let i = 0; i < 3; i++) diagram.maybeUpdate();
+    // The diagram does this by itself a moment after an update; a test does not wait that long.
+    placeOwnershipLabels(diagram);
+    diagram.maybeUpdate();
   };
   const clickAt = (point: go.Point): void => {
     diagram.lastInput.documentPoint = point.copy();

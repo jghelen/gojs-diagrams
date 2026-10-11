@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { BULK_EDIT_BUDGET, COLORS } from '../../diagram/constants';
 import { EditableField } from '../../diagram/node-data';
+import { DeveloperTools } from '../developer-tools';
 import { DiagramActions } from '../diagram-actions';
 import { DiagramState } from '../diagram-state';
 import { OperationRunner } from '../operation-runner';
@@ -17,8 +18,9 @@ import { SelectionState } from '../selection-state';
 const DEFAULT_BULK_RUNS = 50;
 
 /**
- * The panel on the right: the numbers of the undo history, the random edits of
- * the benchmark, and what can be done with the selected relationships and nodes.
+ * The panel on the right: what can be done with the selected relationships and
+ * nodes. With the developer tools shown, it starts with the numbers of the undo
+ * history and the random edits of the benchmark.
  */
 @Component({
   selector: 'app-side-panel',
@@ -34,6 +36,7 @@ export class SidePanel {
   /** The selected nodes are to be deleted. The page asks for confirmation first. */
   readonly deleteNodes = output<void>();
 
+  protected readonly developerTools = inject(DeveloperTools);
   protected readonly colors = COLORS;
   protected readonly busy = inject(OperationRunner).busy;
   protected readonly stats = this.state.stats;

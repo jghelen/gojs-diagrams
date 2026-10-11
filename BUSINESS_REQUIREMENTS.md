@@ -47,13 +47,13 @@ the business: **does undo/redo stay fast and reliable on large structures** (up 
 | Area                          | Content                                                                                                                            |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | Header, left                  | **Data** dropdown: which diagram to open                                                                                           |
-| Header, right                 | **Styles**, **Actions** menu, **Reset diagram** (reload icon), **New diagram**                                                     |
+| Header, right                 | **Styles**, **Actions** menu, **Reset diagram** (reload icon), **New diagram**, **Developer tools** switch                         |
 | Bar above the canvas          | Diagram **name**, **description**, and **search**                                                                                  |
 | Left navigation on the canvas | Add node, Undo, Redo, Zoom in, Zoom out, Zoom to fit, Layout, Lines, Shape, Auto arrange, Expand all, Collapse all (in that order) |
 | Canvas                        | The diagram                                                                                                                        |
 | Overview, bottom right        | A small picture of the whole diagram for moving around                                                                             |
-| Below the canvas              | Timing table (see [14](#14-performance-measurement))                                                                               |
-| Side panel, right             | History, bulk edits, selected relationships, selected nodes                                                                        |
+| Side panel, right             | Selected relationships, selected nodes; with the developer tools also History and bulk edits                                       |
+| Below the canvas              | With the developer tools only: timing table (see [14](#14-performance-measurement))                                                |
 
 Every icon without a text label shows its name when the user hovers over it.
 
@@ -236,8 +236,14 @@ Every icon without a text label shows its name when the user hovers over it.
   It is placed beside the line and clear of the node, so the whole figure
   can always be read.
 - **BR-6.7** Where no ownership is known, nothing is shown.
-- **BR-6.7a** Where several relationships end at the same fund, their percentages never cover
-  one another: each is moved to a free place beside its line.
+- **BR-6.7a** Percentages never cover one another, whether their relationships end at the same
+  fund or at different funds: each is moved to a free place beside its line.
+- **BR-6.7b** A percentage does not lie on a fund, where the fund would hide it. Where the place
+  next to the arrowhead is taken or lies on a fund, the percentage goes to the other side of the
+  line or further back along the line, following its bends. On diagrams of 500 funds or more,
+  where lines cross funds, a few percentages may find no such place; they still never cover each
+  other.
+- **BR-6.7c** The same diagram always shows its percentages in the same places.
 
 ### 6.3 Relationship details
 
@@ -464,7 +470,18 @@ while the diagram has no nodes (BR-4.15).
 
 ## 14. Performance measurement
 
-This part serves the evaluation of the technology rather than the end user.
+This part serves the evaluation of the technology rather than the end user. Together it is
+called the **developer tools**.
+
+- **BR-14.0** The developer tools are hidden when the application is first opened: the timing
+  table below the canvas, and the History and Edits panels of the side panel. The page then shows
+  the editor only.
+- **BR-14.0a** A switch at the right end of the header (icon `</>`) shows and hides them. It is
+  marked while they are shown, and the browser remembers the choice for the next visit.
+- **BR-14.0b** Operations are timed and recorded while the developer tools are hidden; showing
+  them lists everything done so far.
+- **BR-14.0c** Undo, Redo and every editing function work the same whether the developer tools
+  are shown or not.
 
 - **BR-14.1** The side panel can change one node or all nodes at random, and repeat "change all"
   a chosen number of times to build a long history quickly.

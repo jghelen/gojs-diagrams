@@ -175,5 +175,7 @@ export const IMAGE_MAX_SIDE = 10_000;
 /** Shown above the diagram after an action failed and its changes were taken back. */
 export const FAILURE_NOTICE =
   'That action could not be completed and was undone. You can keep working on the diagram.';
+/** The name under which the browser remembers whether the developer tools are shown. */
+export const DEVELOPER_TOOLS_KEY = 'gojs-diagrams.developer-tools-shown';
 /** The name under which the browser remembers whether the benchmark statistics are open. */
 export const LOG_OPEN_KEY = 'gojs-diagrams.benchmark-statistics-open';

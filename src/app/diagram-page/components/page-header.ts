@@ -2,12 +2,14 @@ import { ChangeDetectionStrategy, Component, VERSION, inject, input, output } fr
 import * as go from 'gojs/release/go';
 import { BLANK_DATASET } from '../../diagram/constants';
 import { DATASETS } from '../../diagram/datasets';
+import { DeveloperTools } from '../developer-tools';
 import { DiagramState } from '../diagram-state';
 import { OperationRunner } from '../operation-runner';
 
 /**
- * The bar at the top of the page: which data the diagram shows, and what can be
- * done with the diagram as a whole (styles, export, print, reset, new).
+ * The bar at the top of the page: which data the diagram shows, what can be
+ * done with the diagram as a whole (styles, export, print, reset, new), and the
+ * switch for the developer tools.
  *
  * It only says what was asked for; the page carries it out.
  */
@@ -27,6 +29,7 @@ export class PageHeader {
   readonly exportPng = output<void>();
   readonly printDiagram = output<void>();
 
+  protected readonly developerTools = inject(DeveloperTools);
   protected readonly busy = inject(OperationRunner).busy;
   /** True when the diagram has no nodes: there is nothing to style, export or print then. */
   protected readonly isEmpty = inject(DiagramState).isEmpty;

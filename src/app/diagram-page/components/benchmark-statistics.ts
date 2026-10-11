@@ -9,13 +9,15 @@ import {
 } from '@angular/core';
 import { LOG_OPEN_KEY } from '../../diagram/constants';
 import { readFlag, writeFlag } from '../browser';
+import { DeveloperTools } from '../developer-tools';
 import { LogEntry, OperationRunner } from '../operation-runner';
 
 /**
  * The benchmark statistics below the canvas: one row per operation with its
  * timings, and behind the number of changes of a row, the dialog that lists them.
  *
- * The rows themselves are kept by the OperationRunner.
+ * The rows themselves are kept by the OperationRunner. The table is part of the
+ * developer tools and is on screen only while those are shown.
  */
 @Component({
   selector: 'app-benchmark-statistics',
@@ -25,6 +27,7 @@ import { LogEntry, OperationRunner } from '../operation-runner';
 })
 export class BenchmarkStatistics {
   private readonly runner = inject(OperationRunner);
+  protected readonly developerTools = inject(DeveloperTools);
 
   /** The table was opened or closed, so the canvas above it has a new height. */
   readonly toggled = output<void>();

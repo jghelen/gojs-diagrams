@@ -4,6 +4,7 @@ import {
   DestroyRef,
   ElementRef,
   afterNextRender,
+  effect,
   inject,
   signal,
   viewChild,
@@ -33,6 +34,7 @@ import { RelationshipCard } from './components/relationship-card';
 import { SidePanel } from './components/side-panel';
 import { StylesDialog } from './components/styles-dialog';
 import { ToolStrip } from './components/tool-strip';
+import { DeveloperTools } from './developer-tools';
 import { DiagramActions } from './diagram-actions';
 import { diagramPicture, downloadDiagramPng } from './diagram-picture';
 import { DiagramState } from './diagram-state';
@@ -66,6 +68,7 @@ import { SelectionState } from './selection-state';
  * - `NodeSearch`: the search for nodes by name.
  * - `LinkInfoCard`: which relationship's card is open, and where.
  * - `FundStyles`: what is ticked and picked in the styles dialog.
+ * - `DeveloperTools`: whether the statistics, history numbers and random edits are shown.
  */
 @Component({
   selector: 'app-diagram-page',
@@ -92,6 +95,7 @@ import { SelectionState } from './selection-state';
     NodeSearch,
     LinkInfoCard,
     FundStyles,
+    DeveloperTools,
   ],
 })
 export class DiagramPage {
@@ -103,6 +107,7 @@ export class DiagramPage {
   private readonly nodeSearch = inject(NodeSearch);
   private readonly linkCard = inject(LinkInfoCard);
   private readonly styles = inject(FundStyles);
+  private readonly developerTools = inject(DeveloperTools);
 
   /** Id of the dataset the diagram was loaded with. */
   protected readonly datasetId = signal(DEFAULT_DATASET);
@@ -127,6 +132,11 @@ export class DiagramPage {
 
   constructor() {
     afterNextRender(() => this.init());
+    // The statistics below the canvas come and go with the developer tools.
+    effect(() => {
+      this.developerTools.shown();
+      this.canvasResized();
+    });
     inject(DestroyRef).onDestroy(() => {
       this.stopReveal();
       this.stopWatchingErrors();
@@ -297,7 +307,7 @@ export class DiagramPage {
 
   /** The canvas got a new size; GoJS has to be told once the page is laid out again. */
   protected canvasResized(): void {
-    requestAnimationFrame(() => this.diagram.requestUpdate());
+    requestAnimationFrame(() => this.diagram?.requestUpdate());
   }
 
   // ----- Deleting -----
