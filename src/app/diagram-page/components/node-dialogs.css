@@ -1,0 +1,15 @@
+/* Not a box of its own: the page lays out what is inside. */
+:host {
+  display: contents;
+}
+
+.modal textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}

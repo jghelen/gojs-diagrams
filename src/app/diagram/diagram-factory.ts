@@ -1,9 +1,10 @@
 // 'gojs/release/go' is always the production build. Plain 'gojs' resolves to the
 // slower debug build under `ng serve`, which would inflate the timings.
 import * as go from 'gojs/release/go';
+import { AvoidsLinksRouter } from 'gojs-extensions/extensionsJSM/AvoidsLinksRouter';
 import { LayoutType } from './layouts';
 import { withoutUndo } from './history.service';
-import { LinkType, linkStyle, routingFor } from './link-types';
+import { LinkType, avoidsNodes, linkStyle, routingFor, tooBigToAvoidNodes } from './link-types';
 import { LinkData, LinkKind, NodeData, formatOwnership } from './node-data';
 import {
   DIMMED_OPACITY,
@@ -238,7 +239,7 @@ function createBatchIcon(): go.Panel {
  * A hover hint with the whole of a node's title or subtitle. It only appears
  * while the node itself has had to cut that text off.
  */
-function fullTextHint(field: 'title' | 'subtitle'): go.Adornment {
+function fullTextHint(field: 'title' | 'legalEntityType'): go.Adornment {
   return go.GraphObject.build<go.Adornment>(go.Builders.ToolTip)
     .bindObject('visible', 'adornedObject', (text: go.TextBlock | null) => !!text?.isOverflowed)
     .add(
@@ -469,9 +470,9 @@ function createNodeTemplate(): go.Node {
         new go.TextBlock({
           ...NODE_TEXT,
           font: '10px system-ui, sans-serif',
-          toolTip: fullTextHint('subtitle'),
+          toolTip: fullTextHint('legalEntityType'),
         })
-          .bind('text', 'subtitle')
+          .bind('text', 'legalEntityType')
           // Shown only once a legal entity field was chosen in the styles dialog.
           .bindModel(
             'visible',
@@ -630,6 +631,15 @@ function createLinkCard(): go.Adornment {
 }
 
 const LINK_CARD_TEMPLATE = createLinkCard();
+
+/**
+ * Brings the cards in line with the model if they are not: drawn although the
+ * model says hidden, or the other way round. That happens when an action that
+ * switched them was interrupted and taken back. Costs nothing when they agree.
+ */
+export function syncLinkCards(diagram: go.Diagram): void {
+  if (allLinkCardsShown(diagram) !== cardsDrawnIn.has(diagram)) refreshLinkCards(diagram);
+}
 
 /** The diagrams in which cards are currently drawn, to know when there are some to take away. */
 const cardsDrawnIn = new WeakSet<go.Diagram>();
@@ -1191,6 +1201,27 @@ function handleClicks(diagram: go.Diagram, clicks: IconClicks): void {
   };
 }
 
+/** How far apart lines are drawn that would otherwise run on top of each other. */
+const LINE_SPACING = 7;
+
+/**
+ * Draws lines that share a stretch of their way side by side instead of on top
+ * of each other, so that each can be told from the others. It works on the
+ * right-angled line types only, and only on diagrams small enough for their
+ * lines to be routed around the nodes: on a big diagram it would take too long.
+ */
+class SideBySideRouter extends AvoidsLinksRouter {
+  override canRoute(container: go.Group | go.Diagram): boolean {
+    const model = this.diagram?.model;
+    if (!model) return false;
+    const { linkType } = model.modelData as Partial<ModelData>;
+    const rightAngled = linkType !== undefined && avoidsNodes(linkType);
+    return (
+      rightAngled && !tooBigToAvoidNodes(model.nodeDataArray.length) && super.canRoute(container)
+    );
+  }
+}
+
 export function createDiagram(div: HTMLDivElement, clicks: IconClicks): go.Diagram {
   const diagram = new go.Diagram(div, {
     nodeTemplate: createNodeTemplate(),
@@ -1221,6 +1252,7 @@ export function createDiagram(div: HTMLDivElement, clicks: IconClicks): go.Diagr
   diagram.toolManager.linkingTool.archetypeLinkData = { category: 'manual' satisfies LinkKind };
   handleClicks(diagram, clicks);
   linkFromEdge(diagram);
+  diagram.routers.add(new SideBySideRouter({ linkSpacing: LINE_SPACING }));
   diagram.addDiagramListener('SelectionMoved', (e) => rerouteLinksAcross(e.subject));
   // Lines are drawn up to the outline of a node, so when a node changes shape
   // its lines have to be measured again.

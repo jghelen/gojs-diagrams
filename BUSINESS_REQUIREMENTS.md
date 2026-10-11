@@ -33,8 +33,8 @@ the business: **does undo/redo stay fast and reliable on large structures** (up 
 | Term                | Meaning                                                                                                          |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | Diagram             | One fund structure: its funds, their relationships, a name and a description                                     |
-| Node                | One fund, drawn as a shape with the fund's name and fund type                                                    |
-| Fund type           | The kind of fund, shown as the node's subtitle (for example "Feeder fund")                                       |
+| Node                | One fund, drawn as a shape with the fund's name and, when shown, its legal entity type                           |
+| Legal entity type   | The kind of fund (for example "Feeder fund"); it can be shown under the name of the node                         |
 | Relationship        | A line with an arrow from one fund to another                                                                    |
 | Hierarchy           | The main holding: the line from a fund to a fund in which it is the largest investor; together these form a tree |
 | Manual relationship | A relationship the user drew by hand in the diagram                                                              |
@@ -95,8 +95,9 @@ Every icon without a text label shows its name when the user hovers over it.
 ### 4.3 Name and description
 
 - **BR-4.9** A diagram has a name and a description, edited in the bar above the canvas.
-- **BR-4.10** An opened diagram is named after its data; a new diagram is named "Untitled
-  diagram". The description starts empty.
+- **BR-4.10** An opened diagram is named after its data. The description starts empty.
+- **BR-4.10a** A new diagram has no name; the user has to give it one. Until then the name box is
+  empty, marked in red, and says "Diagram name (required)".
 - **BR-4.11** Changing the name or the description is one undo step each.
 
 ### 4.4 Reset and new diagram
@@ -107,6 +108,10 @@ Every icon without a text label shows its name when the user hovers over it.
   Add node and hand-drawn relationships.
 - **BR-4.14** While the diagram is empty, the actions that need content (the three zooms, Layout,
   Lines, Auto arrange) are disabled. Add node stays available.
+- **BR-4.15** While the diagram has no nodes, the **Styles** button and the **Actions** menu
+  (Export PNG, Print) are disabled too: there is nothing to style, export or print. Both become
+  available with the first node, and are disabled again when the last node is deleted or its
+  adding is undone. Reset diagram and New diagram stay available.
 
 ## 5. Nodes (funds)
 
@@ -116,9 +121,9 @@ Every icon without a text label shows its name when the user hovers over it.
   entity field (subtitle), such as its legal entity type. A newly opened diagram shows no
   subtitle; it appears once a field is applied in the styles dialog (see BR-8.0a).
 - **BR-5.2** All nodes have the same size, whatever their shape.
-- **BR-5.3** A name or fund type that does not fit is cut off with "…". Hovering over it shows the
+- **BR-5.3** A name or legal entity type that does not fit is cut off with "…". Hovering over it shows the
   full text. Text never runs outside the node.
-- **BR-5.3a** Name and fund type are centred in the node, also when they are cut off. A long name
+- **BR-5.3a** Name and legal entity type are centred in the node, also when they are cut off. A long name
   is cut where the line ends, in the middle of a word if need be.
 - **BR-5.4** Text is dark on a light fill and light on a dark fill, so it stays readable in every
   colour.
@@ -165,7 +170,7 @@ Every icon without a text label shows its name when the user hovers over it.
 
 ### 5.7 Editing nodes
 
-- **BR-5.18** With one or more nodes selected, the side panel edits title, subtitle and colour.
+- **BR-5.18** With one or more nodes selected, the side panel edits title, legal entity type and colour.
   The change applies to all selected nodes at once and is one undo step.
 - **BR-5.18a** The shape of the selected nodes is set from the **Shape** item of the left
   navigation, not from the side panel. It opens a column of shape pictures, each named on hover;
@@ -175,7 +180,7 @@ Every icon without a text label shows its name when the user hovers over it.
   every highlighted node, including the nodes joined by a hand-drawn relationship, as one undo
   step. Its hover text then says how many nodes that is.
 - **BR-5.19** Where the selected nodes differ on a field, the panel shows "Mixed".
-- **BR-5.20** Title and subtitle cannot be edited directly on the node. They are changed in the
+- **BR-5.20** Title and legal entity type cannot be edited directly on the node. They are changed in the
   side panel only. A press on the text of a node selects or moves the node.
 
 ### 5.8 Moving nodes
@@ -217,6 +222,9 @@ Every icon without a text label shows its name when the user hovers over it.
   percentages can pass between two nodes.
 - **BR-6.3b** While the mouse is on a line, that line is drawn in gold and thicker, so that it
   can be followed among the others. Lines cross each other plainly, without a hop at the crossing.
+- **BR-6.3c** Right-angled lines that would run along the same stretch are drawn side by side,
+  not on top of each other, so that each can be told from the others. This applies on diagrams
+  of fewer than 500 funds.
 
 ### 6.2 Ownership
 
@@ -310,7 +318,8 @@ Every icon without a text label shows its name when the user hovers over it.
 ## 8. Styling by legal entity field
 
 The **Styles** button (palette icon) opens the dialog **Styles by legal entity field**, which
-gives all nodes with the same value of a field the same look.
+gives all nodes with the same value of a field the same look. The button is disabled while the
+diagram has no nodes (BR-4.15).
 
 - **BR-8.0** A dropdown at the top left of the dialog, above **Select all**, chooses the legal
   entity field the nodes are grouped by. For now it offers one field, **Legal entity type**.
@@ -330,7 +339,7 @@ gives all nodes with the same value of a field the same look.
   of nodes of that type.
 - **BR-8.2** Each row starts with a small picture of that type's shape and colour. The picture
   follows the choices made in the dialog, before they are applied.
-- **BR-8.3** One or several fund types can be selected by clicking their rows. A **Select all**
+- **BR-8.3** One or several legal entity types can be selected by clicking their rows. A **Select all**
   checkbox selects or unselects all of them. Selected rows are marked in dark green.
 - **BR-8.4** Shapes are offered as pictures with their name: Square, Rounded, Ellipse, Diamond,
   Capsule, Rounded top. Colours are offered as swatches.
@@ -425,7 +434,8 @@ gives all nodes with the same value of a field the same look.
 
 ## 12. Export and print
 
-The **Actions** menu in the header offers Save, Save As, Export PNG and Print.
+The **Actions** menu in the header offers Save, Save As, Export PNG and Print. It is disabled
+while the diagram has no nodes (BR-4.15).
 
 - **BR-12.1** **Export PNG** downloads a picture of the **whole** diagram, not only the visible
   part.

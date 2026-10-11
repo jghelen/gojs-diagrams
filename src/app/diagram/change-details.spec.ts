@@ -12,8 +12,8 @@ describe('describeChanges', () => {
     const node = test.model.nodeDataArray[4];
     test.model.commit((m) => {
       m.set(node, 'title', 'New title');
-      // A fund type that no generated fund has, so that this is a change whatever the data.
-      m.set(node, 'subtitle', 'Money market fund');
+      // A legal entity type that no generated fund has, so that this is a change whatever the data.
+      m.set(node, 'legalEntityType', 'Money market fund');
       m.set(node, 'shape', 'Diamond');
       m.set(node, 'color', '#1e3a8a');
     }, 'edit');
@@ -25,7 +25,7 @@ describe('describeChanges', () => {
     expect(details.total).toBe(test.model.undoManager.history.last()!.changes.count);
     expect(details.rows.filter((row) => row.kind === 'data')).toEqual([
       expect.objectContaining({ property: 'title', after: 'New title' }),
-      expect.objectContaining({ property: 'fund type', after: 'Money market fund' }),
+      expect.objectContaining({ property: 'legal entity type', after: 'Money market fund' }),
       expect.objectContaining({ property: 'shape', before: 'Rectangle', after: 'Diamond' }),
       expect.objectContaining({ property: 'color', before: '#f3f4f6', after: '#1e3a8a' }),
     ]);
@@ -69,7 +69,7 @@ describe('describeChanges', () => {
       m.addNodeData({
         key: 99,
         title: 'Added',
-        subtitle: 'Hedge fund',
+        legalEntityType: 'Hedge fund',
         shape: 'Rectangle',
         color: '#f3f4f6',
         comment: '',
@@ -125,7 +125,7 @@ describe('describeChanges', () => {
     const fund: NodeData = {
       key: 99,
       title: 'A fund with a rather long name, to be shown to its end',
-      subtitle: 'Fund of funds',
+      legalEntityType: 'Fund of funds',
       shape: 'RoundedTopRectangle',
       color: '#f3f4f6',
       comment: 'Added for the test',

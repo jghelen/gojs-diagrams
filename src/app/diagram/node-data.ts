@@ -4,14 +4,15 @@ import {
   COLORS,
   DEFAULT_COLOR,
   DEFAULT_SHAPE,
-  FUND_TYPES,
+  LEGAL_ENTITY_TYPES,
   SHAPES,
 } from './constants';
 
 export interface NodeData {
   key: number;
   title: string;
-  subtitle: string;
+  /** The kind of fund this is; one of LEGAL_ENTITY_TYPES unless the user typed another. */
+  legalEntityType: string;
   shape: go.FigureName;
   color: string;
   /** Free text attached to the node; empty when there is no comment. */
@@ -44,8 +45,13 @@ export function formatOwnership(ownership: number): string {
 }
 
 /** The custom fields that the bench mutates and the UndoManager has to restore. */
-export type EditableField = 'title' | 'subtitle' | 'shape' | 'color';
-export const EDITABLE_FIELDS: readonly EditableField[] = ['title', 'subtitle', 'shape', 'color'];
+export type EditableField = 'title' | 'legalEntityType' | 'shape' | 'color';
+export const EDITABLE_FIELDS: readonly EditableField[] = [
+  'title',
+  'legalEntityType',
+  'shape',
+  'color',
+];
 
 // ----- Generated fund structures -----
 //
@@ -82,8 +88,10 @@ const HOUSES = [
 
 const FUND_OF_FUNDS = 'Fund of funds';
 const FEEDER_FUND = 'Feeder fund';
-/** The fund types that invest according to a strategy; the other two invest in funds. */
-const STRATEGY_TYPES = FUND_TYPES.filter((type) => type !== FUND_OF_FUNDS && type !== FEEDER_FUND);
+/** The legal entity types that invest according to a strategy; the other two invest in funds. */
+const STRATEGY_TYPES = LEGAL_ENTITY_TYPES.filter(
+  (type) => type !== FUND_OF_FUNDS && type !== FEEDER_FUND,
+);
 
 /** What funds of each type are called, after the name of their house. */
 const FUND_NAMES: Record<string, readonly string[]> = {
@@ -213,7 +221,7 @@ export function createNodes(count: number): NodeData[] {
   return Array.from({ length: count }, (_, i) => ({
     key: i + 1,
     title: fundTitle(profiles[i + 1].house, profiles[i + 1].type, i + 1, random),
-    subtitle: profiles[i + 1].type,
+    legalEntityType: profiles[i + 1].type,
     shape: DEFAULT_SHAPE,
     color: DEFAULT_COLOR,
     comment: '',
@@ -306,15 +314,15 @@ export function randomPatch(
   data: NodeData,
   random: Random = Math.random,
 ): Pick<NodeData, EditableField> {
-  const subtitle = pickOther(FUND_TYPES, data.subtitle, random);
+  const legalEntityType = pickOther(LEGAL_ENTITY_TYPES, data.legalEntityType, random);
   return {
     title: fundTitle(
       pickOther(HOUSES, data.title.split(' ')[0], random),
-      subtitle,
+      legalEntityType,
       data.key,
       random,
     ),
-    subtitle,
+    legalEntityType,
     shape: pickOther(SHAPES, data.shape, random),
     color: pickOther(COLORS, data.color, random),
   };

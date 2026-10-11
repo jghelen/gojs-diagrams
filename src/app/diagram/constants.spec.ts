@@ -7,7 +7,7 @@ import {
   DEFAULT_LAYOUT,
   DEFAULT_LINK_TYPE,
   DEFAULT_SHAPE,
-  FUND_TYPES,
+  LEGAL_ENTITY_TYPES,
   MAX_CHANGE_ROWS,
   NODE_COUNTS,
   REVEAL_LARGE_MS,
@@ -21,7 +21,7 @@ import { SHAPE_TILES } from './shape-tiles';
 
 describe('constants', () => {
   it('offer every choice once', () => {
-    for (const list of [SHAPES, COLORS, FUND_TYPES, NODE_COUNTS]) {
+    for (const list of [SHAPES, COLORS, LEGAL_ENTITY_TYPES, NODE_COUNTS]) {
       expect(new Set<unknown>(list).size).toBe(list.length);
     }
   });

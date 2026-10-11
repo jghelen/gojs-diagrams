@@ -1,0 +1,143 @@
+/* Not a box of its own: the page lays out what is inside. */
+:host {
+  display: contents;
+}
+
+.log {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 200px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* Closed, only its heading is left and the canvas takes the room. */
+.log.closed {
+  height: auto;
+}
+
+.log-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 0;
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.log:not(.closed) .log-toggle {
+  border-bottom: 1px solid var(--border);
+}
+
+.log-toggle svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.log-count {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.log-table {
+  overflow: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+th,
+td {
+  padding: 5px 10px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  color: var(--muted);
+  font-weight: 600;
+}
+
+th:first-child,
+td:first-child {
+  text-align: left;
+}
+
+.empty {
+  color: var(--muted);
+  text-align: center;
+}
+
+/* The number of changes in the statistics; opens the list of them. */
+button.link-button {
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: #1d4ed8;
+  font: inherit;
+  text-decoration: underline;
+}
+
+.modal.changes {
+  width: min(860px, calc(100vw - 32px));
+}
+
+.change-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 84px;
+  margin: 10px 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+  font-size: 12px;
+}
+
+.change-groups li {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.change-kind {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.change-kind.data {
+  color: #166534;
+}
+
+.change-list {
+  max-height: 46vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.change-list th,
+.change-list td {
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

@@ -48,8 +48,11 @@ export const COLORS: readonly string[] = [
   '#1e3a8a',
 ];
 
-/** The kinds of fund. A node shows its fund type as its subtitle. */
-export const FUND_TYPES: readonly string[] = [
+/**
+ * The legal entity types: the kinds of fund there are. A node can show its type
+ * under its name, and the styles dialog groups the nodes by it.
+ */
+export const LEGAL_ENTITY_TYPES: readonly string[] = [
   'Private equity',
   'Venture capital',
   'Hedge fund',

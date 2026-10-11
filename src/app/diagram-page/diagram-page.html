@@ -1,0 +1,42 @@
+<app-page-header
+  [datasetId]="datasetId()"
+  (loadDataset)="reset($event)"
+  (openStyles)="openStyles()"
+  (exportPng)="exportPng()"
+  (printDiagram)="print()"
+/>
+
+<main class="layout">
+  <section class="canvas">
+    <app-diagram-info-bar />
+    <div class="diagram-area">
+      <div #diagramHost class="diagram"></div>
+      <app-relationship-card />
+      @if (failure(); as message) {
+        <div class="failure" role="alert">
+          <span>{{ message }}</span>
+          <button type="button" aria-label="Dismiss" title="Dismiss" (click)="failure.set(null)">
+            ×
+          </button>
+        </div>
+      }
+      <div
+        #overviewHost
+        class="overview"
+        role="img"
+        aria-label="Overview of the whole diagram; drag the box to move around"
+      ></div>
+      <app-tool-strip />
+    </div>
+    <app-benchmark-statistics (toggled)="canvasResized()" />
+  </section>
+
+  <app-side-panel (deleteNodes)="deleteSelectedNodes()" />
+</main>
+
+<app-node-dialogs />
+<app-styles-dialog />
+
+@if (printImage(); as image) {
+  <img class="print-only" alt="The diagram" [src]="image" (load)="printLoaded()" />
+}

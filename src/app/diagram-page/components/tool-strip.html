@@ -1,0 +1,208 @@
+<nav class="canvas-nav" aria-label="Diagram tools">
+  <button
+    type="button"
+    data-tip="Add node"
+    aria-label="Add node"
+    [disabled]="busy()"
+    (click)="actions.addNode()"
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+  </button>
+  <button
+    type="button"
+    data-tip="Undo"
+    aria-label="Undo"
+    [disabled]="busy() || !stats()?.canUndo"
+    (click)="actions.undo()"
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+    </svg>
+  </button>
+  <button
+    type="button"
+    data-tip="Redo"
+    aria-label="Redo"
+    [disabled]="busy() || !stats()?.canRedo"
+    (click)="actions.redo()"
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M15 14l5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
+    </svg>
+  </button>
+  <button
+    type="button"
+    data-tip="Zoom in"
+    aria-label="Zoom in"
+    [disabled]="busy() || isEmpty()"
+    (click)="actions.zoomIn()"
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="M15.5 15.5L21 21M10.5 7.5v6M7.5 10.5h6" />
+    </svg>
+  </button>
+  <button
+    type="button"
+    data-tip="Zoom out"
+    aria-label="Zoom out"
+    [disabled]="busy() || isEmpty()"
+    (click)="actions.zoomOut()"
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="M15.5 15.5L21 21M7.5 10.5h6" />
+    </svg>
+  </button>
+  <button
+    type="button"
+    data-tip="Zoom to fit"
+    aria-label="Zoom to fit"
+    [disabled]="busy() || isEmpty()"
+    (click)="zoomToFit()"
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5M9 9h6v6H9z" />
+    </svg>
+  </button>
+  <div class="nav-flyout-anchor">
+    <button
+      type="button"
+      aria-label="Layout"
+      [attr.data-tip]="'Layout: ' + currentLayout().label"
+      [attr.aria-expanded]="layoutMenuOpen()"
+      [disabled]="busy() || isEmpty()"
+      (click)="toggleMenu('layout')"
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path [attr.d]="currentLayout().icon" />
+      </svg>
+    </button>
+    @if (layoutMenuOpen() && !isEmpty()) {
+      <div class="nav-flyout" role="menu" aria-label="Layout types">
+        @for (layout of layouts; track layout.type) {
+          <button
+            type="button"
+            role="menuitemradio"
+            [attr.data-tip]="layout.label"
+            [attr.aria-label]="layout.label"
+            [attr.aria-checked]="layout.type === layoutType()"
+            [class.current]="layout.type === layoutType()"
+            (click)="pickLayout(layout.type)"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path [attr.d]="layout.icon" />
+            </svg>
+          </button>
+        }
+      </div>
+    }
+  </div>
+  <div class="nav-flyout-anchor">
+    <button
+      type="button"
+      aria-label="Lines"
+      [attr.data-tip]="'Lines: ' + linkTypeLabel(linkType())"
+      [attr.aria-expanded]="linkMenuOpen()"
+      [disabled]="busy() || isEmpty()"
+      (click)="toggleMenu('lines')"
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path [attr.d]="currentLinkStyle().icon" />
+      </svg>
+    </button>
+    @if (linkMenuOpen() && !isEmpty()) {
+      <div class="nav-flyout" role="menu" aria-label="Line types">
+        @for (style of linkTypes; track style.type) {
+          <button
+            type="button"
+            role="menuitemradio"
+            [attr.data-tip]="linkTypeLabel(style.type)"
+            [attr.aria-label]="linkTypeLabel(style.type)"
+            [attr.aria-checked]="style.type === linkType()"
+            [class.current]="style.type === linkType()"
+            (click)="pickLinkType(style.type)"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path [attr.d]="style.icon" />
+            </svg>
+          </button>
+        }
+      </div>
+    }
+  </div>
+  <div class="nav-flyout-anchor">
+    <button
+      type="button"
+      aria-label="Shape"
+      [attr.data-tip]="shapeTip()"
+      [attr.aria-expanded]="shapeMenuOpen()"
+      [disabled]="busy() || isEmpty() || !shapeScope()"
+      (click)="toggleMenu('shape')"
+    >
+      @if (selectedShapeTile(); as tile) {
+        <svg class="shape-icon" viewBox="0 0 44 26" aria-hidden="true">
+          <path [attr.d]="tile.path" />
+        </svg>
+      } @else {
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 3h8v8H3zM17.5 13a4 4 0 1 0 .01 0zM7 13.5l4.5 7.5h-9z" />
+        </svg>
+      }
+    </button>
+    @if (shapeMenuOpen() && shapeScope(); as scope) {
+      <div class="nav-flyout" role="menu" aria-label="Shapes">
+        @for (tile of shapeTiles; track tile.figure) {
+          <button
+            type="button"
+            role="menuitemradio"
+            [attr.data-tip]="tile.label"
+            [attr.aria-label]="tile.label"
+            [attr.aria-checked]="tile.figure === scope.shape"
+            [class.current]="tile.figure === scope.shape"
+            (click)="pickShape(tile.figure)"
+          >
+            <svg class="shape-icon" viewBox="0 0 44 26" aria-hidden="true">
+              <path [attr.d]="tile.path" />
+            </svg>
+          </button>
+        }
+      </div>
+    }
+  </div>
+  <button
+    type="button"
+    data-tip="Auto arrange: run the current layout again"
+    aria-label="Auto arrange"
+    [disabled]="busy() || isEmpty()"
+    (click)="actions.autoArrange()"
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM18.5 15.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z"
+      />
+    </svg>
+  </button>
+  <button
+    type="button"
+    data-tip="Expand all: show the card of every relationship"
+    aria-label="Expand all"
+    [disabled]="busy() || isEmpty() || cardsExpanded()"
+    (click)="expandCards()"
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 9l4-4 4 4M8 15l4 4 4-4M12 5v14" />
+    </svg>
+  </button>
+  <button
+    type="button"
+    data-tip="Collapse all: hide the relationship cards"
+    aria-label="Collapse all"
+    [disabled]="busy() || isEmpty() || !cardsExpanded()"
+    (click)="collapseCards()"
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 4l4 4 4-4M8 20l4-4 4 4M12 8v8" />
+    </svg>
+  </button>
+</nav>

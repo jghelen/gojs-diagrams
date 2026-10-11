@@ -3,7 +3,7 @@ import * as go from 'gojs/release/go';
 import {
   DEFAULT_COLOR,
   DEFAULT_SHAPE,
-  FUND_TYPES,
+  LEGAL_ENTITY_TYPES,
   STYLE_FIELDS,
   StyleFieldId,
 } from '../diagram/constants';
@@ -28,10 +28,11 @@ function countOf(count: number, one: string, many: string): string {
 /**
  * Everything that changes the diagram, and stepping through its history.
  *
- * Every method here is one operation for the benchmark: it is queued, timed and
- * listed in the statistics by the OperationRunner. A change is recorded through
- * the HistoryService, as one transaction, so each call is one undo step (the
- * bulk edit is the exception: one step per run).
+ * Every method that changes something is one operation for the benchmark: it is
+ * queued, timed and listed in the statistics by the OperationRunner. A change is
+ * recorded through the HistoryService, as one transaction, so each call is one
+ * undo step (the bulk edit is the exception: one step per run). Only zooming, at
+ * the end, is neither: it changes how the diagram is looked at, not the diagram.
  *
  * The methods say what to change; they do not look at what is selected or at
  * any dialog. Whoever calls them passes the nodes or relationships meant.
@@ -136,7 +137,7 @@ export class DiagramActions {
       const node: NodeData = {
         key,
         title: `New fund ${key}`,
-        subtitle: FUND_TYPES[0],
+        legalEntityType: LEGAL_ENTITY_TYPES[0],
         shape: DEFAULT_SHAPE,
         color: DEFAULT_COLOR,
         comment: '',
@@ -180,7 +181,7 @@ export class DiagramActions {
     return this.runner.run(() => {
       const nodes = this.model.nodeDataArray.filter(
         (node) =>
-          types.has(node.subtitle) &&
+          types.has(node.legalEntityType) &&
           ((color !== null && node.color !== color) || (shape !== null && node.shape !== shape)),
       );
       const fieldChanges = field !== this.model.modelData.subtitleField;
@@ -354,6 +355,21 @@ export class DiagramActions {
           ),
       ),
     );
+  }
+
+  // ----- The view: zooming changes nothing in the diagram, so it is neither recorded nor timed -----
+
+  zoomIn(): void {
+    this.diagram.commandHandler.increaseZoom();
+  }
+
+  zoomOut(): void {
+    this.diagram.commandHandler.decreaseZoom();
+  }
+
+  /** Shows the whole diagram. */
+  zoomToFit(): void {
+    this.diagram.zoomToFit();
   }
 
   /** Fits the diagram once GoJS has recomputed its bounds, which it does in its next frame. */

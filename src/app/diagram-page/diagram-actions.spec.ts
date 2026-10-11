@@ -67,19 +67,24 @@ describe('DiagramActions', () => {
 
   describe('styles', () => {
     it('gives every node of the given types a color and a shape, as one undo step', async () => {
-      const type = node(5).subtitle;
-      const count = test.model.nodeDataArray.filter((data) => data.subtitle === type).length;
+      const type = node(5).legalEntityType;
+      const count = test.model.nodeDataArray.filter((data) => data.legalEntityType === type).length;
       await actions.applyStyle('legalEntityType', new Set([type]), '#fde68a', 'Diamond');
       for (const data of test.model.nodeDataArray) {
-        expect(data.color).toBe(data.subtitle === type ? '#fde68a' : '#f3f4f6');
-        expect(data.shape).toBe(data.subtitle === type ? 'Diamond' : 'Rectangle');
+        expect(data.color).toBe(data.legalEntityType === type ? '#fde68a' : '#f3f4f6');
+        expect(data.shape).toBe(data.legalEntityType === type ? 'Diamond' : 'Rectangle');
       }
       expect(test.history.length).toBe(1);
       expect(lastOp().op).toBe(`Style ${count} ${count === 1 ? 'node' : 'nodes'}`);
     });
 
     it('leaves alone what was not picked', async () => {
-      await actions.applyStyle('legalEntityType', new Set([node(5).subtitle]), null, 'Ellipse');
+      await actions.applyStyle(
+        'legalEntityType',
+        new Set([node(5).legalEntityType]),
+        null,
+        'Ellipse',
+      );
       expect(node(5).shape).toBe('Ellipse');
       expect(node(5).color).toBe('#f3f4f6');
     });
@@ -114,7 +119,12 @@ describe('DiagramActions', () => {
     it('unselects the shown field when the styles are reset, in the same undo step', async () => {
       // The harness shows the legal entity type on the nodes from the start.
       expect(test.model.modelData.subtitleField).toBe('legalEntityType');
-      await actions.applyStyle('legalEntityType', new Set([node(5).subtitle]), '#fde68a', null);
+      await actions.applyStyle(
+        'legalEntityType',
+        new Set([node(5).legalEntityType]),
+        '#fde68a',
+        null,
+      );
       await actions.resetStyles();
       expect(test.model.modelData.subtitleField).toBeNull();
       expect(node(5).color).toBe('#f3f4f6');
@@ -135,7 +145,7 @@ describe('DiagramActions', () => {
       hiddenRunner.busy.set(false);
       const hiddenActions = hidden.injector.get(DiagramActions);
       hiddenActions.connect(hidden.diagram);
-      const type = hidden.model.nodeDataArray[4].subtitle;
+      const type = hidden.model.nodeDataArray[4].legalEntityType;
 
       await hiddenActions.applyStyle('legalEntityType', new Set([type]), '#fde68a', null);
       expect(hidden.model.modelData.subtitleField).toBe('legalEntityType');
@@ -155,7 +165,7 @@ describe('DiagramActions', () => {
       expect(runner.log()).toHaveLength(listed);
       await actions.applyStyle(
         'legalEntityType',
-        new Set([node(5).subtitle]),
+        new Set([node(5).legalEntityType]),
         '#fde68a',
         'Diamond',
       );
@@ -272,6 +282,27 @@ describe('DiagramActions', () => {
       expect(runner.log().map((entry) => entry.op)).toEqual(['Describe diagram', 'Rename diagram']);
       await actions.setDiagramInfo('name', 'Meridian holdings');
       expect(test.history.length).toBe(2);
+    });
+  });
+
+  describe('zooming', () => {
+    it('zooms in, out and to the whole diagram without recording or timing anything', () => {
+      test.diagram.scale = 1;
+      actions.zoomIn();
+      expect(test.diagram.scale).toBeGreaterThan(1);
+      const zoomedIn = test.diagram.scale;
+      actions.zoomOut();
+      expect(test.diagram.scale).toBeLessThan(zoomedIn);
+
+      test.diagram.scale = 3;
+      actions.zoomToFit();
+      test.settle();
+      expect(test.diagram.scale).toBeLessThan(3);
+      const view = test.diagram.viewportBounds;
+      expect(view.containsRect(test.diagram.documentBounds)).toBe(true);
+
+      expect(test.history.length).toBe(0);
+      expect(runner.log()).toEqual([]);
     });
   });
 

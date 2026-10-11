@@ -1,4 +1,4 @@
-# GoJS UndoManager bench
+# Fund structure diagrams
 
 An Angular 22 app for trying out fund-structure diagrams built with [GoJS](https://gojs.net) 4, and
 for measuring how fast GoJS's undo/redo history is on diagrams of 24 to 2000 nodes.
@@ -26,7 +26,7 @@ The question behind the app is: **if a diagram editor for fund structures is bui
 undo/redo good enough for large diagrams?** The app answers that by letting you
 
 - load a diagram: a small sample fund structure, or 30 to 2000 generated funds,
-- change it the way a user would: rename funds, restyle them by fund type, comment on them, move
+- change it the way a user would: rename funds, restyle them by legal entity type, comment on them, move
   them, add and delete them, add and remove relationships, switch the layout,
 - step back through every change with **Undo**, all the way to the starting state, and forward
   again with **Redo**,
@@ -64,8 +64,9 @@ Then open http://localhost:4200.
 ### Name and description
 
 The bar above the canvas has two boxes, for the name of the diagram and a description. A loaded
-diagram starts out named after its data, a new one as "Untitled diagram". Both are stored with the
-diagram, and changing either is one undo step.
+diagram starts out named after its data. A new diagram has no name: the box is empty, marked in
+red and says "Diagram name (required)" until you type one. Both are stored with the diagram, and
+changing either is one undo step.
 
 ### Searching for a node
 
@@ -85,7 +86,8 @@ there.
 
 ### Actions
 
-The **Actions** menu in the top bar has four entries:
+The **Actions** menu in the top bar has four entries. It is disabled while the diagram has no
+nodes, because there is nothing to export or print then.
 
 - **Export PNG** downloads a picture of the whole diagram, not just the part on screen. The file
   is named after the diagram, for example `Sample fund structure.png`; characters a file name
@@ -120,7 +122,8 @@ and undo if there is something to undo, stay available.
   clears the history.
 - **New diagram**, the icon next to it, opens an empty canvas to build a diagram from scratch:
   add nodes with the plus in the tool strip and draw relationships between them. "Empty
-  diagram" in the **Data** dropdown does the same.
+  diagram" in the **Data** dropdown does the same. Until the diagram has a node, **Styles** and
+  **Actions** are disabled, and the name box asks for a name.
 
 Switching the layout or the line type, and Auto arrange, are undo steps like any other change.
 
@@ -167,7 +170,7 @@ gray square with a dark gray border.
 | Grey x             | top right      | "Delete node": asks for confirmation, then deletes the node                                                               |
 | Up and down arrows | left           | No action yet                                                                                                             |
 
-A thin rule separates the text from the three icons. If a name or fund type is too long for the
+A thin rule separates the text from the three icons. If a name or legal entity type is too long for the
 node, it ends in "…" and the full text appears when you hover over it.
 
 ### Selecting and editing nodes
@@ -176,7 +179,7 @@ node, it ends in "…" and the full text appears when you hover over it.
   out; click empty space to clear the selection. Ctrl/Cmd+A selects everything. Press on empty
   space for a moment and drag to draw a selection box.
 - A selected node has a **gold outline** in its own shape.
-- The **Selected nodes** panel lets you set the title, subtitle and colour. With several nodes
+- The **Selected nodes** panel lets you set the title, legal entity type and colour. With several nodes
   selected the change applies to all of them and is a single undo step. Fields on which the
   selected nodes differ show "Mixed".
 - **Shape**, the icon under Lines in the tool strip, sets the shape of the selected nodes. Click
@@ -191,13 +194,14 @@ node, it ends in "…" and the full text appears when you hover over it.
   those nodes gets the gold outline and the rest of the diagram is dimmed. The highlight goes
   away when you click empty space, select a second node, zoom, or do anything else.
 - **Drag** a node to move it. A node cannot be dropped on top of another node.
-- The title and subtitle cannot be edited on the node itself; change them in the **Selected
+- The title and legal entity type cannot be edited on the node itself; change them in the **Selected
   nodes** panel. A press on a node, also on its text, selects it or moves it.
 
 ### Styling by legal entity field
 
 **Styles** in the top bar opens the dialog **Styles by legal entity field**, which gives all
-nodes with the same value of a field the same look.
+nodes with the same value of a field the same look. The button is disabled while the diagram has
+no nodes.
 
 1. Pick the field in the dropdown at the top left. For now there is one, **Legal entity type**.
    Its values are then listed below: Feeder fund, Fund of funds, Private equity and so on, each
@@ -245,6 +249,9 @@ There are three kinds of line. All are black and end in an arrowhead.
 | Solid, thin    | A co-investment: a smaller stake another fund holds                      | yes       |
 | Dotted         | A relationship you drew yourself                                         | no        |
 
+- **Lines side by side:** where several right-angled lines would run along the same stretch,
+  they are drawn next to each other, 7 units apart, so that each can be followed. This applies
+  to the two orthogonal line types on diagrams of fewer than 500 funds.
 - **Following a line:** move the mouse over a line and it turns gold and thicker, so that one
   line can be followed among the others.
 - **Ownership:** a dark green percentage near the arrowhead says how much of the fund the line
@@ -276,7 +283,7 @@ There are three kinds of line. All are black and end in an arrowhead.
 
 ### Edits panel
 
-- **Randomize 1 node** / **Randomize all** change title, fund type, shape and colour on one node
+- **Randomize 1 node** / **Randomize all** change title, legal entity type, shape and colour on one node
   or on every node.
 - **N × randomize all** does that N times in a row, to build up a long history quickly. N can be
   1 up to the number of nodes (fewer on big diagrams); other entries are corrected.
@@ -302,7 +309,7 @@ again to open it.
 Operations are recorded while it is closed, and the browser remembers whether you left it open.
 
 The number in the **Changes** column is usually bigger than you would expect: randomizing one node
-shows 11 to 17 changes, not 4. Four are changes to the data (title, fund type, shape, colour). The
+shows 11 to 17 changes, not 4. Four are changes to the data (title, legal entity type, shape, colour). The
 rest are changes to the drawing that follow from them: the two texts, the fill, the text colour,
 the room the texts get inside the new shape, and the places of the x and the arrows. GoJS records those as well, so that an undo restores the picture exactly; values that
 happen to stay the same are not recorded, which is why the number varies. **Click the number** to
@@ -327,13 +334,21 @@ summary counts the changes per property; of a big operation the first 200 are li
 - GoJS is imported as `gojs/release/go`, which is always the production build. Plain `gojs`
   resolves to the slower debug build under `ng serve`.
 
+The package `gojs-extensions` (from the makers of GoJS, same version) supplies the router that
+draws overlapping lines side by side. It imports GoJS as `gojs`, while the app imports
+`gojs/release/go` to get the fast build also under `npm start`. Both must end up as the very same
+file, because two copies of GoJS do not recognise each other's objects. Three settings see to
+that: `conditions` and the dev server's `prebundle.exclude` in `angular.json`, and the alias in
+`vitest-base.config.mts` for the tests. If you ever see "is not an instance of Point" in the
+console, one of them has stopped working.
+
 ### Data model
 
 A `go.GraphLinksModel` holds everything that can be undone:
 
 | Part                     | Fields                                                                                                 |
 | ------------------------ | ------------------------------------------------------------------------------------------------------ |
-| Node                     | `key`, `title`, `subtitle` (the fund type), `shape`, `color`, `comment`, `loc`                         |
+| Node                     | `key`, `title`, `legalEntityType`, `shape`, `color`, `comment`, `loc`                                  |
 | Link                     | `key`, `from`, `to`, `category` (`hierarchy`, `relation` or `manual`), `ownership` (percent, optional) |
 | Model-wide (`modelData`) | `layoutType`, `linkType`, `name`, `description`                                                        |
 
@@ -475,23 +490,23 @@ npm test -- --watch=false --include src/app/diagram/undo-history.spec.ts
 
 ### What is covered
 
-| File                                                                                                                                                         | What it checks                                                                                                                                                                                                                                                                                                                                                      |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `diagram/node-data.spec.ts`                                                                                                                                  | Generated funds and relationships: counts, one parent per fund, no duplicates, ownership with two decimals, default gray square                                                                                                                                                                                                                                     |
-| `diagram/sample-data.spec.ts`                                                                                                                                | The sample fund structure is one tree with the expected funds, fund types and ownership                                                                                                                                                                                                                                                                             |
-| `diagram/datasets.spec.ts`                                                                                                                                   | The Data dropdown's entries and the 30-fund default                                                                                                                                                                                                                                                                                                                 |
-| `diagram/link-types.spec.ts`                                                                                                                                 | The four line types, which of them avoid nodes, and that they only do so on diagrams of fewer than 500 nodes                                                                                                                                                                                                                                                        |
-| `diagram/layouts.spec.ts`                                                                                                                                    | Every layout positions all nodes without overlaps; tree direction; small versus big trees                                                                                                                                                                                                                                                                           |
-| `diagram/diagram-factory.spec.ts`                                                                                                                            | Nodes (fixed size, icons, arrows, rule, red comment dot, gold outline), clicks on icons and selection, lines (black, solid or dotted, info icon, ownership label, meeting the outline of a shape), tree highlight, adding a node, drag rule                                                                                                                         |
-| `diagram/undo-history.spec.ts`                                                                                                                               | Undo/redo of every kind of change back to the exact initial state, more than 999 steps, deleted nodes coming back with their relationships                                                                                                                                                                                                                          |
-| `diagram/history.service.spec.ts`                                                                                                                            | The history service: recording, undo and redo, positions, the state check, unfinished transactions, changes that are not recorded                                                                                                                                                                                                                                   |
-| `diagram/constants.spec.ts`                                                                                                                                  | The constants: no duplicates, defaults among the choices, a picture for every shape                                                                                                                                                                                                                                                                                 |
-| `diagram/shape-tiles.spec.ts`, `diagram/benchmark.spec.ts`                                                                                                   | Shape pictures for the Styles dialog; the timing helpers                                                                                                                                                                                                                                                                                                            |
-| `diagram/file-name.spec.ts`, `diagram/change-details.spec.ts`                                                                                                | The name of the exported file; the description of what an operation changed                                                                                                                                                                                                                                                                                         |
-| `perf-diagram/perf-diagram.spec.ts`                                                                                                                          | The page: loading and its animation (everything disabled until all nodes are shown), undo/redo and the state check, bulk-run input, multi-node edits, comments, delete confirmation, relationships, layout and line type, tree highlight, the Styles dialog, the canvas tools, the Actions menu, name and description, search, the overview, new diagram, Add Batch |
-| `perf-diagram/operation-runner.spec.ts`, `diagram-actions.spec.ts`                                                                                           | The operation runner (order, timing log, recovery); every action as one undo step                                                                                                                                                                                                                                                                                   |
-| `perf-diagram/selection-state.spec.ts`, `node-search.spec.ts`, `link-info-card.spec.ts`, `fund-styles.spec.ts`, `diagram-picture.spec.ts`, `browser.spec.ts` | Selection and highlight; the search; the relationship card; the styles dialog state; export and print pictures; the browser helpers                                                                                                                                                                                                                                 |
-| `new-batch/new-batch.spec.ts`                                                                                                                                | The batch address and its placeholder page                                                                                                                                                                                                                                                                                                                          |
+| File                                                                                                                                                         | What it checks                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `diagram/node-data.spec.ts`                                                                                                                                  | Generated funds and relationships: counts, one parent per fund, no duplicates, ownership with two decimals, default gray square                                                                                                                                                                                                                                                                                                               |
+| `diagram/sample-data.spec.ts`                                                                                                                                | The sample fund structure is one tree with the expected funds, legal entity types and ownership                                                                                                                                                                                                                                                                                                                                               |
+| `diagram/datasets.spec.ts`                                                                                                                                   | The Data dropdown's entries and the 30-fund default                                                                                                                                                                                                                                                                                                                                                                                           |
+| `diagram/link-types.spec.ts`                                                                                                                                 | The four line types, which of them avoid nodes, and that they only do so on diagrams of fewer than 500 nodes                                                                                                                                                                                                                                                                                                                                  |
+| `diagram/layouts.spec.ts`                                                                                                                                    | Every layout positions all nodes without overlaps; tree direction; small versus big trees                                                                                                                                                                                                                                                                                                                                                     |
+| `diagram/diagram-factory.spec.ts`                                                                                                                            | Nodes (fixed size, icons, arrows, rule, red comment dot, gold outline), clicks on icons and selection, lines (black, solid or dotted, info icon, ownership label, meeting the outline of a shape), tree highlight, adding a node, drag rule                                                                                                                                                                                                   |
+| `diagram/undo-history.spec.ts`                                                                                                                               | Undo/redo of every kind of change back to the exact initial state, more than 999 steps, deleted nodes coming back with their relationships                                                                                                                                                                                                                                                                                                    |
+| `diagram/history.service.spec.ts`                                                                                                                            | The history service: recording, undo and redo, positions, the state check, unfinished transactions, changes that are not recorded                                                                                                                                                                                                                                                                                                             |
+| `diagram/constants.spec.ts`                                                                                                                                  | The constants: no duplicates, defaults among the choices, a picture for every shape                                                                                                                                                                                                                                                                                                                                                           |
+| `diagram/shape-tiles.spec.ts`, `diagram/benchmark.spec.ts`                                                                                                   | Shape pictures for the Styles dialog; the timing helpers                                                                                                                                                                                                                                                                                                                                                                                      |
+| `diagram/file-name.spec.ts`, `diagram/change-details.spec.ts`                                                                                                | The name of the exported file; the description of what an operation changed                                                                                                                                                                                                                                                                                                                                                                   |
+| `diagram-page/diagram-page.spec.ts`                                                                                                                          | The page: loading and its animation (everything disabled until all nodes are shown), undo/redo and the state check, bulk-run input, multi-node edits, comments, delete confirmation, relationships, layout and line type, tree highlight, the Styles dialog, the canvas tools, the Actions menu, name and description (required for a new diagram), search, the overview, new diagram, what is disabled on a diagram without nodes, Add Batch |
+| `diagram-page/operation-runner.spec.ts`, `diagram-actions.spec.ts`, `diagram-state.spec.ts`                                                                  | The operation runner (order, timing log, recovery); every action as one undo step, zooming; the settings and history numbers the page shows                                                                                                                                                                                                                                                                                                   |
+| `diagram-page/selection-state.spec.ts`, `node-search.spec.ts`, `link-info-card.spec.ts`, `fund-styles.spec.ts`, `diagram-picture.spec.ts`, `browser.spec.ts` | Selection and highlight; the search; the relationship card; the styles dialog state; export and print pictures; the browser helpers                                                                                                                                                                                                                                                                                                           |
+| `new-batch/new-batch.spec.ts`                                                                                                                                | The batch address and its placeholder page                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 ### What is not covered
 
@@ -534,32 +549,53 @@ The tests run without a real browser, so some things can only be checked by hand
 
 ## Project structure
 
-| File                                                    | Purpose                                                                                                                    |
-| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `src/app/perf-diagram/perf-diagram.ts`                  | The page: creates the diagram, loads data, owns the dialogs and menus, and connects the pieces below to the template       |
-| `src/app/perf-diagram/operation-runner.ts`              | Runs operations one at a time, times them, keeps the benchmark statistics, recovers when one fails                         |
-| `src/app/perf-diagram/diagram-actions.ts`               | Every change to the diagram (edit, add, delete, layout, lines, cards) and undo/redo, each as one operation                 |
-| `src/app/perf-diagram/selection-state.ts`               | What is selected, and the highlight that goes with it                                                                      |
-| `src/app/perf-diagram/node-search.ts`                   | The search for nodes by name                                                                                               |
-| `src/app/perf-diagram/link-info-card.ts`                | The card that an info icon opens, and where it stands                                                                      |
-| `src/app/perf-diagram/fund-styles.ts`                   | What is ticked and picked in the styles dialog                                                                             |
-| `src/app/perf-diagram/diagram-picture.ts`, `browser.ts` | Export and print pictures; small browser helpers                                                                           |
-| `src/app/perf-diagram/perf-diagram.html`, `.css`        | Its template and styles                                                                                                    |
-| `src/app/diagram/diagram-factory.ts`                    | Node and link templates, icons, click handling, tree highlight, adding nodes                                               |
-| `src/app/diagram/history.service.ts`                    | Everything to do with the undo history (GoJS UndoManager)                                                                  |
-| `src/app/diagram/constants.ts`                          | The fixed values of the product in one place: shapes, colours, fund types, defaults, size limits, animation timings, texts |
-| `src/app/diagram/change-details.ts`, `file-name.ts`     | The description of what an operation changed; the name of an exported file                                                 |
-| `src/app/diagram/layouts.ts`                            | The six layouts                                                                                                            |
-| `src/app/diagram/link-types.ts`                         | The four line types                                                                                                        |
-| `src/app/diagram/node-data.ts`                          | Data types and the generator for random diagrams                                                                           |
-| `src/app/diagram/sample-data.ts`                        | The sample fund structure                                                                                                  |
-| `src/app/diagram/datasets.ts`                           | The list behind the **Data** dropdown                                                                                      |
-| `src/app/diagram/shape-tiles.ts`                        | The shape pictures used in the Styles dialog                                                                               |
-| `src/app/diagram/benchmark.ts`                          | Timing helpers                                                                                                             |
-| `src/app/new-batch/new-batch.ts`                        | The placeholder "Add batch" page and its address                                                                           |
-| `src/app/app.routes.ts`                                 | Routes                                                                                                                     |
-| `src/testing/`                                          | Test setup, the canvas stand-in and the diagram test helpers                                                               |
-| `src/**/*.spec.ts`                                      | Unit tests, next to the file they test                                                                                     |
+| File                                                     | Purpose                                                                                                                            |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `src/app/diagram-page/diagram-page.ts`, `.html`, `.css`  | The page: creates the diagram, loads data, keeps everything around it up to date, and puts the parts below on screen               |
+| `src/app/diagram-page/components/page-header.*`          | The top bar: Data dropdown, Styles, Actions, reset and new diagram                                                                 |
+| `src/app/diagram-page/components/diagram-info-bar.*`     | Name, description and search, above the canvas                                                                                     |
+| `src/app/diagram-page/components/tool-strip.*`           | The tools on the left edge of the canvas, with their columns of icons                                                              |
+| `src/app/diagram-page/components/relationship-card.*`    | The card that an info icon opens                                                                                                   |
+| `src/app/diagram-page/components/benchmark-statistics.*` | The table of timings below the canvas, and the dialog that lists the changes of an operation                                       |
+| `src/app/diagram-page/components/side-panel.*`           | History numbers, random edits, selected relationships and selected nodes                                                           |
+| `src/app/diagram-page/components/node-dialogs.*`         | The color, comment and delete-confirmation dialogs of a node                                                                       |
+| `src/app/diagram-page/components/styles-dialog.*`        | The dialog "Styles by legal entity field" and its reset confirmation                                                               |
+| `src/app/diagram-page/operation-runner.ts`               | Runs operations one at a time, times them, keeps the benchmark statistics, recovers when one fails                                 |
+| `src/app/diagram-page/diagram-actions.ts`                | Every change to the diagram (edit, add, delete, layout, lines, cards) and undo/redo, each as one operation; zooming                |
+| `src/app/diagram-page/diagram-state.ts`                  | What is shown about the diagram as a whole: layout, line type, name, description, history numbers                                  |
+| `src/app/diagram-page/selection-state.ts`                | What is selected, and the highlight that goes with it                                                                              |
+| `src/app/diagram-page/node-search.ts`                    | The search for nodes by name                                                                                                       |
+| `src/app/diagram-page/link-info-card.ts`                 | Which relationship's card is open, and where it stands                                                                             |
+| `src/app/diagram-page/fund-styles.ts`                    | What is ticked and picked in the styles dialog                                                                                     |
+| `src/app/diagram-page/diagram-picture.ts`, `browser.ts`  | Export and print pictures; small browser helpers                                                                                   |
+| `src/app/diagram/diagram-factory.ts`                     | Node and link templates, icons, click handling, tree highlight, adding nodes                                                       |
+| `src/app/diagram/history.service.ts`                     | Everything to do with the undo history (GoJS UndoManager)                                                                          |
+| `src/app/diagram/constants.ts`                           | The fixed values of the product in one place: shapes, colours, legal entity types, defaults, size limits, animation timings, texts |
+| `src/app/diagram/change-details.ts`, `file-name.ts`      | The description of what an operation changed; the name of an exported file                                                         |
+| `src/app/diagram/layouts.ts`                             | The six layouts                                                                                                                    |
+| `src/app/diagram/link-types.ts`                          | The four line types                                                                                                                |
+| `src/app/diagram/node-data.ts`                           | Data types and the generator for random diagrams                                                                                   |
+| `src/app/diagram/sample-data.ts`                         | The sample fund structure                                                                                                          |
+| `src/app/diagram/datasets.ts`                            | The list behind the **Data** dropdown                                                                                              |
+| `src/app/diagram/shape-tiles.ts`                         | The shape pictures used in the Styles dialog                                                                                       |
+| `src/app/diagram/benchmark.ts`                           | Timing helpers                                                                                                                     |
+| `src/app/new-batch/new-batch.ts`                         | The placeholder "Add batch" page and its address                                                                                   |
+| `src/app/app.routes.ts`                                  | Routes                                                                                                                             |
+| `src/styles.css`                                         | Global styles: the base look of buttons and inputs, and what the parts of the page share (dialogs, hints, colour swatches)         |
+| `src/testing/`                                           | Test setup, the canvas stand-in and the diagram test helpers                                                                       |
+| `src/**/*.spec.ts`                                       | Unit tests, next to the file they test                                                                                             |
+
+### How the page is put together
+
+The page is cut into parts, one component each, so that no file has to be read from top to bottom
+to find one thing. The parts do not talk to each other. Each of them asks Angular for the services
+it needs (`inject(DiagramActions)` and so on), and the page provides one set of those services per
+diagram. A click in the tool strip therefore goes straight to `DiagramActions`; the side panel sees
+the result because it reads the same `DiagramState`.
+
+Only three things go through the page itself, because they need the diagram or another part:
+loading data (from the header), opening the delete confirmation (from the side panel), and telling
+GoJS that the canvas changed size (when the statistics are opened or closed).
 
 ## Build and hosting
 
@@ -567,7 +603,7 @@ The tests run without a real browser, so some things can only be checked by hand
 npm run build
 ```
 
-The result is a static site in `dist/gojs-undo-perf/browser`. Any static host can serve it. The
+The result is a static site in `dist/gojs-diagrams/browser`. Any static host can serve it. The
 build includes a `_redirects` file so that `/batches/new` also works on hosts that use it, such as
 Netlify; on other hosts, configure a fallback to `index.html`.
 

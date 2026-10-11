@@ -3,12 +3,13 @@ import * as go from 'gojs/release/go';
 import { IconClicks, NodeModel, createDiagram, createModel } from '../app/diagram/diagram-factory';
 import { StyleFieldId } from '../app/diagram/constants';
 import { HistoryService } from '../app/diagram/history.service';
-import { DiagramActions } from '../app/perf-diagram/diagram-actions';
-import { FundStyles } from '../app/perf-diagram/fund-styles';
-import { LinkInfoCard } from '../app/perf-diagram/link-info-card';
-import { NodeSearch } from '../app/perf-diagram/node-search';
-import { OperationRunner } from '../app/perf-diagram/operation-runner';
-import { SelectionState } from '../app/perf-diagram/selection-state';
+import { DiagramActions } from '../app/diagram-page/diagram-actions';
+import { DiagramState } from '../app/diagram-page/diagram-state';
+import { FundStyles } from '../app/diagram-page/fund-styles';
+import { LinkInfoCard } from '../app/diagram-page/link-info-card';
+import { NodeSearch } from '../app/diagram-page/node-search';
+import { OperationRunner } from '../app/diagram-page/operation-runner';
+import { SelectionState } from '../app/diagram-page/selection-state';
 import { LayoutType, createLayout } from '../app/diagram/layouts';
 import { LinkType } from '../app/diagram/link-types';
 import { LinkData, NodeData, createLinks, createNodes } from '../app/diagram/node-data';
@@ -47,6 +48,7 @@ function createPageInjector(): Injector {
       HistoryService,
       OperationRunner,
       DiagramActions,
+      DiagramState,
       SelectionState,
       NodeSearch,
       LinkInfoCard,

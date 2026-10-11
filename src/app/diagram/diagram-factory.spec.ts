@@ -16,6 +16,7 @@ import {
   refreshLinkCards,
   revealNodesOneByOne,
   showSearchHit,
+  syncLinkCards,
   textColorFor,
 } from './diagram-factory';
 import { LinkData, NodeData, formatOwnership } from './node-data';
@@ -82,7 +83,11 @@ describe('nodes', () => {
   it('keep their size when title and subtitle are far too long, and cut the text off', () => {
     const test = createTestDiagram();
     setAll(test, 'title', 'A very long fund name that cannot possibly fit inside a node');
-    setAll(test, 'subtitle', 'an equally long fund type that would run out of the node as well');
+    setAll(
+      test,
+      'legalEntityType',
+      'an equally long legal entity type that would run out of the node as well',
+    );
     const node = test.diagram.findNodeForKey(1)!;
     expect(node.actualBounds.width).toBeCloseTo(NODE_SIZE.width, 1);
     expect(node.actualBounds.height).toBeCloseTo(NODE_SIZE.height, 1);
@@ -143,7 +148,7 @@ describe('nodes', () => {
   it('keep their title and subtitle centred, also when the text is cut off', () => {
     const test = createTestDiagram();
     setAll(test, 'title', 'Silverlake Multi-Strategy Fund 17');
-    setAll(test, 'subtitle', 'A fund type with a name that is much too long to fit');
+    setAll(test, 'legalEntityType', 'A legal entity type with a name that is much too long to fit');
     for (const shape of SHAPES) {
       setAll(test, 'shape', shape);
       const node = test.diagram.findNodeForKey(1)!;
@@ -190,7 +195,7 @@ describe('nodes', () => {
     hidden.settle();
     for (const node of hidden.model.nodeDataArray) {
       expect(subtitleOf(hidden, node.key).visible).toBe(true);
-      expect(subtitleOf(hidden, node.key).text).toBe(node.subtitle);
+      expect(subtitleOf(hidden, node.key).text).toBe(node.legalEntityType);
     }
     hidden.history.undo();
     hidden.settle();
@@ -255,13 +260,13 @@ describe('nodes', () => {
     };
 
     setAll(test, 'title', 'Short');
-    setAll(test, 'subtitle', 'UCITS');
+    setAll(test, 'legalEntityType', 'UCITS');
     for (const text of texts()) expect(hoverText(text)).toBeNull();
 
     const longTitle = 'A very long fund name that cannot possibly fit inside a node';
-    const longSubtitle = 'an equally long fund type that would run out of the node as well';
+    const longSubtitle = 'an equally long legal entity type that would run out of the node as well';
     setAll(test, 'title', longTitle);
-    setAll(test, 'subtitle', longSubtitle);
+    setAll(test, 'legalEntityType', longSubtitle);
     const [title, subtitle] = texts();
     expect(hoverText(title)).toBe(longTitle);
     expect(hoverText(subtitle)).toBe(longSubtitle);
@@ -496,6 +501,107 @@ describe('relationship lines', () => {
     expect(recorded).not.toContain('strokeWidth');
   });
 
+  describe('that share a stretch of their way', () => {
+    /** Total length over which two different lines run exactly on top of each other. */
+    const sharedLength = (diagram: go.Diagram): number => {
+      const segments: { x1: number; y1: number; x2: number; y2: number; line: number }[] = [];
+      linksOf(diagram).forEach((link, line) => {
+        for (let i = 0; i < link.pointsCount - 1; i++) {
+          const a = link.getPoint(i);
+          const b = link.getPoint(i + 1);
+          segments.push({
+            x1: Math.min(a.x, b.x),
+            y1: Math.min(a.y, b.y),
+            x2: Math.max(a.x, b.x),
+            y2: Math.max(a.y, b.y),
+            line,
+          });
+        }
+      });
+      let total = 0;
+      for (let i = 0; i < segments.length; i++) {
+        for (let j = i + 1; j < segments.length; j++) {
+          const s = segments[i];
+          const t = segments[j];
+          if (s.line === t.line) continue;
+          const bothLevel = s.y2 - s.y1 < 0.5 && t.y2 - t.y1 < 0.5 && Math.abs(s.y1 - t.y1) < 1.5;
+          const bothUpright = s.x2 - s.x1 < 0.5 && t.x2 - t.x1 < 0.5 && Math.abs(s.x1 - t.x1) < 1.5;
+          if (bothLevel) total += Math.max(0, Math.min(s.x2, t.x2) - Math.max(s.x1, t.x1));
+          if (bothUpright) total += Math.max(0, Math.min(s.y2, t.y2) - Math.max(s.y1, t.y1));
+        }
+      }
+      return total;
+    };
+    /** Routes every line again, with or without the router that sets them side by side. */
+    const routeAgain = (test: TestDiagram, sideBySide: boolean): void => {
+      test.diagram.routers.each((router) => {
+        if (router.name === 'AvoidsLinksRouter') router.isEnabled = sideBySide;
+      });
+      test.diagram.links.each((link) => link.invalidateRoute());
+      test.settle();
+    };
+
+    it('are drawn side by side instead of on top of each other', () => {
+      for (const count of [30, 100]) {
+        const test = createTestDiagram({ count });
+        const sideBySide = sharedLength(test.diagram);
+        routeAgain(test, false);
+        const onTopOfEachOther = sharedLength(test.diagram);
+        // Well over half of the shared stretches are gone.
+        expect(sideBySide).toBeLessThan(onTopOfEachOther * 0.5);
+        routeAgain(test, true);
+        expect(sharedLength(test.diagram)).toBeLessThan(onTopOfEachOther * 0.5);
+      }
+    });
+
+    it('are only set apart for the right-angled line types, on diagrams of fewer than 500 funds', () => {
+      const router = (test: TestDiagram) => {
+        let found: go.Router | null = null;
+        test.diagram.routers.each((candidate) => {
+          if (candidate.name === 'AvoidsLinksRouter') found = candidate;
+        });
+        return found! as go.Router;
+      };
+      for (const linkType of ['avoid', 'orthogonal'] as const) {
+        const test = createTestDiagram({ linkType });
+        expect(router(test).canRoute(test.diagram)).toBe(true);
+      }
+      for (const linkType of ['straight', 'curved'] as const) {
+        const test = createTestDiagram({ linkType });
+        expect(router(test).canRoute(test.diagram)).toBe(false);
+      }
+      const big = createTestDiagram({ count: 500, linkType: 'straight' });
+      big.model.commit((m) => m.set(m.modelData, 'linkType', 'avoid'), 'change line type');
+      expect(router(big).canRoute(big.diagram)).toBe(false);
+    });
+
+    it('are routed by the same copy of GoJS as the rest of the app', () => {
+      // The router comes from a separate package. Had it loaded GoJS a second
+      // time, the points it writes would not be this library's points.
+      const test = createTestDiagram();
+      for (const link of linksOf(test.diagram)) {
+        for (let i = 0; i < link.pointsCount; i++) {
+          expect(link.getPoint(i)).toBeInstanceOf(go.Point);
+        }
+      }
+    });
+
+    it('still end on their nodes and keep their icon on the line', () => {
+      const test = createTestDiagram();
+      for (const link of linksOf(test.diagram)) {
+        const first = link.getPoint(0);
+        const last = link.getPoint(link.pointsCount - 1);
+        const near = (bounds: go.Rect, point: go.Point) =>
+          bounds.copy().inflate(2, 2).containsPoint(point);
+        expect(near(link.fromNode!.actualBounds, first)).toBe(true);
+        expect(near(link.toNode!.actualBounds, last)).toBe(true);
+        const icon = link.findAdornment('Info')!;
+        expect(icon.location.x).toBeCloseTo(link.midPoint.x, 0);
+        expect(icon.location.y).toBeCloseTo(link.midPoint.y, 0);
+      }
+    });
+  });
+
   it('carry an info icon at their middle, except those the user drew', () => {
     const test = createTestDiagram();
     const from = test.diagram.findNodeForKey(2)!;
@@ -601,7 +707,7 @@ describe('relationship lines', () => {
     const node = (key: number): NodeData => ({
       key,
       title: `Fund ${key}`,
-      subtitle: 'Hedge fund',
+      legalEntityType: 'Hedge fund',
       shape: 'Rectangle',
       color: '#f3f4f6',
       comment: '',
@@ -733,7 +839,7 @@ describe('relationship cards', () => {
   const fund = (key: number): NodeData => ({
     key,
     title: `Fund ${key}`,
-    subtitle: 'Hedge fund',
+    legalEntityType: 'Hedge fund',
     shape: 'Rectangle',
     color: '#f3f4f6',
     comment: '',
@@ -983,6 +1089,24 @@ describe('relationship cards', () => {
       .last()!
       .changes.each((change) => recorded.push(String(change.propertyName)));
     expect(recorded).toEqual(['cardsExpanded']);
+  });
+
+  it('are brought back in line with the model after an action was interrupted', () => {
+    const test = createTestDiagram();
+    // An action that switches the cards on, fails halfway and is taken back.
+    test.model.startTransaction('expand all');
+    test.model.set(test.model.modelData, 'cardsExpanded', true);
+    test.settle();
+    expect(cardsOf(test).length).toBeGreaterThan(0);
+    test.model.rollbackTransaction();
+    expect(allLinkCardsShown(test.diagram)).toBe(false);
+
+    syncLinkCards(test.diagram);
+    test.settle();
+    expect(cardsOf(test)).toEqual([]);
+    // In step already: nothing to do.
+    syncLinkCards(test.diagram);
+    expect(cardsOf(test)).toEqual([]);
   });
 
   it('are dimmed with their line when a tree is highlighted, and are part of an exported picture', () => {
@@ -1605,7 +1729,7 @@ describe('addNodeInView', () => {
   const newNode = (key: number): NodeData => ({
     key,
     title: `New fund ${key}`,
-    subtitle: 'Private equity',
+    legalEntityType: 'Private equity',
     shape: DEFAULT_SHAPE,
     color: DEFAULT_COLOR,
     comment: '',

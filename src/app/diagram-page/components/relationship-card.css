@@ -1,0 +1,42 @@
+/* Not a box of its own: the page lays out what is inside. */
+:host {
+  display: contents;
+}
+
+/* The data of a relationship, shown on the canvas beside the info icon that was clicked. */
+.link-card {
+  position: absolute;
+  z-index: 4;
+  box-sizing: border-box;
+  /* The same number as CARD_WIDTH in the LinkInfoCard service, which places the card. */
+  width: 270px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.16);
+}
+
+.link-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.link-card-head h2 {
+  margin: 0;
+}
+
+.link-card-head button {
+  padding: 0 6px;
+  border-color: transparent;
+  background: transparent;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.link-card dl {
+  grid-template-columns: auto 1fr;
+  margin-bottom: 10px;
+}

@@ -9,10 +9,13 @@ describe('createFundStructure', () => {
 
   it('has a fund of funds at the top that invests through two feeders and two funds of funds', () => {
     expect(nodes).toHaveLength(24);
-    expect(nodes[0]).toMatchObject({ title: 'Meridian Global FoF', subtitle: 'Fund of funds' });
+    expect(nodes[0]).toMatchObject({
+      title: 'Meridian Global FoF',
+      legalEntityType: 'Fund of funds',
+    });
     const holdingsOf = (key: number) =>
       hierarchy.filter((link) => link.from === key).map((link) => link.to);
-    const typeOf = (key: number) => nodes.find((node) => node.key === key)!.subtitle;
+    const typeOf = (key: number) => nodes.find((node) => node.key === key)!.legalEntityType;
     expect(holdingsOf(1).map(typeOf).sort()).toEqual([
       'Feeder fund',
       'Feeder fund',
@@ -39,10 +42,10 @@ describe('createFundStructure', () => {
     for (const node of nodes) expect(node.title.length).toBeLessThanOrEqual(20);
   });
 
-  it('gives every fund a name and a fund type', () => {
+  it('gives every fund a name and a legal entity type', () => {
     for (const node of nodes) {
       expect(node.title.trim()).not.toBe('');
-      expect(node.subtitle.trim()).not.toBe('');
+      expect(node.legalEntityType.trim()).not.toBe('');
     }
     expect(new Set(nodes.map((node) => node.title)).size).toBe(nodes.length);
   });

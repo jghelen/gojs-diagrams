@@ -4,7 +4,7 @@ import { FundStyles } from './fund-styles';
 describe('FundStyles', () => {
   let styles: FundStyles;
   const nodes = createNodes(30);
-  const types = () => [...new Set(nodes.map((node) => node.subtitle))].sort();
+  const types = () => [...new Set(nodes.map((node) => node.legalEntityType))].sort();
 
   beforeEach(() => {
     styles = new FundStyles();
@@ -65,7 +65,7 @@ describe('FundStyles', () => {
     expect(styles.rows()).toEqual([]);
   });
 
-  it('lists every fund type once, in alphabetical order, with its number of nodes', () => {
+  it('lists every legal entity type once, in alphabetical order, with its number of nodes', () => {
     expect(styles.rows().map((row) => row.type)).toEqual(types());
     const counted = styles.rows().reduce((sum, row) => sum + row.count, 0);
     expect(counted).toBe(30);
@@ -74,15 +74,15 @@ describe('FundStyles', () => {
   it('says which color and shape a type has, or null where its nodes differ', () => {
     const [first] = types();
     const mixed = nodes.map((node) => ({ ...node }));
-    mixed.find((node) => node.subtitle === first)!.color = '#1e3a8a';
-    const several = mixed.filter((node) => node.subtitle === first).length > 1;
+    mixed.find((node) => node.legalEntityType === first)!.color = '#1e3a8a';
+    const several = mixed.filter((node) => node.legalEntityType === first).length > 1;
     styles.refresh(mixed);
     const row = styles.rows().find((candidate) => candidate.type === first)!;
     expect(row.color).toBe(several ? null : '#1e3a8a');
     expect(row.shape).toBe('Rectangle');
   });
 
-  it('ticks and unticks fund types, one by one and all at once', () => {
+  it('ticks and unticks legal entity types, one by one and all at once', () => {
     const [first, second] = types();
     styles.toggleType(first);
     styles.toggleType(second);
@@ -174,11 +174,11 @@ describe('FundStyles', () => {
     expect(styles.previewOf(row(first)).mixed).toBe(false);
   });
 
-  it('unticks a fund type that no node has any more', () => {
+  it('unticks a legal entity type that no node has any more', () => {
     const [first, second] = types();
     styles.toggleType(first);
     styles.toggleType(second);
-    styles.refresh(nodes.filter((node) => node.subtitle !== first));
+    styles.refresh(nodes.filter((node) => node.legalEntityType !== first));
     expect([...styles.types()]).toEqual([second]);
   });
 

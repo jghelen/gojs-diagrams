@@ -93,7 +93,7 @@ If `change` fails halfway, GoJS takes back what it had done so far and nothing i
 
 ### Why one action records more changes than you would expect
 
-Randomizing one node sets four things in the data: title, fund type, shape and colour. But the
+Randomizing one node sets four things in the data: title, legal entity type, shape and colour. But the
 transaction holds 11 to 17 changes. The others are changes to the drawing that follow from the
 data: the two texts, the fill, the text colour, the room the texts get inside the new shape, the
 places of the icons. GoJS records those too, so that an undo restores the picture exactly and not
@@ -287,7 +287,7 @@ Two settings are made in `load()`:
 | Recovery after a failed action                  | `hasUnfinishedTransaction`, `rollBackUnfinished`                               |
 | The drawing code (loading animation, line ends) | `withoutUndo`                                                                  |
 
-The page is `src/app/perf-diagram/perf-diagram.ts`; the drawing code is
+The page is `src/app/diagram-page/diagram-page.ts`; the drawing code is
 `src/app/diagram/diagram-factory.ts`.
 
 The service is provided by the page component (`providers: [HistoryService]`), not
@@ -299,7 +299,7 @@ application-wide, because one history belongs to one diagram.
 | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `src/app/diagram/history.service.spec.ts`   | The service itself: recording, undo and redo, positions, the state check, unfinished transactions, `withoutUndo` |
 | `src/app/diagram/undo-history.spec.ts`      | Undo and redo of every kind of change back to the exact initial state, and more than 999 steps                   |
-| `src/app/perf-diagram/perf-diagram.spec.ts` | The page: every action is one undo step, the state check on screen, recovery after a failed action               |
+| `src/app/diagram-page/diagram-page.spec.ts` | The page: every action is one undo step, the state check on screen, recovery after a failed action               |
 
 Run only the service's tests:
 

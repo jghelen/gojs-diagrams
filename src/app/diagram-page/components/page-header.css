@@ -1,0 +1,38 @@
+/* Not a box of its own: the page lays out what is inside. */
+:host {
+  display: contents;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+h1 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.versions {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Styles, Actions, reset and new stay together at the right end of the bar, also when it wraps. */
+.bar-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* An icon in front of a button's text. */
+.button-icon {
+  margin-right: 4px;
+  vertical-align: -3px;
+}

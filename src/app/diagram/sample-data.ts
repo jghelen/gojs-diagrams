@@ -4,7 +4,7 @@ import { DEFAULT_COLOR, DEFAULT_SHAPE } from './constants';
 /** One fund in the sample structure, with the funds it invests in. */
 interface Fund {
   name: string;
-  /** The type of fund, shown as the node's subtitle. */
+  /** The legal entity type of the fund. */
   type: string;
   /** How much of this fund the fund above it owns, in percent; left out when not known. */
   stake?: number;
@@ -137,7 +137,7 @@ export function createFundStructure(): { nodes: NodeData[]; links: LinkData[] } 
     nodes.push({
       key,
       title: fund.name,
-      subtitle: fund.type,
+      legalEntityType: fund.type,
       shape: DEFAULT_SHAPE,
       color: DEFAULT_COLOR,
       comment: fund.comment ?? '',

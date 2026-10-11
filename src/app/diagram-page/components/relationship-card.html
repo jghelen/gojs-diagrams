@@ -1,0 +1,29 @@
+@if (linkInfo(); as info) {
+  <div
+    class="link-card"
+    role="dialog"
+    [attr.aria-label]="'Relationship ' + info.link.key"
+    [style.left.px]="info.left"
+    [style.top.px]="info.top"
+  >
+    <div class="link-card-head">
+      <h2>Relationship {{ info.link.key }}</h2>
+      <button type="button" aria-label="Close" data-tip="Close" (click)="closeLinkInfo()">×</button>
+    </div>
+    <dl>
+      <dt>Type</dt>
+      <dd>
+        {{ info.link.category === 'hierarchy' ? 'Hierarchy (parent to child)' : 'Relation' }}
+      </dd>
+      <dt>From</dt>
+      <dd>{{ info.from?.title ?? 'Unknown' }} (node {{ info.link.from }})</dd>
+      <dt>To</dt>
+      <dd>{{ info.to?.title ?? 'Unknown' }} (node {{ info.link.to }})</dd>
+      <dt>Ownership</dt>
+      <dd>{{ info.ownership ?? 'No data' }}</dd>
+    </dl>
+    <button type="button" class="wide" [disabled]="busy()" (click)="removeInfoLink()">
+      Remove relationship
+    </button>
+  </div>
+}

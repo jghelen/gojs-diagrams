@@ -7,7 +7,7 @@
   },
   "newProjectRoot": "projects",
   "projects": {
-    "gojs-undo-perf": {
+    "gojs-diagrams": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:class": {
@@ -50,9 +50,8 @@
                 "input": "public"
               }
             ],
-            "styles": [
-              "src/styles.css"
-            ]
+            "styles": ["src/styles.css"],
+            "conditions": ["module", "production"]
           },
           "configurations": {
             "production": {
@@ -81,20 +80,26 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
-            "setupFiles": ["src/testing/setup.ts"]
+            "setupFiles": ["src/testing/setup.ts"],
+            "runnerConfig": "vitest-base.config.mts"
           }
         },
         "serve": {
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "gojs-undo-perf:build:production"
+              "buildTarget": "gojs-diagrams:build:production"
             },
             "development": {
-              "buildTarget": "gojs-undo-perf:build:development"
+              "buildTarget": "gojs-diagrams:build:development"
             }
           },
-          "defaultConfiguration": "development"
+          "defaultConfiguration": "development",
+          "options": {
+            "prebundle": {
+              "exclude": ["gojs", "gojs-extensions"]
+            }
+          }
         }
       }
     }

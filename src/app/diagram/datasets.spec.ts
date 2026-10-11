@@ -1,5 +1,5 @@
 import { DATASETS, findDataset } from './datasets';
-import { BLANK_DATASET, DEFAULT_DATASET, FUND_TYPES } from './constants';
+import { BLANK_DATASET, DEFAULT_DATASET, LEGAL_ENTITY_TYPES } from './constants';
 import { LinkData } from './node-data';
 
 describe('datasets', () => {
@@ -64,14 +64,14 @@ describe.each(DATASETS.filter((dataset) => dataset.id !== BLANK_DATASET).map((d)
       investorsIn.set(link.to, [...(investorsIn.get(link.to) ?? []), link]);
       holdingsOf.set(link.from, [...(holdingsOf.get(link.from) ?? []), link]);
     }
-    const STRATEGIES = FUND_TYPES.filter(
+    const STRATEGIES = LEGAL_ENTITY_TYPES.filter(
       (type) => !['Fund of funds', 'Feeder fund'].includes(type),
     );
 
     it('has one fund of funds at the top, in which no other fund invests', () => {
       const tops = nodes.filter((node) => !investorsIn.has(node.key));
       expect(tops).toHaveLength(1);
-      expect(tops[0].subtitle).toBe('Fund of funds');
+      expect(tops[0].legalEntityType).toBe('Fund of funds');
     });
 
     it('gives every other fund exactly one main investor', () => {
@@ -84,7 +84,7 @@ describe.each(DATASETS.filter((dataset) => dataset.id !== BLANK_DATASET).map((d)
     });
 
     it('uses only the known kinds of fund', () => {
-      for (const node of nodes) expect(FUND_TYPES).toContain(node.subtitle);
+      for (const node of nodes) expect(LEGAL_ENTITY_TYPES).toContain(node.legalEntityType);
     });
 
     it('has no fund that invests in itself, and no two lines between the same two funds', () => {
@@ -146,15 +146,15 @@ describe.each(DATASETS.filter((dataset) => dataset.id !== BLANK_DATASET).map((d)
     });
 
     it('lets a feeder fund invest in exactly one fund', () => {
-      const feeders = nodes.filter((node) => node.subtitle === 'Feeder fund');
+      const feeders = nodes.filter((node) => node.legalEntityType === 'Feeder fund');
       for (const feeder of feeders) expect(holdingsOf.get(feeder.key) ?? []).toHaveLength(1);
     });
 
     it('keeps the sub-funds of a strategy fund within its strategy', () => {
       for (const link of main) {
         const investor = fund.get(link.from)!;
-        if (STRATEGIES.includes(investor.subtitle)) {
-          expect(fund.get(link.to)!.subtitle).toBe(investor.subtitle);
+        if (STRATEGIES.includes(investor.legalEntityType)) {
+          expect(fund.get(link.to)!.legalEntityType).toBe(investor.legalEntityType);
         }
       }
     });
@@ -162,8 +162,8 @@ describe.each(DATASETS.filter((dataset) => dataset.id !== BLANK_DATASET).map((d)
     it('lets a fund of funds or a feeder hold strategy funds, not the other way round', () => {
       for (const link of main) {
         const investee = fund.get(link.to)!;
-        if (['Fund of funds', 'Feeder fund'].includes(investee.subtitle)) {
-          expect(fund.get(link.from)!.subtitle).toBe('Fund of funds');
+        if (['Fund of funds', 'Feeder fund'].includes(investee.legalEntityType)) {
+          expect(fund.get(link.from)!.legalEntityType).toBe('Fund of funds');
         }
       }
     });

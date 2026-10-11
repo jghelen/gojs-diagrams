@@ -186,7 +186,7 @@ describe('undo history', () => {
         m.addNodeData({
           key: 31,
           title: 'New fund 31',
-          subtitle: 'Private equity',
+          legalEntityType: 'Private equity',
           shape: 'Rectangle',
           color: '#f3f4f6',
           comment: '',

@@ -1,0 +1,95 @@
+:host {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  min-height: 0;
+}
+
+.canvas {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+}
+
+.diagram-area {
+  position: relative;
+  min-height: 0;
+  /* Lets the tools ask how high the canvas is. */
+  container: canvas / size;
+}
+
+.diagram {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+}
+
+/* Says that an action failed and was undone; sits over the top of the canvas. */
+.failure {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  z-index: 3;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 140px);
+  padding: 6px 8px 6px 12px;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #7f1d1d;
+  font-size: 13px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+}
+
+.failure button {
+  padding: 0 6px;
+  border-color: transparent;
+  background: transparent;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+/* The small picture of the whole diagram, in the bottom right corner of the canvas. */
+.overview {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 2;
+  width: 200px;
+  height: 130px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+  overflow: hidden;
+}
+
+/* The picture of the diagram that is printed instead of the app. */
+.print-only {
+  display: none;
+}
+
+@media print {
+  :host {
+    display: block;
+    height: auto;
+  }
+
+  /* Everything but the picture, the dialogs of the parts included. */
+  :host > :not(.print-only) {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block;
+    max-width: 100%;
+  }
+}

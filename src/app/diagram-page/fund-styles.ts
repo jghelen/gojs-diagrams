@@ -11,7 +11,7 @@ export interface StyleDraft {
   shape: go.FigureName | null;
 }
 
-/** The nodes of one fund type, as listed in the styles dialog. */
+/** The nodes of one legal entity type, as listed in the styles dialog. */
 export interface StyleRow {
   type: string;
   count: number;
@@ -24,8 +24,7 @@ const NOTHING_PICKED: StyleDraft = { color: null, shape: null };
 
 /** Where the value of each legal entity field is found on a node. */
 const VALUE_OF: Record<StyleFieldId, (node: NodeData) => string> = {
-  // The type of legal entity is what a node shows as its subtitle.
-  legalEntityType: (node) => node.subtitle,
+  legalEntityType: (node) => node.legalEntityType,
 };
 
 /** The picture of a shape, as drawn on the tiles and in the previews of the dialog. */
@@ -49,7 +48,7 @@ export class FundStyles {
   readonly shownField = signal<StyleFieldId | null>(null);
   /** One row per value of that field in the diagram; none while no field is chosen. */
   readonly rows = signal<StyleRow[]>([]);
-  /** The fund types that are ticked. */
+  /** The legal entity types that are ticked. */
   readonly types = signal<ReadonlySet<string>>(new Set());
   /** The color and shape picked but not applied yet. */
   readonly draft = signal<StyleDraft>(NOTHING_PICKED);
@@ -57,7 +56,7 @@ export class FundStyles {
   readonly allTypesSelected = computed(
     () => this.rows().length > 0 && this.types().size === this.rows().length,
   );
-  /** How many nodes the ticked fund types cover. */
+  /** How many nodes the ticked legal entity types cover. */
   readonly nodeCount = computed(() => this.tickedRows().reduce((sum, row) => sum + row.count, 0));
   /**
    * A color and a shape are picked for values. So while no value is ticked there
@@ -78,7 +77,7 @@ export class FundStyles {
   readonly canApply = computed(() => this.hasFieldToApply() || this.hasStyleToApply());
   /**
    * What a node will look like after Apply: the picked color and shape, and for
-   * whatever was not picked, what the first ticked fund type has now.
+   * whatever was not picked, what the first ticked legal entity type has now.
    */
   readonly nodePreview = computed(() => {
     const ticked = this.tickedRows();
@@ -161,7 +160,7 @@ export class FundStyles {
   }
 
   /**
-   * How a fund type's nodes look, for the small picture in its row. For a ticked
+   * How a legal entity type's nodes look, for the small picture in its row. For a ticked
    * type this already includes the color and shape picked but not yet applied.
    */
   previewOf(row: StyleRow): { path: string; fill: string; mixed: boolean } {
@@ -205,7 +204,7 @@ export class FundStyles {
     }));
   }
 
-  /** Forgets the picked color and shape; the ticked fund types stay. */
+  /** Forgets the picked color and shape; the ticked legal entity types stay. */
   clearDraft(): void {
     this.draft.set(NOTHING_PICKED);
   }

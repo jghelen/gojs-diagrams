@@ -6,7 +6,14 @@ import {
   formatOwnership,
   randomPatch,
 } from './node-data';
-import { COLORS, DEFAULT_COLOR, DEFAULT_SHAPE, FUND_TYPES, NODE_COUNTS, SHAPES } from './constants';
+import {
+  COLORS,
+  DEFAULT_COLOR,
+  DEFAULT_SHAPE,
+  LEGAL_ENTITY_TYPES,
+  NODE_COUNTS,
+  SHAPES,
+} from './constants';
 
 const hierarchy = (links: LinkData[]) => links.filter((link) => link.category === 'hierarchy');
 const relations = (links: LinkData[]) => links.filter((link) => link.category === 'relation');
@@ -33,8 +40,8 @@ describe('createNodes', () => {
     }
   });
 
-  it('uses a fund type as the subtitle of every node', () => {
-    for (const node of createNodes(100)) expect(FUND_TYPES).toContain(node.subtitle);
+  it('gives every node one of the legal entity types', () => {
+    for (const node of createNodes(100)) expect(LEGAL_ENTITY_TYPES).toContain(node.legalEntityType);
   });
 
   it('leaves the position to the layout', () => {
@@ -127,7 +134,7 @@ describe('randomPatch', () => {
     for (const node of createNodes(50)) {
       const patch = randomPatch(node);
       expect(patch.title.endsWith(` ${node.key}`)).toBe(true);
-      expect(FUND_TYPES).toContain(patch.subtitle);
+      expect(LEGAL_ENTITY_TYPES).toContain(patch.legalEntityType);
       expect(SHAPES).toContain(patch.shape);
       expect(COLORS).toContain(patch.color);
     }

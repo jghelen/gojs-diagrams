@@ -40,3 +40,142 @@ input[type='color'] {
   height: 30px;
   width: 100%;
 }
+
+/*
+ * Shared by the parts of the diagram page. A part's own style sheet only holds
+ * what is special to that part.
+ */
+
+/* A small heading: of a section of the side panel, of a card, of a dialog. */
+h2 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* A list of names and their values. */
+dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+dt {
+  color: var(--muted);
+}
+
+dd {
+  margin: 0;
+  text-align: right;
+}
+
+.hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+button.wide {
+  width: 100%;
+}
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.swatch {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+}
+
+.swatch.current {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+
+.swatches input[type='color'] {
+  width: 40px;
+  height: 26px;
+}
+
+/* A dialog. */
+.modal {
+  width: min(360px, calc(100vw - 32px));
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.2);
+}
+
+.modal::backdrop {
+  background: rgb(17 24 39 / 0.35);
+}
+
+/* The buttons at the bottom of a dialog. */
+.actions {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+button.danger {
+  margin-right: auto;
+  color: #b91c1c;
+}
+
+/* The button that carries out what a dialog asks about. */
+button.confirm {
+  border-color: #15803d;
+  background: #15803d;
+  color: #fff;
+}
+
+button.confirm:hover:not(:disabled) {
+  background: #166534;
+}
+
+/* Confirming a deletion is dark red instead. */
+button.confirm.destructive {
+  border-color: #991b1b;
+  background: #991b1b;
+}
+
+button.confirm.destructive:hover:not(:disabled) {
+  background: #7f1d1d;
+}
+
+button.confirm:disabled {
+  border-color: #d1d5db;
+  background: #e5e7eb;
+  color: #6b7280;
+  opacity: 1;
+}
+
+/* A button that shows only an icon; its name is in the hover text. */
+button.icon-button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 30px;
+  padding: 0;
+}
+
+button.icon-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

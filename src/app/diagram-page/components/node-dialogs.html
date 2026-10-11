@@ -1,0 +1,87 @@
+<dialog #colorDialog class="modal" (close)="colorDialog.open || colorTarget.set(null)">
+  @if (colorTarget(); as node) {
+    <h2>Color of {{ node.title }}</h2>
+    <div class="swatches">
+      @for (color of colors; track color) {
+        <button
+          type="button"
+          class="swatch"
+          [class.current]="color === node.color"
+          [style.background]="color"
+          [attr.aria-label]="'Set color ' + color"
+          (click)="pickColor(color)"
+        ></button>
+      }
+      <input
+        type="color"
+        title="Custom color: applied when the color picker is closed"
+        aria-label="Custom color"
+        [value]="node.color"
+        (change)="pickColor($any($event.target).value)"
+      />
+    </div>
+    <div class="actions">
+      <button type="button" autofocus (click)="closeColorPicker()">Cancel</button>
+    </div>
+  }
+</dialog>
+
+<dialog #commentDialog class="modal" (close)="commentDialog.open || commentTarget.set(null)">
+  @if (commentTarget(); as node) {
+    <h2>Comment on {{ node.title }}</h2>
+    <textarea
+      #commentText
+      rows="5"
+      placeholder="Write a comment"
+      aria-label="Comment"
+      autofocus
+      [value]="node.comment"
+      (input)="commentDraft.set(commentText.value)"
+    ></textarea>
+    <div class="actions">
+      @if (node.comment) {
+        <button type="button" class="danger" (click)="saveComment('')">Delete comment</button>
+      }
+      <button type="button" (click)="closeComment()">Cancel</button>
+      <button
+        type="button"
+        class="confirm"
+        [disabled]="commentDraft().trim() === ''"
+        (click)="saveComment(commentText.value)"
+      >
+        Save
+      </button>
+    </div>
+  }
+</dialog>
+
+<dialog #deleteDialog class="modal" (close)="deleteDialog.open || deleteRequest.set(null)">
+  @if (deleteRequest(); as request) {
+    <h2>
+      @if (request.title !== null) {
+        Delete "{{ request.title }}"?
+      } @else {
+        Delete {{ request.keys.length }} nodes?
+      }
+    </h2>
+    <p class="hint">
+      @if (request.attached === 0) {
+        No relationships are attached.
+      } @else if (request.attached === 1) {
+        Its 1 relationship is removed with it.
+      } @else {
+        {{ request.keys.length === 1 ? 'Its' : 'Their' }} {{ request.attached }} relationships are
+        removed with {{ request.keys.length === 1 ? 'it' : 'them' }}.
+      }
+      @if (request.links.length > 0) {
+        The {{ request.links.length }} selected
+        {{ request.links.length === 1 ? 'relationship is' : 'relationships are' }} removed too.
+      }
+      All other nodes stay. You can bring everything back with Undo.
+    </p>
+    <div class="actions">
+      <button type="button" autofocus (click)="cancelDelete()">Cancel</button>
+      <button type="button" class="confirm destructive" (click)="confirmDelete()">Delete</button>
+    </div>
+  }
+</dialog>

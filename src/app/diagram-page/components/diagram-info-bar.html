@@ -1,0 +1,57 @@
+<div class="canvas-bar">
+  <input
+    #nameInput
+    type="text"
+    class="diagram-name"
+    aria-label="Diagram name"
+    placeholder="Diagram name (required)"
+    required
+    [class.missing]="diagramName() === ''"
+    [attr.aria-invalid]="diagramName() === ''"
+    [value]="diagramName()"
+    [disabled]="busy()"
+    (change)="setDiagramInfo('name', nameInput)"
+  />
+  <input
+    #descriptionInput
+    type="text"
+    class="diagram-description"
+    aria-label="Description"
+    placeholder="Description"
+    [value]="diagramDescription()"
+    [disabled]="busy()"
+    (change)="setDiagramInfo('description', descriptionInput)"
+  />
+  <div class="search" role="search">
+    <input
+      type="search"
+      aria-label="Search nodes by name"
+      placeholder="Search nodes"
+      [value]="searchQuery()"
+      [disabled]="busy()"
+      (input)="search($any($event.target).value)"
+      (keydown.enter)="searchStep($any($event).shiftKey ? -1 : 1)"
+    />
+    <span class="search-count" aria-live="polite">{{ searchSummary() }}</span>
+    <button
+      type="button"
+      class="icon-button"
+      title="Previous result"
+      aria-label="Previous result"
+      [disabled]="busy() || searchMatches().length === 0"
+      (click)="searchStep(-1)"
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+    </button>
+    <button
+      type="button"
+      class="icon-button"
+      title="Next result"
+      aria-label="Next result"
+      [disabled]="busy() || searchMatches().length === 0"
+      (click)="searchStep(1)"
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+    </button>
+  </div>
+</div>

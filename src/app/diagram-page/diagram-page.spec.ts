@@ -1,11 +1,29 @@
+import { Type } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import * as go from 'gojs/release/go';
+import { DEFAULT_COLOR, DEFAULT_SHAPE } from '../diagram/constants';
 import { NodeModel } from '../diagram/diagram-factory';
 import { LinkData, NodeData } from '../diagram/node-data';
-import { PerfDiagram } from './perf-diagram';
-import { DEFAULT_COLOR, DEFAULT_SHAPE } from '../diagram/constants';
+import { BenchmarkStatistics } from './components/benchmark-statistics';
+import { DiagramInfoBar } from './components/diagram-info-bar';
+import { NodeDialogs } from './components/node-dialogs';
+import { PageHeader } from './components/page-header';
+import { RelationshipCard } from './components/relationship-card';
+import { SidePanel } from './components/side-panel';
+import { StylesDialog } from './components/styles-dialog';
+import { ToolStrip } from './components/tool-strip';
+import { DiagramActions } from './diagram-actions';
+import { DiagramState } from './diagram-state';
+import { LinkInfoCard } from './link-info-card';
+import { OperationRunner } from './operation-runner';
+import { DiagramPage } from './diagram-page';
+import { SelectionState } from './selection-state';
 
-/** The parts of the component these tests drive; most of them are not public. */
+/**
+ * What these tests drive: members of the page, of its parts and of its services,
+ * most of them not public. See `benchOf` for where each is found.
+ */
 interface Bench {
   diagram: go.Diagram;
   busy(): boolean;
@@ -48,7 +66,6 @@ interface Bench {
   saveComment(text: string): Promise<void>;
   showColorPicker(node: NodeData): void;
   pickColor(color: string): Promise<void>;
-  showLinkInfo(link: LinkData): void;
   linkInfo(): { ownership: string | null; from: NodeData | null } | null;
   removeInfoLink(): Promise<void>;
   openStyles(): void;
@@ -69,11 +86,48 @@ interface Bench {
   confirmResetStyles(): Promise<void>;
 }
 
+/** The child components of the page, and the services it provides, that the tests reach into. */
+const PARTS: Type<unknown>[] = [
+  PageHeader,
+  DiagramInfoBar,
+  ToolStrip,
+  RelationshipCard,
+  BenchmarkStatistics,
+  SidePanel,
+  NodeDialogs,
+  StylesDialog,
+];
+const SERVICES: Type<unknown>[] = [DiagramActions, DiagramState, OperationRunner, SelectionState];
+
+/**
+ * The page with its parts and services as one object. These tests are about the
+ * page as a whole, so they do not care which piece owns what they call: a member
+ * is looked for in the page first, then in its parts, then in its services.
+ */
+function benchOf(fixture: ComponentFixture<DiagramPage>): Bench {
+  const root = fixture.debugElement;
+  const owners: object[] = [
+    fixture.componentInstance,
+    ...PARTS.map((part) => root.query(By.directive(part)).componentInstance as object),
+    ...SERVICES.map((service) => root.injector.get(service) as object),
+  ];
+  return new Proxy({} as Bench, {
+    get(_, name) {
+      const owner = owners.find((candidate) => name in candidate);
+      if (!owner) throw new Error(`Nothing on the page is called ${String(name)}`);
+      const value = (owner as Record<PropertyKey, unknown>)[name];
+      // A method needs its owner as `this`; a signal is a function too, but stands on its own.
+      const isMethod = typeof value === 'function' && !Object.hasOwn(owner, name);
+      return isMethod ? (value as (...args: unknown[]) => unknown).bind(owner) : value;
+    },
+  });
+}
+
 const INITIAL = 'Initial state: matches the startup snapshot';
 const LATEST = 'Latest state: matches the snapshot taken before undo';
 
-describe('PerfDiagram', () => {
-  let fixture: ComponentFixture<PerfDiagram>;
+describe('DiagramPage', () => {
+  let fixture: ComponentFixture<DiagramPage>;
   let bench: Bench;
   let diagram: go.Diagram;
   let page: HTMLElement;
@@ -89,17 +143,20 @@ describe('PerfDiagram', () => {
     for (let i = 0; i < 3; i++) diagram.maybeUpdate();
     await fixture.whenStable();
   };
+  /** What a click on the info icon of a relationship does. */
+  const showLinkInfo = (link: LinkData) =>
+    fixture.debugElement.injector.get(LinkInfoCard).show(link);
   const select = async (...keys: number[]) => {
     diagram.selectCollection(keys.map((key) => diagram.findNodeForKey(key)!));
     await settle();
   };
 
   beforeEach(async () => {
-    TestBed.configureTestingModule({ imports: [PerfDiagram] });
-    fixture = TestBed.createComponent(PerfDiagram);
+    TestBed.configureTestingModule({ imports: [DiagramPage] });
+    fixture = TestBed.createComponent(DiagramPage);
     fixture.detectChanges();
     await fixture.whenStable();
-    bench = fixture.componentInstance as unknown as Bench;
+    bench = benchOf(fixture);
     diagram = bench.diagram;
     page = fixture.nativeElement as HTMLElement;
     // jsdom gives the canvas no size; this is how GoJS is told the size of the view without one.
@@ -309,8 +366,10 @@ describe('PerfDiagram', () => {
       return input.value;
     };
 
-    it('allows as many runs as there are nodes', () => {
+    it('allows as many runs as there are nodes, and suggests that many at first', () => {
       expect(bench.maxBulkRuns()).toBe(30);
+      // 50 would be suggested, but this diagram allows 30.
+      expect(bench.bulkRuns()).toBe(30);
     });
 
     it('corrects entries that are not a whole number from 1 to the maximum', () => {
@@ -508,7 +567,7 @@ describe('PerfDiagram', () => {
           .nextElementSibling!.textContent!.trim();
       };
       const open = async (link: LinkData) => {
-        bench.showLinkInfo(link);
+        showLinkInfo(link);
         await settle();
       };
       /** Where the info icon of that relationship is on the canvas, in pixels. */
@@ -742,7 +801,7 @@ describe('PerfDiagram', () => {
   describe('styles by legal entity field', () => {
     const typeOf = (index: number) => bench.styleRows()[index].type;
     const nodesOfType = (type: string) =>
-      model().nodeDataArray.filter((node) => node.subtitle === type);
+      model().nodeDataArray.filter((node) => node.legalEntityType === type);
     const styles = () => dialog('Styles by legal entity field');
     const fieldSelect = () => styles().querySelector<HTMLSelectElement>('select.style-field')!;
     const listed = () =>
@@ -793,7 +852,9 @@ describe('PerfDiagram', () => {
 
       it('lists the legal entity types of the diagram once "Legal entity type" is chosen', async () => {
         await pickField('legalEntityType');
-        const types = [...new Set(model().nodeDataArray.map((node) => node.subtitle))].sort();
+        const types = [
+          ...new Set(model().nodeDataArray.map((node) => node.legalEntityType)),
+        ].sort();
         expect(listed()).toEqual(types);
         expect(listed()).toContain('Fund of funds');
         expect(listed()).toContain('Feeder fund');
@@ -847,7 +908,7 @@ describe('PerfDiagram', () => {
         await settle();
         expect(styles().open).toBe(false);
         expect(withSubtitle()).toBe(30);
-        expect(subtitleOf(1)).toBe(nodeData(1).subtitle);
+        expect(subtitleOf(1)).toBe(nodeData(1).legalEntityType);
         expect(subtitleOf(1)).toBe('Fund of funds');
         for (const node of model().nodeDataArray) {
           expect(node).toMatchObject({ color: DEFAULT_COLOR, shape: DEFAULT_SHAPE });
@@ -985,7 +1046,7 @@ describe('PerfDiagram', () => {
       });
 
       it('lists every legal entity type in the diagram with its number of nodes', () => {
-        const types = new Set(model().nodeDataArray.map((node) => node.subtitle));
+        const types = new Set(model().nodeDataArray.map((node) => node.legalEntityType));
         expect(bench.styleRows().map((row) => row.type)).toEqual([...types].sort());
         for (const row of bench.styleRows()) expect(row.count).toBe(nodesOfType(row.type).length);
         expect(styles().open).toBe(true);
@@ -1008,7 +1069,7 @@ describe('PerfDiagram', () => {
         expect(bench.canApplyStyle()).toBe(true);
       });
 
-      it('applies color and shape to every node of several fund types at once, and closes', async () => {
+      it('applies color and shape to every node of several legal entity types at once, and closes', async () => {
         const [first, second, other] = [typeOf(0), typeOf(1), typeOf(2)];
         bench.toggleStyleType(first);
         bench.toggleStyleType(second);
@@ -1080,7 +1141,7 @@ describe('PerfDiagram', () => {
         expect(disabled.every(Boolean)).toBe(true);
       });
 
-      it('selects and unselects all fund types at once', () => {
+      it('selects and unselects all legal entity types at once', () => {
         bench.selectAllStyleTypes(true);
         expect(bench.allStyleTypesSelected()).toBe(true);
         expect(bench.styleTypes().size).toBe(bench.styleRows().length);
@@ -1309,8 +1370,45 @@ describe('PerfDiagram', () => {
         }
       });
 
+      it('work after the line type was changed, a node was styled and that was undone', async () => {
+        bench.reset('200');
+        await settle();
+        await bench.changeLinkType('orthogonal');
+        await select(5);
+        await bench.editSelected('color', '#fecaca');
+        await bench.undo();
+        await settle();
+
+        await press('Expand all');
+        expect(page.querySelector('.failure')).toBeNull();
+        expect(cards()).toHaveLength(model().linkDataArray.length);
+        expect(tool('Collapse all').disabled).toBe(false);
+        expect(bench.log()[0].op).toBe('Expand all');
+      }, 30_000);
+
+      it('take the cards away again when an Expand all fails halfway', async () => {
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        const layoutDiagram = vi
+          .spyOn(diagram, 'commit')
+          .mockImplementationOnce((work: (d: go.Diagram) => void) => {
+            diagram.startTransaction('expand all');
+            work(diagram);
+            for (let i = 0; i < 3; i++) diagram.maybeUpdate();
+            throw new Error('boom');
+          });
+        await bench.expandCards();
+        await settle();
+        layoutDiagram.mockRestore();
+        vi.restoreAllMocks();
+
+        expect(page.querySelector('.failure')).not.toBeNull();
+        expect(model().modelData.cardsExpanded).toBe(false);
+        expect(cards()).toHaveLength(0);
+        expect(tool('Expand all').disabled).toBe(false);
+      });
+
       it('put away the card that a click on an info icon opened', async () => {
-        bench.showLinkInfo(model().linkDataArray[0]);
+        showLinkInfo(model().linkDataArray[0]);
         await settle();
         expect(page.querySelector('.link-card')).not.toBeNull();
         await press('Expand all');
@@ -1467,13 +1565,13 @@ describe('PerfDiagram', () => {
         expect(page.querySelector('.nav-flyout')).toBeNull();
       });
 
-      it('has left the side panel, which keeps title, subtitle and color', async () => {
+      it('has left the side panel, which keeps title, legal entity type and color', async () => {
         await select(3);
-        const labels = Array.from(page.querySelectorAll('.side label')).map(
-          (label) => label.textContent!.trim().split(/\s+/)[0],
+        const labels = Array.from(page.querySelectorAll('.side label')).map((label) =>
+          label.textContent!.trim(),
         );
         expect(labels).toContain('Title');
-        expect(labels).toContain('Subtitle');
+        expect(labels).toContain('Legal entity type');
         expect(labels).not.toContain('Shape');
         expect(page.querySelector('.side select')).toBeNull();
       });
@@ -1682,14 +1780,35 @@ describe('PerfDiagram', () => {
       expect(bench.stateCheck().ok).toBe(true);
     });
 
-    it('follow the data that is loaded, and a new diagram is untitled', async () => {
+    it('follow the data that is loaded', async () => {
       bench.reset('fund-structure');
       await settle();
       expect(field('Diagram name').value).toBe('Sample fund structure');
+      expect(field('Diagram name').classList.contains('missing')).toBe(false);
+    });
+
+    it('leave the name of a new diagram to the user: the box is empty and marked as required', async () => {
+      const name = () => field('Diagram name');
+      expect(name().required).toBe(true);
+      expect(name().getAttribute('aria-invalid')).toBe('false');
 
       page.querySelector<HTMLButtonElement>('header button[aria-label="New diagram"]')!.click();
       await settle();
-      expect(field('Diagram name').value).toBe('Untitled diagram');
+      expect(name().value).toBe('');
+      expect(name().placeholder).toBe('Diagram name (required)');
+      expect(name().classList.contains('missing')).toBe(true);
+      expect(name().getAttribute('aria-invalid')).toBe('true');
+      expect(model().modelData.name).toBe('');
+
+      await type('Diagram name', 'Meridian holdings');
+      expect(name().classList.contains('missing')).toBe(false);
+      expect(name().getAttribute('aria-invalid')).toBe('false');
+
+      // Taking the name away again is an undo step like any other, and the box asks for one again.
+      await bench.undo();
+      await settle();
+      expect(name().value).toBe('');
+      expect(name().classList.contains('missing')).toBe(true);
     });
   });
 
@@ -1955,6 +2074,70 @@ describe('PerfDiagram', () => {
     });
   });
 
+  describe('a diagram without nodes', () => {
+    const stylesButton = () =>
+      Array.from(page.querySelectorAll<HTMLButtonElement>('header button')).find((button) =>
+        button.textContent!.includes('Styles'),
+      )!;
+    const actionsMenu = () =>
+      page.querySelector<HTMLSelectElement>('select[aria-label="Actions"]')!;
+    const startEmpty = async () => {
+      bench.reset('blank');
+      await settle();
+    };
+
+    it('has nothing to style: the Styles button is disabled and says why', async () => {
+      expect(stylesButton().disabled).toBe(false);
+      expect(stylesButton().title).toBe('Set color and shape per legal entity field');
+
+      await startEmpty();
+      expect(stylesButton().disabled).toBe(true);
+      expect(stylesButton().title).toBe('Styles: add a node first');
+    });
+
+    it('has nothing to export or print: the Actions dropdown is disabled', async () => {
+      expect(actionsMenu().disabled).toBe(false);
+
+      await startEmpty();
+      expect(actionsMenu().disabled).toBe(true);
+    });
+
+    it('still offers Reset and New diagram', async () => {
+      await startEmpty();
+      for (const label of ['Reset diagram', 'New diagram']) {
+        const button = page.querySelector<HTMLButtonElement>(
+          `header button[aria-label="${label}"]`,
+        )!;
+        expect(button.disabled).toBe(false);
+      }
+    });
+
+    it('offers both again once it has a node, and not after that node is undone', async () => {
+      await startEmpty();
+      await bench.addNode();
+      await settle();
+      expect(stylesButton().disabled).toBe(false);
+      expect(actionsMenu().disabled).toBe(false);
+
+      await bench.undo();
+      await settle();
+      expect(stylesButton().disabled).toBe(true);
+      expect(actionsMenu().disabled).toBe(true);
+    });
+
+    it('loses them when its last node is deleted', async () => {
+      await startEmpty();
+      await bench.addNode();
+      await settle();
+      bench.askToDelete([nodeData(1)]);
+      await bench.confirmDelete();
+      await settle();
+      expect(bench.stats()?.nodes).toBe(0);
+      expect(stylesButton().disabled).toBe(true);
+      expect(actionsMenu().disabled).toBe(true);
+    });
+  });
+
   describe('changes of an operation', () => {
     const number = () => page.querySelector<HTMLButtonElement>('.log tbody .link-button')!;
     const changes = () => dialog('Changes:');
@@ -1983,7 +2166,7 @@ describe('PerfDiagram', () => {
       await settle();
 
       const data = rows().filter((row) => row[1] === 'Data');
-      expect(data.map((row) => row[3])).toEqual(['title', 'fund type', 'shape', 'color']);
+      expect(data.map((row) => row[3])).toEqual(['title', 'legal entity type', 'shape', 'color']);
       const drawing = rows().filter((row) => row[1] === 'Drawing');
       expect(drawing.length).toBe(bench.log()[0].changes - 4);
       // All of them belong to the one fund that was changed.
@@ -2004,7 +2187,7 @@ describe('PerfDiagram', () => {
       );
       expect(groups.slice(0, 4).sort()).toEqual([
         'Data color × 30',
-        'Data fund type × 30',
+        'Data legal entity type × 30',
         'Data shape × 30',
         'Data title × 30',
       ]);
@@ -2194,7 +2377,7 @@ describe('PerfDiagram', () => {
     it('stay closed the next time the page is opened', async () => {
       toggle().click();
       await settle();
-      const again = TestBed.createComponent(PerfDiagram);
+      const again = TestBed.createComponent(DiagramPage);
       again.detectChanges();
       await again.whenStable();
       expect((again.nativeElement as HTMLElement).querySelector('.log table')).toBeNull();

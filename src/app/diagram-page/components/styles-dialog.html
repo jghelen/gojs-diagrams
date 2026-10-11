@@ -1,0 +1,232 @@
+<dialog #stylesDialog class="modal styles">
+  <h2>Styles by legal entity field</h2>
+  <div class="style-grid">
+    <div>
+      <select
+        class="style-field"
+        aria-label="Legal entity field"
+        (change)="chooseStyleField($any($event.target).value)"
+      >
+        <!-- Shown in the closed dropdown while nothing is chosen, but not offered in its list. -->
+        <option value="" hidden disabled [selected]="styleField() === null">Select a field</option>
+        @for (field of styleFields; track field.id) {
+          <option [value]="field.id" [selected]="field.id === styleField()">
+            {{ field.label }}
+          </option>
+        }
+      </select>
+      @if (styleField()) {
+        <label class="pick-all">
+          <input
+            type="checkbox"
+            [checked]="allStyleTypesSelected()"
+            [indeterminate]="styleTypes().size > 0 && !allStyleTypesSelected()"
+            (change)="selectAllStyleTypes($any($event.target).checked)"
+          />
+          Select all
+        </label>
+      }
+      <ul class="types">
+        @for (row of styleRows(); track row.type) {
+          <li>
+            <button
+              type="button"
+              class="type"
+              [class.current]="styleTypes().has(row.type)"
+              [attr.aria-pressed]="styleTypes().has(row.type)"
+              (click)="toggleStyleType(row.type)"
+            >
+              @let preview = stylePreview(row);
+              <svg
+                class="preview"
+                viewBox="0 0 44 26"
+                width="36"
+                height="22"
+                [class.mixed]="preview.mixed"
+                [attr.aria-label]="preview.mixed ? 'Mixed styles' : 'Current style'"
+              >
+                <path [attr.d]="preview.path" [attr.fill]="preview.fill" />
+              </svg>
+              <span class="name">{{ row.type }}</span>
+              <span class="count">{{ row.count }}</span>
+            </button>
+          </li>
+        }
+      </ul>
+    </div>
+    <div class="style-editor">
+      <p class="hint">
+        @if (!styleField()) {
+          Select a legal entity field on the left to see its values. Its value is then shown on
+          every node, under the name, once you press Apply.
+        } @else if (styleNodeCount() === 0) {
+          Press Apply to show this field on every node. Color and shape are for values of the field:
+          click one or more values on the left to be able to pick them.
+        } @else {
+          {{ styleNodeCount() === 1 ? '1 node' : styleNodeCount() + ' nodes' }} in
+          {{ styleTypes().size === 1 ? '1 value' : styleTypes().size + ' values' }}. Nothing changes
+          until you press Apply.
+        }
+      </p>
+      <section class="style-section">
+        <h3>Color</h3>
+        <div class="swatches">
+          @for (color of colors; track color) {
+            <button
+              type="button"
+              class="swatch"
+              [class.current]="color === styleDraft().color"
+              [style.background]="color"
+              [attr.aria-label]="'Color ' + color"
+              [attr.aria-pressed]="color === styleDraft().color"
+              [disabled]="!canPickStyle()"
+              (click)="chooseStyle('color', color)"
+            ></button>
+          }
+          <input
+            type="color"
+            title="Custom color"
+            aria-label="Custom color"
+            [value]="styleDraft().color ?? '#ffffff'"
+            [disabled]="!canPickStyle()"
+            (change)="chooseStyle('color', $any($event.target).value)"
+          />
+        </div>
+      </section>
+      <section class="style-section">
+        <h3>Shape</h3>
+        <div class="shape-tiles">
+          @for (tile of shapeTiles; track tile.figure) {
+            <button
+              type="button"
+              class="shape-tile"
+              [class.current]="tile.figure === styleDraft().shape"
+              [attr.aria-pressed]="tile.figure === styleDraft().shape"
+              [disabled]="!canPickStyle()"
+              (click)="chooseStyle('shape', tile.figure)"
+            >
+              <svg viewBox="0 0 44 26" width="44" height="26" aria-hidden="true">
+                <path [attr.d]="tile.path" />
+              </svg>
+              {{ tile.label }}
+            </button>
+          }
+        </div>
+      </section>
+      <section class="style-section">
+        <h3>Preview</h3>
+        <div class="preview-frame">
+          <div class="node-preview">
+            <svg viewBox="0 0 44 26" preserveAspectRatio="none" aria-hidden="true">
+              <path
+                vector-effect="non-scaling-stroke"
+                [attr.d]="nodePreview().path"
+                [attr.fill]="nodePreview().fill"
+              />
+            </svg>
+            <!-- The two arrows a node has on its left. -->
+            <svg
+              class="node-preview-arrows"
+              width="13"
+              height="30"
+              viewBox="0 0 13 30"
+              aria-hidden="true"
+              [style.left.px]="nodePreview().arrowsLeft"
+            >
+              <path d="M6.5 1.5L11.5 7.5H8.5V11.5H4.5V7.5H1.5Z" />
+              <path d="M6.5 28.5L1.5 22.5H4.5V18.5H8.5V22.5H11.5Z" />
+            </svg>
+            <!-- The x a node has at its top right. -->
+            <svg
+              class="node-preview-delete"
+              width="13"
+              height="13"
+              viewBox="0 0 13 13"
+              aria-hidden="true"
+              [style.left.px]="nodePreview().deleteIcon.x - 6.5"
+              [style.top.px]="nodePreview().deleteIcon.y - 6.5"
+            >
+              <circle cx="6.5" cy="6.5" r="6" fill="#ffffff" stroke="#9ca3af" />
+              <path d="M4 4L9 9M9 4L4 9" stroke="#6b7280" stroke-width="1.5" />
+            </svg>
+            <div class="node-preview-text" [style.color]="nodePreview().textColor">
+              <strong>Fund name</strong>
+              @if (nodePreview().subtitle; as subtitle) {
+                <span>{{ subtitle }}</span>
+              }
+              <hr />
+              <!-- The same three icons a node has in the diagram: color, comment, batch. -->
+              <span class="node-preview-icons" aria-hidden="true">
+                <svg width="13" height="13" viewBox="0 0 13 13">
+                  <defs>
+                    <linearGradient id="previewRainbow">
+                      <stop offset="0" stop-color="#ef4444" />
+                      <stop offset="0.25" stop-color="#f59e0b" />
+                      <stop offset="0.5" stop-color="#22c55e" />
+                      <stop offset="0.75" stop-color="#3b82f6" />
+                      <stop offset="1" stop-color="#a855f7" />
+                    </linearGradient>
+                  </defs>
+                  <circle
+                    cx="6.5"
+                    cy="6.5"
+                    r="5.75"
+                    fill="url(#previewRainbow)"
+                    stroke="#ffffff"
+                    stroke-width="1.5"
+                  />
+                </svg>
+                <svg width="15" height="14" viewBox="0 0 15 14">
+                  <path d="M1 1H14V10H7L4 13V10H1Z" fill="#ffffff" stroke="#374151" />
+                </svg>
+                <svg width="13" height="13" viewBox="0 0 13 13">
+                  <rect
+                    x="0.5"
+                    y="0.5"
+                    width="12"
+                    height="12"
+                    rx="2.5"
+                    fill="#ffffff"
+                    stroke="#374151"
+                  />
+                  <path
+                    d="M6.5 3.5V9.5M3.5 6.5H9.5"
+                    fill="none"
+                    stroke="#15803d"
+                    stroke-width="1.75"
+                  />
+                </svg>
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+  <div class="actions">
+    <button type="button" class="reset" [disabled]="busy()" (click)="askToResetStyles()">
+      Reset all to gray square
+    </button>
+    <button type="button" (click)="closeStyles()">Close</button>
+    <button
+      type="button"
+      class="confirm"
+      [disabled]="busy() || !canApplyStyle()"
+      (click)="applyStyles()"
+    >
+      Apply
+    </button>
+  </div>
+</dialog>
+
+<dialog #resetDialog class="modal">
+  <h2>Reset all styles?</h2>
+  <p class="hint">
+    Every node goes back to a light gray square, and the legal entity field is unselected, so the
+    nodes show their name only. You can bring it all back with Undo.
+  </p>
+  <div class="actions">
+    <button type="button" autofocus (click)="cancelResetStyles()">Cancel</button>
+    <button type="button" class="confirm" (click)="confirmResetStyles()">Reset</button>
+  </div>
+</dialog>

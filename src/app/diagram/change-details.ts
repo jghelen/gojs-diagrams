@@ -43,7 +43,7 @@ const MAX_VALUE_LENGTH = 2000;
 
 /** Names for the fields of the data, where the field name itself says too little. */
 const DATA_LABELS: Record<string, string> = {
-  subtitle: 'fund type',
+  legalEntityType: 'legal entity type',
   loc: 'position',
   layoutType: 'layout',
   linkType: 'line type',

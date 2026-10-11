@@ -95,7 +95,7 @@ export class SelectionState {
         : {
             count: nodes.length,
             title: shared('title'),
-            subtitle: shared('subtitle'),
+            legalEntityType: shared('legalEntityType'),
             shape: shared('shape'),
             color: shared('color'),
           },

@@ -1,9 +1,9 @@
 import { Routes } from '@angular/router';
 import { NewBatch } from './new-batch/new-batch';
-import { PerfDiagram } from './perf-diagram/perf-diagram';
+import { DiagramPage } from './diagram-page/diagram-page';
 
 export const routes: Routes = [
-  { path: '', component: PerfDiagram },
+  { path: '', component: DiagramPage },
   { path: 'batches/new', component: NewBatch },
   { path: '**', redirectTo: '' },
 ];
