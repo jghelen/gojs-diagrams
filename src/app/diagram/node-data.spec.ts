@@ -28,7 +28,7 @@ describe('createNodes', () => {
     for (const node of createNodes(100)) {
       expect(node.shape).toBe(DEFAULT_SHAPE);
       expect(node.color).toBe(DEFAULT_COLOR);
-      expect(node.comment).toBe('');
+      expect(node.comment).toBe('test fail');
     }
   });
 
