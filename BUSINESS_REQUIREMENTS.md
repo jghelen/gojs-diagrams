@@ -44,16 +44,16 @@ the business: **does undo/redo stay fast and reliable on large structures** (up 
 
 ## 3. Screen overview
 
-| Area                          | Content                                                                                           |
-| ----------------------------- | ------------------------------------------------------------------------------------------------- |
-| Header, left                  | **Data** dropdown: which diagram to open                                                          |
-| Header, right                 | **Styles**, **Actions** menu, **Reset diagram** (reload icon), **New diagram**                    |
-| Bar above the canvas          | Diagram **name**, **description**, and **search**                                                 |
-| Left navigation on the canvas | Add node, Undo, Redo, Zoom in, Zoom out, Zoom to fit, Layout, Lines, Auto arrange (in that order) |
-| Canvas                        | The diagram                                                                                       |
-| Overview, bottom right        | A small picture of the whole diagram for moving around                                            |
-| Below the canvas              | Timing table (see [14](#14-performance-measurement))                                              |
-| Side panel, right             | History, bulk edits, selected relationships, selected nodes                                       |
+| Area                          | Content                                                                                                  |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Header, left                  | **Data** dropdown: which diagram to open                                                                 |
+| Header, right                 | **Styles**, **Actions** menu, **Reset diagram** (reload icon), **New diagram**                           |
+| Bar above the canvas          | Diagram **name**, **description**, and **search**                                                        |
+| Left navigation on the canvas | Add node, Undo, Redo, Zoom in, Zoom out, Zoom to fit, Layout, Lines, Shape, Auto arrange (in that order) |
+| Canvas                        | The diagram                                                                                              |
+| Overview, bottom right        | A small picture of the whole diagram for moving around                                                   |
+| Below the canvas              | Timing table (see [14](#14-performance-measurement))                                                     |
+| Side panel, right             | History, bulk edits, selected relationships, selected nodes                                              |
 
 Every icon without a text label shows its name when the user hovers over it.
 
@@ -109,14 +109,13 @@ Every icon without a text label shows its name when the user hovers over it.
 
 ### 5.2 Controls on a node
 
-| Control            | Position                    | Hover text                                 | What happens                                                      |
-| ------------------ | --------------------------- | ------------------------------------------ | ----------------------------------------------------------------- |
-| Rainbow circle     | Below the text              | Change color                               | Opens the colour chooser for this node                            |
-| Speech bubble      | Below the text              | Add comment                                | Opens the comment dialog for this node                            |
-| Plus in a box      | Below the text              | Add Batch                                  | Opens the "new batch" page for this node in a **new browser tab** |
-| Gray x             | Top right, inside the shape | Delete node                                | Asks for confirmation, then deletes the node                      |
-| Up and down arrows | Left, one above the other   | none                                       | No action yet                                                     |
-| White dot          | Right                       | Drag to another node to add a relationship | Starting point for drawing a relationship                         |
+| Control            | Position                    | Hover text   | What happens                                                      |
+| ------------------ | --------------------------- | ------------ | ----------------------------------------------------------------- |
+| Rainbow circle     | Below the text              | Change color | Opens the colour chooser for this node                            |
+| Speech bubble      | Below the text              | Add comment  | Opens the comment dialog for this node                            |
+| Plus in a box      | Below the text              | Add Batch    | Opens the "new batch" page for this node in a **new browser tab** |
+| Gray x             | Top right, inside the shape | Delete node  | Asks for confirmation, then deletes the node                      |
+| Up and down arrows | Left, one above the other   | none         | No action yet                                                     |
 
 - **BR-5.5** A thin horizontal line separates the text from the three icons below it.
 - **BR-5.6** All controls stay inside the shape for every shape, including diamond and ellipse.
@@ -150,8 +149,12 @@ Every icon without a text label shows its name when the user hovers over it.
 
 ### 5.7 Editing nodes
 
-- **BR-5.18** With one or more nodes selected, the side panel edits title, subtitle, shape and
-  colour. The change applies to all selected nodes at once and is one undo step.
+- **BR-5.18** With one or more nodes selected, the side panel edits title, subtitle and colour.
+  The change applies to all selected nodes at once and is one undo step.
+- **BR-5.18a** The shape of the selected nodes is set from the **Shape** item of the left
+  navigation, not from the side panel. It opens a column of shape pictures, each named on hover;
+  picking one changes all selected nodes as one undo step. The item shows the shape the selection
+  has now and is disabled while no node is selected.
 - **BR-5.19** Where the selected nodes differ on a field, the panel shows "Mixed".
 - **BR-5.20** Title and subtitle can also be edited directly on a selected node.
 
@@ -194,7 +197,8 @@ Every icon without a text label shows its name when the user hovers over it.
   points at is owned by the fund the line comes from.
 - **BR-6.5** It is shown in **dark green**, with **two decimals** (for example `62.50%`), at the
   arrow end of the line.
-- **BR-6.6** The percentage is placed beside the line and clear of the node, so the whole figure
+- **BR-6.6** The percentage has no background of its own; it stands directly on the canvas.
+  It is placed beside the line and clear of the node, so the whole figure
   can always be read.
 - **BR-6.7** Where no ownership is known, nothing is shown.
 
@@ -208,8 +212,11 @@ Every icon without a text label shows its name when the user hovers over it.
 
 ### 6.4 Drawing a relationship
 
-- **BR-6.11** The user draws a relationship by dragging from the white dot on the right of a node
-  to another node.
+- **BR-6.11** The user draws a relationship by dragging from the edge of a node to another node.
+  There is no separate icon for this on the node.
+- **BR-6.11a** The edge does not have to be hit exactly. A drag that starts within a few pixels
+  of it on screen, inside or just outside the node, draws a relationship at any zoom level; a drag
+  from the middle of the node moves the node.
 - **BR-6.12** A hand-drawn relationship is dotted, has no info icon and no ownership.
 - **BR-6.13** More than one relationship between the same two funds is allowed.
 - **BR-6.14** Drawing a relationship is one undo step.
@@ -228,7 +235,8 @@ Every icon without a text label shows its name when the user hovers over it.
   selected node takes it out. No extra key is needed.
 - **BR-7.2** Clicking empty canvas clears the selection.
 - **BR-7.3** A selected node is marked by a **gold outline** in its own shape. There is no blue
-  selection rectangle.
+  selection rectangle. The outline fits the node closely for every shape, with no gap between
+  outline and node.
 - **BR-7.4** Clicking one of the icons on a node performs that icon's action and does not change
   the selection.
 - **BR-7.5** When **exactly one** node is selected, its tree is highlighted: every node of the
@@ -284,7 +292,10 @@ The **Styles** button (palette icon) opens a dialog that gives all funds of a ty
   minutes. Their names in the Lines column then say "(crosses nodes on a diagram this big)".
   Switching the line type must never freeze the screen, whatever the size of the diagram.
 - **BR-9.7** Switching the line type is one undo step.
-- **BR-9.8** Only one of the two columns (Layout, Lines) is open at a time.
+- **BR-9.8** Only one of the columns (Layout, Lines, Shape) is open at a time. A column opens
+  beside the navigation and always stays inside the canvas.
+- **BR-9.9** Every item of the left navigation, and every icon in its columns, shows its name
+  beside it as soon as the mouse is over it.
 
 ## 10. Finding your way around
 

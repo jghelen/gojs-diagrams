@@ -55,7 +55,6 @@ import {
   FUND_TYPES,
   LinkData,
   NodeData,
-  SHAPES,
   formatOwnership,
   randomPatch,
 } from '../diagram/node-data';
@@ -194,7 +193,6 @@ export class PerfDiagram {
   protected readonly datasets = DATASETS;
   protected readonly layouts = LAYOUTS;
   protected readonly linkTypes = LINK_TYPES;
-  protected readonly shapes = SHAPES;
   protected readonly shapeTiles = SHAPE_TILES;
   protected readonly colors = COLORS;
 
@@ -228,6 +226,19 @@ export class PerfDiagram {
   protected readonly currentLinkStyle = computed(() => linkStyle(this.linkType()));
   /** Whether the tool strip is showing its column of line type icons. */
   protected readonly linkMenuOpen = signal(false);
+  /** Whether the tool strip shows its column of shape icons, for the selected nodes. */
+  protected readonly shapeMenuOpen = signal(false);
+  /** The picture of the shape that all selected nodes have; null when they differ or none is selected. */
+  protected readonly selectedShapeTile = computed(() => {
+    const shape = this.selected()?.shape;
+    return SHAPE_TILES.find((tile) => tile.figure === shape) ?? null;
+  });
+  /** The hover text of the shape tool: what the selection has, or what to do first. */
+  protected readonly shapeTip = computed(() => {
+    const sel = this.selected();
+    if (!sel) return 'Shape: select nodes first';
+    return `Shape: ${this.selectedShapeTile()?.label ?? 'mixed'}`;
+  });
   protected readonly bulkRuns = signal(50);
   /**
    * Most runs the bulk edit accepts: the number of nodes in the diagram, and
@@ -286,7 +297,6 @@ export class PerfDiagram {
       fill: color,
       // A diamond comes to a point on the left, so its arrows sit further in, as in the diagram.
       arrowsLeft: shape === 'Diamond' ? 24 : 8,
-      handleRight: shape === 'Diamond' ? 18 : 6,
       // The delete icon sits where it does in the diagram, which depends on the shape.
       deleteIcon: deleteIconCentre(shape),
       textColor: textColorFor(color),
@@ -414,6 +424,8 @@ export class PerfDiagram {
 
     // Errors inside GoJS's own mouse and keyboard handling arrive here, not in runOperation.
     const onError = (): void => {
+      // A drag or a text edit that is under way keeps its transaction, whatever went wrong elsewhere.
+      if (this.diagram.currentTool !== this.diagram.defaultTool) return;
       if (this.measuring || this.undoManager.transactionLevel === 0) return;
       this.recoverFrom('An error left a transaction open.');
       this.refresh();
@@ -904,11 +916,19 @@ export class PerfDiagram {
   }
 
   /** Opens or closes one of the tool strip's two columns of icons; only one is open at a time. */
-  protected toggleMenu(menu: 'layout' | 'lines'): void {
+  protected toggleMenu(menu: 'layout' | 'lines' | 'shape'): void {
     const layout = menu === 'layout' && !this.layoutMenuOpen();
     const lines = menu === 'lines' && !this.linkMenuOpen();
+    const shape = menu === 'shape' && !this.shapeMenuOpen();
     this.layoutMenuOpen.set(layout);
     this.linkMenuOpen.set(lines);
+    this.shapeMenuOpen.set(shape);
+  }
+
+  /** Gives the selected nodes the shape picked from the tool strip's column of icons, which then closes. */
+  protected pickShape(shape: string): Promise<void> {
+    this.shapeMenuOpen.set(false);
+    return this.editSelected('shape', shape);
   }
 
   /**
@@ -1394,6 +1414,8 @@ export class PerfDiagram {
     this.selectedLinks.set(this.selectedLinkData().length);
     this.linksOfSelectedNodes.set(this.linkDataOfSelectedNodes().length);
     const nodes = this.selectedNodes();
+    // Shapes are picked for the selected nodes; without any, the column of shapes has nothing to do.
+    if (nodes.length === 0) this.shapeMenuOpen.set(false);
     const shared = <F extends EditableField>(field: F): NodeData[F] | null =>
       nodes.every((data) => data[field] === nodes[0][field]) ? nodes[0][field] : null;
     this.selected.set(

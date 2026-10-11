@@ -54,7 +54,7 @@ Then open http://localhost:4200.
 | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | Top bar                               | The **Data** dropdown on the left; on the right **Styles**, the **Actions** menu, a reload icon that resets the diagram, and a new-diagram icon |
 | Bar above the canvas                  | The diagram's **name** and **description**, and the **search** box                                                                              |
-| Tool strip (left edge of the canvas)  | Add node, undo, redo, zoom in, zoom out, zoom to fit, layout, lines, auto arrange                                                               |
+| Tool strip (left edge of the canvas)  | Add node, undo, redo, zoom in, zoom out, zoom to fit, layout, lines, shape, auto arrange                                                        |
 | Overview (bottom right of the canvas) | A small picture of the whole diagram; drag its gold box to move around                                                                          |
 | Canvas (left)                         | The diagram. Scroll to pan, Ctrl/Cmd + wheel (or pinch) to zoom                                                                                 |
 | Timing table (below the canvas)       | One row per operation, newest first                                                                                                             |
@@ -140,7 +140,6 @@ light gray square with a dark gray border.
 | Plus in a box      | under the text | "Add Batch": opens `/batches/new?nodeId=<id>` in a new browser tab (a placeholder page for now)                           |
 | Grey x             | top right      | "Delete node": asks for confirmation, then deletes the node                                                               |
 | Up and down arrows | left           | No action yet                                                                                                             |
-| White dot          | right          | Drag from it to another node to add a relationship                                                                        |
 
 A thin rule separates the text from the three icons. If a name or fund type is too long for the
 node, it ends in "…" and the full text appears when you hover over it.
@@ -151,9 +150,14 @@ node, it ends in "…" and the full text appears when you hover over it.
   out; click empty space to clear the selection. Ctrl/Cmd+A selects everything. Press on empty
   space for a moment and drag to draw a selection box.
 - A selected node has a **gold outline** in its own shape.
-- The **Selected nodes** panel lets you set the title, subtitle, shape and colour. With several
-  nodes selected the change applies to all of them and is a single undo step. Fields on which the
+- The **Selected nodes** panel lets you set the title, subtitle and colour. With several nodes
+  selected the change applies to all of them and is a single undo step. Fields on which the
   selected nodes differ show "Mixed".
+- **Shape**, the icon under Lines in the tool strip, sets the shape of the selected nodes. Click
+  it to see one picture per shape, named on hover (Square, Rounded, Ellipse, Diamond, Capsule,
+  Rounded top), and click the one you want. The icon shows the shape the selection has now; it is
+  disabled while no node is selected.
+- Every tool in the strip shows its name beside it as soon as the mouse is over it.
 - With **exactly one** node selected, its tree (the chain up to the top and everything below it)
   is highlighted, together with the nodes it is joined to by relationships you drew yourself:
   each of those nodes gets the gold outline and the rest of the diagram is dimmed. The highlight
@@ -200,9 +204,10 @@ There are three kinds of line. All are black and end in an arrowhead.
   nothing.
 - **Info:** click the small "i" in the middle of a line to see what it connects and its
   ownership. The dialog can also remove that relationship.
-- **Add:** drag from the small white dot on the right of a node to another node. Dragging from
-  the very edge of a node works too, but that edge is only a few pixels wide when the diagram is
-  zoomed out.
+- **Add:** drag from the edge of a node to another node. The edge does not have to be hit
+  exactly: a drag that starts within a few pixels of it, inside or just outside the node, draws a
+  relationship, however far the diagram is zoomed out. A drag from the middle of the node moves
+  the node.
 - **Remove:** click lines to select them and press Delete, or use the button in **Selected
   relationships**. With nodes selected, **Remove their N relationships** removes every line that
   touches them.
@@ -237,8 +242,7 @@ Operations are recorded while it is closed, and the browser remembers whether yo
 The number in the **Changes** column is usually bigger than you would expect: randomizing one node
 shows 11 to 17 changes, not 4. Four are changes to the data (title, fund type, shape, colour). The
 rest are changes to the drawing that follow from them: the two texts, the fill, the text colour,
-the room the texts get inside the new shape, and the places of the x, the arrows and the link
-handle. GoJS records those as well, so that an undo restores the picture exactly; values that
+the room the texts get inside the new shape, and the places of the x and the arrows. GoJS records those as well, so that an undo restores the picture exactly; values that
 happen to stay the same are not recorded, which is why the number varies. **Click the number** to
 see the list: what changed, on which fund or relationship, with the value before and after. A
 summary counts the changes per property; of a big operation the first 200 are listed one by one.
@@ -413,7 +417,7 @@ The tests run without a real browser, so some things can only be checked by hand
 - **The browser's own download and print steps.** The tests check that **Export PNG** asks for a
   sharp picture of the whole diagram and that **Print** prepares one; saving the file and the
   print dialog are replaced by stand-ins.
-- **Real mouse gestures.** Dragging a node, drawing a relationship from the link handle, dragging
+- **Real mouse gestures.** Dragging a node, drawing a relationship from the edge of a node, dragging
   the box in the overview and zooming with the mouse wheel are not acted out. The rules behind
   them are tested directly: where a node may be dropped, and where a relationship may start.
 - **A real new tab.** The test for **Add Batch** checks that a new tab is asked for with the right

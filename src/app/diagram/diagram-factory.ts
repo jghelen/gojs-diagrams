@@ -113,7 +113,6 @@ const BATCH_ICON = 'BATCH';
 const DELETE_ICON = 'DELETE';
 const SELECTION_GOLD = '#d4a017';
 const ARROWS = 'ARROWS';
-const LINK_HANDLE = 'LINK_HANDLE';
 /** Room kept free of text on either side of a node, for the two arrows on its left. */
 const ARROW_COLUMN = 20;
 
@@ -262,51 +261,64 @@ export function deleteIconCentre(figure: go.FigureName): { x: number; y: number 
 }
 
 /**
- * Binding conversion from a node's shape to the place of its link handle: at the
- * right, half way up. A diamond comes to a point there, so its handle sits further in.
+ * How near to the edge of a node a drag may start and still draw a relationship:
+ * this many pixels on screen, on either side of the edge, whatever the zoom. A
+ * diagram that is zoomed to fit is often drawn at a third of its size, where the
+ * rim that GoJS itself offers for this is three pixels wide and easily missed,
+ * and a miss moves the node instead.
  */
-function linkHandleSpot(figure: go.FigureName): go.Spot {
-  return new go.Spot(1, 0.5, figure === go.Figures.Diamond ? -24 : -12, 0);
+const EDGE_REACH_PX = 8;
+/**
+ * The same reach is never more than this many diagram units, so that when the
+ * diagram is zoomed far out the middle of a node is still left for moving it.
+ */
+const EDGE_REACH_MAX = 20;
+
+/** How far a point is from the edge of a rectangle; inside it, from the nearest side. */
+function distanceToEdge(bounds: go.Rect, point: go.Point): number {
+  const dx = Math.max(bounds.left - point.x, 0, point.x - bounds.right);
+  const dy = Math.max(bounds.top - point.y, 0, point.y - bounds.bottom);
+  if (dx > 0 || dy > 0) return Math.hypot(dx, dy);
+  return Math.min(
+    point.x - bounds.left,
+    bounds.right - point.x,
+    point.y - bounds.top,
+    bounds.bottom - point.y,
+  );
 }
 
 /**
- * The dot on the right of a node from which a new relationship is dragged to
- * another node. Dragging from the very edge of a node works too, but that edge
- * is only a few pixels wide once the diagram is zoomed out.
+ * The node whose edge is near enough to this point of the diagram for a drag
+ * from there to draw a relationship; null when there is none. A point on one
+ * node never reaches the edge of another.
  */
-function createLinkHandle(): go.Panel {
-  return new go.Panel(go.PanelTypes.Spot, {
-    name: LINK_HANDLE,
-    cursor: 'crosshair',
-    toolTip: hint('Drag to another node to add a relationship'),
-  })
-    .bind('alignment', 'shape', linkHandleSpot)
-    .add(
-      // A larger invisible disc, so the handle can still be caught when it is drawn small.
-      new go.Shape({
-        figure: go.Figures.Circle,
-        desiredSize: new go.Size(20, 20),
-        fill: 'transparent',
-        stroke: null,
-      }),
-      new go.Shape({
-        figure: go.Figures.Circle,
-        desiredSize: new go.Size(10, 10),
-        fill: '#ffffff',
-        stroke: '#374151',
-        strokeWidth: 1.5,
-      }),
-    );
+function nodeWithEdgeNear(diagram: go.Diagram, point: go.Point): go.Node | null {
+  const reach = Math.min(EDGE_REACH_MAX, EDGE_REACH_PX / diagram.scale);
+  const hitPart = diagram.findObjectAt(point)?.part;
+  const over = hitPart instanceof go.Adornment ? hitPart.adornedPart : hitPart;
+  if (over instanceof go.Node) {
+    return distanceToEdge(over.actualBounds, point) <= reach ? over : null;
+  }
+  let nearest: go.Node | null = null;
+  let distance = reach;
+  diagram.findPartsNear(point, reach, true).each((part) => {
+    if (!(part instanceof go.Node)) return;
+    const d = distanceToEdge(part.actualBounds, point);
+    if (d <= distance) {
+      nearest = part;
+      distance = d;
+    }
+  });
+  return nearest;
 }
 
-/** Lets a drag that starts on a node's link handle draw a relationship from that node. */
-function linkFromHandle(diagram: go.Diagram): void {
+/** Lets a drag that starts at or near the edge of a node draw a relationship from that node. */
+function linkFromEdge(diagram: go.Diagram): void {
   const tool = diagram.toolManager.linkingTool;
   const findLinkablePort = tool.findLinkablePort;
   tool.findLinkablePort = function (this: go.LinkingTool): go.GraphObject | null {
-    const hit = this.diagram.findObjectAt(this.diagram.firstInput.documentPoint);
-    if (hit?.part instanceof go.Node && findNamed(hit, LINK_HANDLE)) return hit.part.port;
-    return findLinkablePort.call(this);
+    const node = nodeWithEdgeNear(this.diagram, this.diagram.firstInput.documentPoint);
+    return node ? node.port : findLinkablePort.call(this);
   };
 }
 
@@ -341,7 +353,17 @@ function createDeleteIcon(): go.Panel {
  */
 function createGoldOutline(strokeWidth = 4): go.Adornment {
   return new go.Adornment(go.PanelTypes.Auto).add(
-    new go.Shape({ fill: null, stroke: SELECTION_GOLD, strokeWidth }).bind('figure', 'shape'),
+    new go.Shape({
+      fill: null,
+      stroke: SELECTION_GOLD,
+      strokeWidth,
+      // By default an ellipse, a diamond or a capsule is drawn big enough to hold
+      // the node's bounding rectangle inside its curve, which leaves a gap around
+      // the node. With these the outline is exactly as big as the node, as a
+      // rectangle's always was.
+      spot1: go.Spot.TopLeft,
+      spot2: go.Spot.BottomRight,
+    }).bind('figure', 'shape'),
     new go.Placeholder(),
   );
 }
@@ -419,7 +441,6 @@ function createNodeTemplate(): go.Node {
       ),
       createDeleteIcon(),
       createArrows(),
-      createLinkHandle(),
     );
 }
 
@@ -467,7 +488,8 @@ function createOwnershipLabel(): go.Adornment {
     locationSpot: go.Spot.Center,
     pickable: false,
   }).add(
-    new go.Shape({ fill: 'rgba(255, 255, 255, 0.85)', stroke: null }),
+    // No background: the figure stands directly on the canvas.
+    new go.Shape({ fill: null, stroke: null }),
     new go.TextBlock({
       name: OWNERSHIP_TEXT,
       margin: new go.Margin(0, 2),
@@ -766,7 +788,7 @@ export function createDiagram(div: HTMLDivElement, clicks: IconClicks): go.Diagr
   // A link dragged from the rim of one node to another node becomes a 'manual' link.
   diagram.toolManager.linkingTool.archetypeLinkData = { category: 'manual' satisfies LinkKind };
   handleClicks(diagram, clicks);
-  linkFromHandle(diagram);
+  linkFromEdge(diagram);
   diagram.addDiagramListener('SelectionMoved', (e) => rerouteLinksAcross(e.subject));
   // Lines are drawn up to the outline of a node, so when a node changes shape
   // its lines have to be measured again.

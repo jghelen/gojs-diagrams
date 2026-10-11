@@ -149,7 +149,7 @@
       <nav class="canvas-nav" aria-label="Diagram tools">
         <button
           type="button"
-          title="Add node"
+          data-tip="Add node"
           aria-label="Add node"
           [disabled]="busy()"
           (click)="addNode()"
@@ -158,7 +158,7 @@
         </button>
         <button
           type="button"
-          title="Undo"
+          data-tip="Undo"
           aria-label="Undo"
           [disabled]="busy() || !stats()?.canUndo"
           (click)="undo()"
@@ -169,7 +169,7 @@
         </button>
         <button
           type="button"
-          title="Redo"
+          data-tip="Redo"
           aria-label="Redo"
           [disabled]="busy() || !stats()?.canRedo"
           (click)="redo()"
@@ -180,7 +180,7 @@
         </button>
         <button
           type="button"
-          title="Zoom in"
+          data-tip="Zoom in"
           aria-label="Zoom in"
           [disabled]="busy() || isEmpty()"
           (click)="zoomIn()"
@@ -192,7 +192,7 @@
         </button>
         <button
           type="button"
-          title="Zoom out"
+          data-tip="Zoom out"
           aria-label="Zoom out"
           [disabled]="busy() || isEmpty()"
           (click)="zoomOut()"
@@ -204,7 +204,7 @@
         </button>
         <button
           type="button"
-          title="Zoom to fit"
+          data-tip="Zoom to fit"
           aria-label="Zoom to fit"
           [disabled]="busy() || isEmpty()"
           (click)="zoomToFit()"
@@ -217,7 +217,7 @@
           <button
             type="button"
             aria-label="Layout"
-            [title]="'Layout: ' + currentLayout().label"
+            [attr.data-tip]="'Layout: ' + currentLayout().label"
             [attr.aria-expanded]="layoutMenuOpen()"
             [disabled]="busy() || isEmpty()"
             (click)="toggleMenu('layout')"
@@ -232,7 +232,7 @@
                 <button
                   type="button"
                   role="menuitemradio"
-                  [title]="layout.label"
+                  [attr.data-tip]="layout.label"
                   [attr.aria-label]="layout.label"
                   [attr.aria-checked]="layout.type === layoutType()"
                   [class.current]="layout.type === layoutType()"
@@ -250,7 +250,7 @@
           <button
             type="button"
             aria-label="Lines"
-            [title]="'Lines: ' + linkTypeLabel(linkType())"
+            [attr.data-tip]="'Lines: ' + linkTypeLabel(linkType())"
             [attr.aria-expanded]="linkMenuOpen()"
             [disabled]="busy() || isEmpty()"
             (click)="toggleMenu('lines')"
@@ -265,7 +265,7 @@
                 <button
                   type="button"
                   role="menuitemradio"
-                  [title]="linkTypeLabel(style.type)"
+                  [attr.data-tip]="linkTypeLabel(style.type)"
                   [attr.aria-label]="linkTypeLabel(style.type)"
                   [attr.aria-checked]="style.type === linkType()"
                   [class.current]="style.type === linkType()"
@@ -279,9 +279,48 @@
             </div>
           }
         </div>
+        <div class="nav-flyout-anchor">
+          <button
+            type="button"
+            aria-label="Shape"
+            [attr.data-tip]="shapeTip()"
+            [attr.aria-expanded]="shapeMenuOpen()"
+            [disabled]="busy() || isEmpty() || !selected()"
+            (click)="toggleMenu('shape')"
+          >
+            @if (selectedShapeTile(); as tile) {
+              <svg class="shape-icon" viewBox="0 0 44 26" aria-hidden="true">
+                <path [attr.d]="tile.path" />
+              </svg>
+            } @else {
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 3h8v8H3zM17.5 13a4 4 0 1 0 .01 0zM7 13.5l4.5 7.5h-9z" />
+              </svg>
+            }
+          </button>
+          @if (shapeMenuOpen() && selected(); as sel) {
+            <div class="nav-flyout" role="menu" aria-label="Shapes">
+              @for (tile of shapeTiles; track tile.figure) {
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  [attr.data-tip]="tile.label"
+                  [attr.aria-label]="tile.label"
+                  [attr.aria-checked]="tile.figure === sel.shape"
+                  [class.current]="tile.figure === sel.shape"
+                  (click)="pickShape(tile.figure)"
+                >
+                  <svg class="shape-icon" viewBox="0 0 44 26" aria-hidden="true">
+                    <path [attr.d]="tile.path" />
+                  </svg>
+                </button>
+              }
+            </div>
+          }
+        </div>
         <button
           type="button"
-          title="Auto arrange: run the current layout again"
+          data-tip="Auto arrange: run the current layout again"
           aria-label="Auto arrange"
           [disabled]="busy() || isEmpty()"
           (click)="autoArrange()"
@@ -427,8 +466,8 @@
       } @else {
         <p class="hint">
           Click lines to select them, then press Delete or use the button that appears here.
-          Removing is undoable. To add a relationship, drag from the white dot on the right of a
-          node to another node; lines added this way are dotted.
+          Removing is undoable. To add a relationship, drag from the edge of a node to another node;
+          lines added this way are dotted.
         </p>
       }
     </section>
@@ -456,17 +495,6 @@
             [placeholder]="sel.subtitle === null ? 'Mixed' : ''"
             (change)="editSelected('subtitle', $any($event.target).value)"
           />
-        </label>
-        <label>
-          Shape
-          <select (change)="editSelected('shape', $any($event.target).value)">
-            @if (sel.shape === null) {
-              <option value="" disabled selected>Mixed</option>
-            }
-            @for (shape of shapes; track shape) {
-              <option [value]="shape" [selected]="shape === sel.shape">{{ shape }}</option>
-            }
-          </select>
         </label>
         <div class="field">
           Color{{ sel.color === null ? ' (mixed)' : '' }}
@@ -816,17 +844,6 @@
             >
               <path d="M6.5 1.5L11.5 7.5H8.5V11.5H4.5V7.5H1.5Z" />
               <path d="M6.5 28.5L1.5 22.5H4.5V18.5H8.5V22.5H11.5Z" />
-            </svg>
-            <!-- The dot on a node's right from which a relationship is dragged. -->
-            <svg
-              class="node-preview-handle"
-              width="13"
-              height="13"
-              viewBox="0 0 13 13"
-              aria-hidden="true"
-              [style.right.px]="nodePreview().handleRight"
-            >
-              <circle cx="6.5" cy="6.5" r="5" fill="#ffffff" stroke="#374151" stroke-width="1.5" />
             </svg>
             <!-- The x a node has at its top right. -->
             <svg

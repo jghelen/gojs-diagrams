@@ -710,7 +710,7 @@ describe('PerfDiagram', () => {
     const tool = (label: string) =>
       page.querySelector<HTMLButtonElement>(`nav.canvas-nav button[aria-label="${label}"]`)!;
 
-    it('offers add node, undo, redo, the three zooms, layout and auto arrange, in that order', () => {
+    it('offers add node, undo, redo, the three zooms, layout, lines, shape and auto arrange, in that order', () => {
       const labels = Array.from(page.querySelectorAll('nav.canvas-nav button')).map((button) =>
         button.getAttribute('aria-label'),
       );
@@ -723,8 +723,110 @@ describe('PerfDiagram', () => {
         'Zoom to fit',
         'Layout',
         'Lines',
+        'Shape',
         'Auto arrange',
       ]);
+    });
+
+    it('names every tool on hover', () => {
+      const tips = Array.from(page.querySelectorAll<HTMLElement>('nav.canvas-nav button')).map(
+        (button) => button.dataset['tip'],
+      );
+      expect(tips).toEqual([
+        'Add node',
+        'Undo',
+        'Redo',
+        'Zoom in',
+        'Zoom out',
+        'Zoom to fit',
+        'Layout: Top to bottom',
+        'Lines: Orthogonal, rounded',
+        'Shape: select nodes first',
+        'Auto arrange: run the current layout again',
+      ]);
+    });
+
+    describe('shape', () => {
+      const choices = () =>
+        Array.from(page.querySelectorAll<HTMLButtonElement>('.nav-flyout button'));
+
+      it('needs a selection', async () => {
+        expect(tool('Shape').disabled).toBe(true);
+        await select(3);
+        expect(tool('Shape').disabled).toBe(false);
+        expect(tool('Shape').dataset['tip']).toBe('Shape: Square');
+      });
+
+      it('opens a column of shape pictures that are named on hover', async () => {
+        await select(3);
+        tool('Shape').click();
+        await settle();
+        expect(page.querySelector('.nav-flyout')!.getAttribute('aria-label')).toBe('Shapes');
+        expect(choices().map((choice) => choice.dataset['tip'])).toEqual([
+          'Square',
+          'Rounded',
+          'Ellipse',
+          'Diamond',
+          'Capsule',
+          'Rounded top',
+        ]);
+        for (const choice of choices()) {
+          expect(choice.getAttribute('aria-label')).toBe(choice.dataset['tip']);
+          expect(choice.querySelector('svg path')!.getAttribute('d')).toBeTruthy();
+        }
+        const current = choices().filter((choice) => choice.classList.contains('current'));
+        expect(current.map((choice) => choice.dataset['tip'])).toEqual(['Square']);
+      });
+
+      it('gives every selected node the picked shape, as one undo step, and closes', async () => {
+        await select(3, 5, 8);
+        tool('Shape').click();
+        await settle();
+        choices()
+          .find((choice) => choice.dataset['tip'] === 'Diamond')!
+          .click();
+        await settle();
+        await bench.undoAll();
+        await bench.redoAll();
+
+        for (const key of [3, 5, 8]) expect(nodeData(key).shape).toBe('Diamond');
+        expect(nodeData(4).shape).toBe(DEFAULT_SHAPE);
+        expect(bench.stats()).toMatchObject({ historyLength: 1 });
+        expect(bench.log().at(-1)!.op).toBe('Set shape on 3 nodes');
+        expect(page.querySelector('.nav-flyout')).toBeNull();
+        expect(tool('Shape').dataset['tip']).toBe('Shape: Diamond');
+      });
+
+      it('says "mixed" when the selected nodes differ, and shows its picture when they agree', async () => {
+        await select(3);
+        await bench.editSelected('shape', 'Ellipse');
+        await select(3, 4);
+        expect(tool('Shape').dataset['tip']).toBe('Shape: mixed');
+        expect(tool('Shape').querySelector('svg.shape-icon')).toBeNull();
+        await select(3);
+        expect(tool('Shape').dataset['tip']).toBe('Shape: Ellipse');
+        expect(tool('Shape').querySelector('svg.shape-icon')).not.toBeNull();
+      });
+
+      it('closes its column when the selection is cleared', async () => {
+        await select(3);
+        tool('Shape').click();
+        await settle();
+        diagram.clearSelection();
+        await settle();
+        expect(page.querySelector('.nav-flyout')).toBeNull();
+      });
+
+      it('has left the side panel, which keeps title, subtitle and color', async () => {
+        await select(3);
+        const labels = Array.from(page.querySelectorAll('.side label')).map(
+          (label) => label.textContent!.trim().split(/\s+/)[0],
+        );
+        expect(labels).toContain('Title');
+        expect(labels).toContain('Subtitle');
+        expect(labels).not.toContain('Shape');
+        expect(page.querySelector('.side select')).toBeNull();
+      });
     });
 
     it('runs the current layout again from the last tool, and the header no longer offers that', async () => {
@@ -746,7 +848,7 @@ describe('PerfDiagram', () => {
       tool('Layout').click();
       await settle();
       const choices = Array.from(page.querySelectorAll<HTMLButtonElement>('.nav-flyout button'));
-      expect(choices.map((choice) => choice.title)).toEqual([
+      expect(choices.map((choice) => choice.dataset['tip'])).toEqual([
         'Top to bottom',
         'Bottom to top',
         'Circle',
@@ -754,17 +856,17 @@ describe('PerfDiagram', () => {
         'Force-directed',
         'Grid',
       ]);
-      expect(choices.find((choice) => choice.classList.contains('current'))?.title).toBe(
+      expect(choices.find((choice) => choice.classList.contains('current'))?.dataset['tip']).toBe(
         'Top to bottom',
       );
 
-      choices.find((choice) => choice.title === 'Circle')!.click();
+      choices.find((choice) => choice.dataset['tip'] === 'Circle')!.click();
       await settle();
       await bench.undoAll();
       await bench.redoAll();
       expect(bench.layoutType()).toBe('circle');
       expect(page.querySelector('.nav-flyout')).toBeNull();
-      expect(tool('Layout').title).toBe('Layout: Circle');
+      expect(tool('Layout').dataset['tip']).toBe('Layout: Circle');
     });
 
     it('zooms in and out', () => {
@@ -814,20 +916,20 @@ describe('PerfDiagram', () => {
       tool('Lines').click();
       await settle();
       const choices = Array.from(page.querySelectorAll<HTMLButtonElement>('.nav-flyout button'));
-      expect(choices.map((choice) => choice.title)).toEqual([
+      expect(choices.map((choice) => choice.dataset['tip'])).toEqual([
         'Orthogonal, rounded',
         'Orthogonal, square',
         'Straight (crosses nodes)',
         'Curved (crosses nodes)',
       ]);
 
-      choices.find((choice) => choice.title.startsWith('Straight'))!.click();
+      choices.find((choice) => choice.dataset['tip']!.startsWith('Straight'))!.click();
       await settle();
       await bench.undoAll();
       await bench.redoAll();
       expect(bench.linkType()).toBe('straight');
       expect(page.querySelector('.nav-flyout')).toBeNull();
-      expect(tool('Lines').title).toBe('Lines: Straight (crosses nodes)');
+      expect(tool('Lines').dataset['tip']).toBe('Lines: Straight (crosses nodes)');
     });
 
     it('shows only one column of icons at a time', async () => {
@@ -837,6 +939,12 @@ describe('PerfDiagram', () => {
       await settle();
       expect(page.querySelectorAll('.nav-flyout')).toHaveLength(1);
       expect(page.querySelector('.nav-flyout')!.getAttribute('aria-label')).toBe('Line types');
+
+      await select(3);
+      tool('Shape').click();
+      await settle();
+      expect(page.querySelectorAll('.nav-flyout')).toHaveLength(1);
+      expect(page.querySelector('.nav-flyout')!.getAttribute('aria-label')).toBe('Shapes');
     });
 
     it('adds a node', async () => {
@@ -1135,7 +1243,7 @@ describe('PerfDiagram', () => {
         await settle();
         const found = Array.from(
           page.querySelectorAll<HTMLButtonElement>('.nav-flyout button'),
-        ).map((choice) => choice.title);
+        ).map((choice) => choice.dataset['tip']);
         page.querySelector<HTMLButtonElement>('button[aria-label="Lines"]')!.click();
         await settle();
         return found;
@@ -1366,6 +1474,18 @@ describe('PerfDiagram', () => {
       expect(level()).toBe(0);
       expect(nodeData(3).title).toBe(title);
       expect(notice()).not.toBeNull();
+    });
+
+    it('does not interrupt a drag or a text edit because of an error elsewhere on the page', async () => {
+      diagram.currentTool = diagram.toolManager.textEditingTool;
+      model().startTransaction('tool at work');
+      window.dispatchEvent(new ErrorEvent('error', { message: 'ResizeObserver loop' }));
+      await settle();
+      expect(level()).toBe(1);
+      expect(diagram.currentTool).toBe(diagram.toolManager.textEditingTool);
+      expect(notice()).toBeNull();
+      model().commitTransaction('tool at work');
+      diagram.currentTool = diagram.defaultTool;
     });
 
     it('leaves a drag or a text edit alone: their open transaction is not an error', async () => {

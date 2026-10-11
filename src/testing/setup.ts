@@ -19,3 +19,6 @@ dialog.close ??= function (this: HTMLDialogElement) {
   this.removeAttribute('open');
   this.dispatchEvent(new Event('close'));
 };
+
+// GoJS gives its canvas the focus on a mouse press and scrolls the page back; jsdom has no scrolling.
+window.scrollTo = () => undefined;

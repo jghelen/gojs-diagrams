@@ -11,6 +11,7 @@ import {
   createModel,
   highlightTree,
   revealNodesOneByOne,
+  showSearchHit,
   textColorFor,
 } from './diagram-factory';
 import {
@@ -100,9 +101,11 @@ describe('nodes', () => {
   it('have a color, a comment, a batch and a delete icon, and two arrows', () => {
     const { diagram } = createTestDiagram();
     for (const node of nodesOf(diagram)) {
-      for (const name of ['COLOR', 'COMMENT', 'BATCH', 'DELETE', 'ARROWS', 'LINK_HANDLE']) {
+      for (const name of ['COLOR', 'COMMENT', 'BATCH', 'DELETE', 'ARROWS']) {
         expect(node.findObject(name)).not.toBeNull();
       }
+      // No dot on the right: a relationship is dragged from the edge of the node.
+      expect(node.findObject('LINK_HANDLE')).toBeNull();
       expect((node.findObject('ARROWS') as go.Panel).elements.count).toBe(2);
     }
   });
@@ -193,6 +196,49 @@ describe('nodes', () => {
     expect(outline.figure).toBe('Diamond');
     expect(outline.fill).toBeNull();
     expect(outline.stroke).toBe('#d4a017');
+  });
+});
+
+describe('the gold outline', () => {
+  const outlineOf = (node: go.Node, category: string) => node.findAdornment(category)!;
+
+  it('fits the node closely for every shape, as it does for a rectangle', () => {
+    const test = createTestDiagram();
+    const node = test.diagram.findNodeForKey(4)!;
+    test.diagram.select(node);
+    const sizes: Record<string, go.Rect> = {};
+    for (const shape of SHAPES) {
+      setAll(test, 'shape', shape);
+      test.settle();
+      sizes[shape] = outlineOf(node, 'Selection').actualBounds.copy();
+    }
+    const rectangle = sizes['Rectangle'];
+    // Half of the 4px line lies outside the node on each side, and nothing more.
+    expect(rectangle.width - node.actualBounds.width).toBeLessThanOrEqual(4.5);
+    expect(rectangle.height - node.actualBounds.height).toBeLessThanOrEqual(4.5);
+    for (const shape of SHAPES) {
+      expect(sizes[shape].width).toBeCloseTo(rectangle.width, 1);
+      expect(sizes[shape].height).toBeCloseTo(rectangle.height, 1);
+      expect(sizes[shape].center.x).toBeCloseTo(node.actualBounds.center.x, 1);
+      expect(sizes[shape].center.y).toBeCloseTo(node.actualBounds.center.y, 1);
+    }
+  });
+
+  it('fits just as closely around the nodes of a highlighted tree and around a search result', () => {
+    const test = createTestDiagram();
+    setAll(test, 'shape', 'Ellipse');
+    const node = test.diagram.findNodeForKey(4)!;
+    highlightTree(test.diagram, node);
+    showSearchHit(test.diagram, node);
+    test.settle();
+    const bounds = node.actualBounds;
+    const focus = outlineOf(node, 'Focus').actualBounds;
+    expect(focus.width - bounds.width).toBeLessThanOrEqual(4.5);
+    expect(focus.height - bounds.height).toBeLessThanOrEqual(4.5);
+    // The search outline is 7px wide.
+    const search = outlineOf(node, 'Search').actualBounds;
+    expect(search.width - bounds.width).toBeLessThanOrEqual(7.5);
+    expect(search.height - bounds.height).toBeLessThanOrEqual(7.5);
   });
 });
 
@@ -342,6 +388,9 @@ describe('relationship lines', () => {
       const label = link.findAdornment('Ownership');
       if (!label) continue;
       expect((label.findObject('OWNERSHIP') as go.TextBlock).stroke).toBe('#166534');
+      // Nothing behind the figure: no white box over the lines.
+      expect((label.elt(0) as go.Shape).fill).toBeNull();
+      expect((label.elt(0) as go.Shape).stroke).toBeNull();
       expect(link.toNode!.actualBounds.intersectsRect(label.actualBounds)).toBe(false);
     }
   });
@@ -548,24 +597,161 @@ describe('drawing a relationship', () => {
     return port ? ((port.part as go.Node).key as number) : null;
   };
 
-  it('starts from the link handle on the right of a node, for every shape', () => {
+  /** A point just inside the right edge of that node, half way up. */
+  const edgeOf = (test: TestDiagram, key: number): go.Point => {
+    const bounds = test.diagram.findNodeForKey(key)!.actualBounds;
+    return new go.Point(bounds.right - 3, bounds.centerY);
+  };
+
+  it('starts from the edge of a node, on every side and for every shape', () => {
     const test = createTestDiagram();
     for (const shape of SHAPES) {
       setAll(test, 'shape', shape);
-      const node = test.diagram.findNodeForKey(4)!;
-      const handle = node.findObject('LINK_HANDLE')!;
-      expect(node.actualBounds.containsRect(handle.getDocumentBounds())).toBe(true);
-      expect(handle.getDocumentBounds().centerX).toBeGreaterThan(node.actualBounds.centerX);
-      expect(linkStartAt(test, handle.getDocumentBounds().center)).toBe(4);
+      const bounds = test.diagram.findNodeForKey(4)!.actualBounds;
+      expect(linkStartAt(test, new go.Point(bounds.right - 3, bounds.centerY))).toBe(4);
+      expect(linkStartAt(test, new go.Point(bounds.left + 3, bounds.centerY))).toBe(4);
+      expect(linkStartAt(test, new go.Point(bounds.centerX, bounds.top + 3))).toBe(4);
+      expect(linkStartAt(test, new go.Point(bounds.centerX, bounds.bottom - 3))).toBe(4);
     }
   });
 
-  it('starts from the very edge of a node as well, but not from its middle', () => {
+  it('does not start from the middle of a node, which is for moving it', () => {
     const test = createTestDiagram();
     const bounds = test.diagram.findNodeForKey(4)!.actualBounds;
-    expect(linkStartAt(test, new go.Point(bounds.centerX, bounds.bottom - 3))).toBe(4);
-    // The middle is for moving the node.
-    expect(linkStartAt(test, new go.Point(bounds.centerX + 50, bounds.centerY - 30))).toBeNull();
+    expect(linkStartAt(test, new go.Point(bounds.centerX - 20, bounds.centerY - 30))).toBeNull();
+    expect(linkStartAt(test, bounds.center)).toBeNull();
+  });
+
+  it('can be caught within a few pixels of the edge, inside or outside, however far zoomed out', () => {
+    const test = createTestDiagram();
+    const bounds = test.diagram.findNodeForKey(4)!.actualBounds;
+    for (const scale of [1, 0.5, 0.34]) {
+      test.diagram.scale = scale;
+      // Six pixels on screen inside the right edge, and six pixels outside it.
+      expect(linkStartAt(test, new go.Point(bounds.right - 6 / scale, bounds.centerY))).toBe(4);
+      expect(linkStartAt(test, new go.Point(bounds.right + 6 / scale, bounds.centerY))).toBe(4);
+    }
+    // At life size, 30 units is 30 pixels inside the edge: too far, that drag moves the node.
+    test.diagram.scale = 1;
+    expect(linkStartAt(test, new go.Point(bounds.right - 30, bounds.centerY))).toBeNull();
+  });
+
+  it('leaves the middle of the node for moving it, even when zoomed far out', () => {
+    const test = createTestDiagram();
+    test.diagram.scale = 0.1;
+    const bounds = test.diagram.findNodeForKey(4)!.actualBounds;
+    expect(linkStartAt(test, new go.Point(bounds.centerX - 20, bounds.centerY))).toBeNull();
+    expect(linkStartAt(test, new go.Point(bounds.left + 30, bounds.centerY))).toBeNull();
+  });
+
+  it('never starts from another node than the one under the pointer', () => {
+    const test = createTestDiagram({ layout: 'grid' });
+    test.diagram.scale = 0.2;
+    for (const node of nodesOf(test.diagram)) {
+      const bounds = node.actualBounds;
+      expect(linkStartAt(test, new go.Point(bounds.left + 4, bounds.centerY))).toBe(node.key);
+      expect(linkStartAt(test, new go.Point(bounds.right - 4, bounds.centerY))).toBe(node.key);
+    }
+  });
+
+  it('starts from the nearer node when the drag begins in the gap between two', () => {
+    const test = createTestDiagram({ layout: 'grid' });
+    test.diagram.scale = 0.34;
+    const [first, second] = nodesOf(test.diagram)
+      .filter((node) => Math.abs(node.location.y - nodesOf(test.diagram)[0].location.y) < 1)
+      .sort((a, b) => a.location.x - b.location.x);
+    const y = first.actualBounds.centerY;
+    expect(linkStartAt(test, new go.Point(first.actualBounds.right + 5, y))).toBe(first.key);
+    expect(linkStartAt(test, new go.Point(second.actualBounds.left - 5, y))).toBe(second.key);
+  });
+
+  /** Presses the mouse at one point of the diagram, moves it to another and lets go. */
+  const drag = (test: TestDiagram, from: go.Point, to: go.Point): void => {
+    const { diagram } = test;
+    const at = (point: go.Point, change: Partial<go.InputEvent>): go.InputEvent => {
+      const event = new go.InputEvent();
+      event.diagram = diagram;
+      event.documentPoint = point.copy();
+      event.viewPoint = diagram.transformDocToView(point);
+      event.button = 0;
+      event.buttons = 1;
+      Object.assign(event, change);
+      return event;
+    };
+    diagram.lastInput = at(from, { down: true });
+    diagram.firstInput = diagram.lastInput.copy();
+    diagram.currentTool.doMouseDown();
+    // A few steps on the way, as a hand would make.
+    for (const part of [0.2, 0.6, 1]) {
+      const point = new go.Point(from.x + (to.x - from.x) * part, from.y + (to.y - from.y) * part);
+      diagram.lastInput = at(point, {});
+      diagram.currentTool.doMouseMove();
+    }
+    diagram.lastInput = at(to, { up: true, buttons: 0 });
+    diagram.currentTool.doMouseUp();
+    test.settle();
+  };
+  const manualLinks = (test: TestDiagram) =>
+    test.model.linkDataArray
+      .filter((link) => link.category === 'manual')
+      .map((link) => [link.from, link.to]);
+
+  it('is drawn by dragging from the edge of one node to another node', () => {
+    const test = createTestDiagram();
+    const target = test.diagram.findNodeForKey(9)!.actualBounds.center;
+    drag(test, edgeOf(test, 4), target);
+
+    expect(manualLinks(test)).toEqual([[4, 9]]);
+    const link = linksOf(test.diagram).find((l) => (l.data as LinkData).category === 'manual')!;
+    expect(link.fromNode!.key).toBe(4);
+    expect(link.toNode!.key).toBe(9);
+    // Dotted, without an info icon, and one undo step.
+    expect((link.findObject('LINE') as go.Shape).strokeDashArray).not.toBeNull();
+    expect(link.findAdornment('Info')).toBeNull();
+    expect(test.model.undoManager.history.count).toBe(1);
+    test.model.undoManager.undo();
+    expect(manualLinks(test)).toEqual([]);
+  });
+
+  it('is drawn the same way when the diagram is zoomed to a third and the edge is only just missed', () => {
+    const test = createTestDiagram();
+    test.diagram.scale = 0.34;
+    const bounds = test.diagram.findNodeForKey(4)!.actualBounds;
+    const target = test.diagram.findNodeForKey(9)!.actualBounds.center;
+    // Five pixels outside the right edge.
+    drag(test, new go.Point(bounds.right + 5 / 0.34, bounds.centerY + 2), target);
+    expect(manualLinks(test)).toEqual([[4, 9]]);
+  });
+
+  it('can be drawn twice between the same two nodes', () => {
+    const test = createTestDiagram();
+    const target = test.diagram.findNodeForKey(9)!.actualBounds.center;
+    drag(test, edgeOf(test, 4), target);
+    drag(test, edgeOf(test, 4), target);
+    expect(manualLinks(test)).toEqual([
+      [4, 9],
+      [4, 9],
+    ]);
+  });
+
+  it('is not drawn by a drag from the middle of a node: that moves the node', () => {
+    const test = createTestDiagram({ layout: 'grid' });
+    const node = test.diagram.findNodeForKey(4)!;
+    const from = new go.Point(node.actualBounds.centerX - 20, node.actualBounds.centerY - 30);
+    const before = node.location.copy();
+    // Far to the right of everything, where no other node is in the way.
+    const free = test.diagram.documentBounds.width + 400;
+    drag(test, from, new go.Point(from.x + free, from.y));
+    expect(manualLinks(test)).toEqual([]);
+    expect(node.location.equals(before)).toBe(false);
+  });
+
+  it('is not drawn when the drag ends on empty canvas', () => {
+    const test = createTestDiagram();
+    const edge = edgeOf(test, 4);
+    drag(test, edge, new go.Point(edge.x + 5000, edge.y + 5000));
+    expect(manualLinks(test)).toEqual([]);
+    expect(test.model.undoManager.history.count).toBe(0);
   });
 });
 

@@ -136,7 +136,7 @@ h1 {
   z-index: 2;
   display: grid;
   grid-auto-flow: column;
-  grid-template-rows: repeat(9, 32px);
+  grid-template-rows: repeat(10, 32px);
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--border);
@@ -145,8 +145,8 @@ h1 {
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
 }
 
-/* One column of nine tools needs 416px of canvas; lower canvases get more columns. */
-@container canvas (max-height: 415px) {
+/* One column of ten tools needs 452px of canvas; lower canvases get more columns. */
+@container canvas (max-height: 451px) {
   .canvas-nav {
     grid-template-rows: repeat(5, 32px);
   }
@@ -154,11 +154,11 @@ h1 {
 
 @container canvas (max-height: 271px) {
   .canvas-nav {
-    grid-template-rows: repeat(3, 32px);
+    grid-template-rows: repeat(4, 32px);
   }
 }
 
-@container canvas (max-height: 199px) {
+@container canvas (max-height: 235px) {
   .canvas-nav {
     grid-template-rows: repeat(2, 32px);
   }
@@ -171,6 +171,42 @@ h1 {
   height: 32px;
   padding: 0;
   border-color: transparent;
+}
+
+/*
+ * The name of a tool, shown beside it at once on hover or keyboard focus. The
+ * browser's own hover text comes late and not in every embedded browser.
+ */
+.canvas-nav button {
+  position: relative;
+}
+
+.canvas-nav button[data-tip]:hover::after,
+.canvas-nav button[data-tip]:focus-visible::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  z-index: 5;
+  transform: translateY(-50%);
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #111827;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* An open column of icons stands where the name would be. */
+.canvas-nav button[aria-expanded='true']::after {
+  display: none;
+}
+
+.canvas-nav svg.shape-icon {
+  width: 22px;
+  height: 13px;
 }
 
 .canvas-nav svg {
@@ -669,15 +705,6 @@ button.shape-tile.current {
   z-index: 1;
 }
 
-.node-preview > svg.node-preview-handle {
-  inset: auto;
-  top: 41.5px;
-  width: 13px;
-  height: 13px;
-  stroke-width: 1.5;
-  z-index: 1;
-}
-
 .node-preview > svg.node-preview-delete {
   inset: auto;
   width: 13px;
@@ -764,16 +791,15 @@ button.reset {
 }
 
 /* The column of layout icons that opens beside the tool strip. */
-.nav-flyout-anchor {
-  position: relative;
-}
-
+/*
+ * A column of icons that opens beside the tools, level with their top. It is
+ * placed against the whole strip, not against the tool it belongs to, so that it
+ * never reaches below the canvas, whichever tool opened it.
+ */
 .nav-flyout {
   position: absolute;
   left: calc(100% + 10px);
-  /* A column of icons, centred on the layout button. */
-  top: 50%;
-  transform: translateY(-50%);
+  top: -1px;
   display: grid;
   gap: 4px;
   padding: 4px;
@@ -781,6 +807,19 @@ button.reset {
   border-radius: 8px;
   background: #fff;
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+}
+
+/* On a low canvas the column becomes two. */
+@container canvas (max-height: 310px) {
+  .nav-flyout {
+    grid-auto-flow: column;
+    grid-template-rows: repeat(3, 32px);
+  }
+}
+
+/* The tool whose column is open. */
+.canvas-nav button[aria-expanded='true'] {
+  background: #e5e7eb;
 }
 
 .canvas-nav .nav-flyout svg {
