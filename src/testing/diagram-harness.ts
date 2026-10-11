@@ -2,6 +2,12 @@ import { Injector } from '@angular/core';
 import * as go from 'gojs/release/go';
 import { IconClicks, NodeModel, createDiagram, createModel } from '../app/diagram/diagram-factory';
 import { HistoryService } from '../app/diagram/history.service';
+import { DiagramActions } from '../app/perf-diagram/diagram-actions';
+import { FundStyles } from '../app/perf-diagram/fund-styles';
+import { LinkInfoCard } from '../app/perf-diagram/link-info-card';
+import { NodeSearch } from '../app/perf-diagram/node-search';
+import { OperationRunner } from '../app/perf-diagram/operation-runner';
+import { SelectionState } from '../app/perf-diagram/selection-state';
 import { LayoutType, createLayout } from '../app/diagram/layouts';
 import { LinkType } from '../app/diagram/link-types';
 import { LinkData, NodeData, createLinks, createNodes } from '../app/diagram/node-data';
@@ -11,6 +17,11 @@ export interface TestDiagram {
   model: NodeModel;
   /** The undo history of the diagram, through the same service the page uses. */
   history: HistoryService;
+  /**
+   * Where the other services of the page can be had for this diagram, each
+   * sharing this diagram's history: `test.injector.get(OperationRunner)`.
+   */
+  injector: Injector;
   /** What the diagram reported about clicks on icons, in order. */
   clicks: { icon: keyof IconClicks; key: number }[];
   /** Lets GoJS do everything it would do before the next frame: layout, routing, adornments. */
@@ -25,7 +36,22 @@ export interface TestDiagram {
  * call makes a new injector and with it a new service.
  */
 export function createHistory(): HistoryService {
-  return Injector.create({ providers: [HistoryService] }).get(HistoryService);
+  return createPageInjector().get(HistoryService);
+}
+
+/** An injector with everything the page provides for one diagram. */
+function createPageInjector(): Injector {
+  return Injector.create({
+    providers: [
+      HistoryService,
+      OperationRunner,
+      DiagramActions,
+      SelectionState,
+      NodeSearch,
+      LinkInfoCard,
+      FundStyles,
+    ],
+  });
 }
 
 /** A diagram on a detached-from-layout div, loaded and laid out, with icon clicks recorded. */
@@ -69,7 +95,8 @@ export function createTestDiagram(
     { nodes, links },
     { layoutType, linkType, name: 'Test diagram', description: '', cardsExpanded },
   );
-  const history = createHistory();
+  const injector = createPageInjector();
+  const history = injector.get(HistoryService);
   history.connect(diagram);
   history.load(model);
 
@@ -85,7 +112,7 @@ export function createTestDiagram(
   };
   settle();
   history.markInitialState();
-  return { diagram, model, history, clicks, settle, clickAt };
+  return { diagram, model, history, injector, clicks, settle, clickAt };
 }
 
 /** The nodes of a diagram as an array. */

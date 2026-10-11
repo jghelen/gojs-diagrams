@@ -6,33 +6,32 @@ import {
   VERSION,
   afterNextRender,
   computed,
+  effect,
   inject,
   signal,
   viewChild,
 } from '@angular/core';
 import * as go from 'gojs/release/go';
-import { afterNextPaint, timeSteps } from '../diagram/benchmark';
+import {
+  BLANK_DATASET,
+  BULK_EDIT_BUDGET,
+  COLORS,
+  DEFAULT_DATASET,
+  DEFAULT_LAYOUT,
+  DEFAULT_LINK_TYPE,
+  LOG_OPEN_KEY,
+  MAX_CHANGE_ROWS,
+} from '../diagram/constants';
+import { DATASETS, findDataset } from '../diagram/datasets';
 import {
   NodeModel,
-  addNodeInView,
   createDiagram,
   createModel,
   createOverview,
-  deleteIconCentre,
-  highlightTree,
-  highlightedNodes,
-  picturedParts,
   revealNodesOneByOne,
-  showSearchHit,
-  textColorFor,
 } from '../diagram/diagram-factory';
-import { ChangeDetails, describeChanges } from '../diagram/change-details';
-import { downloadFileName } from '../diagram/file-name';
 import { HistoryService, StateCheck, withoutUndo } from '../diagram/history.service';
-import { DATASETS, findDataset } from '../diagram/datasets';
-import { LAYOUTS, LayoutType, createLayout, resetPortSpots } from '../diagram/layouts';
-import { SHAPE_TILES } from '../diagram/shape-tiles';
-import { newBatchUrl } from '../new-batch/new-batch';
+import { LAYOUTS, LayoutType, createLayout } from '../diagram/layouts';
 import {
   LINK_TYPES,
   LinkType,
@@ -40,32 +39,19 @@ import {
   linkStyle,
   tooBigToAvoidNodes,
 } from '../diagram/link-types';
-import {
-  EDITABLE_FIELDS,
-  EditableField,
-  LinkData,
-  NodeData,
-  formatOwnership,
-  randomPatch,
-} from '../diagram/node-data';
-import {
-  BLANK_DATASET,
-  BULK_EDIT_BUDGET,
-  COLORS,
-  DEFAULT_COLOR,
-  DEFAULT_DATASET,
-  DEFAULT_LAYOUT,
-  DEFAULT_LINK_TYPE,
-  DEFAULT_SHAPE,
-  FAILURE_NOTICE,
-  FUND_TYPES,
-  IMAGE_MAX_SIDE,
-  IMAGE_SCALE,
-  LOG_OPEN_KEY,
-  MAX_CHANGE_ROWS,
-  MAX_LOG_ENTRIES,
-} from '../diagram/constants';
+import { EditableField, LinkData, NodeData } from '../diagram/node-data';
+import { SHAPE_TILES } from '../diagram/shape-tiles';
+import { newBatchUrl } from '../new-batch/new-batch';
+import { openInNewTab, readFlag, writeFlag } from './browser';
+import { DiagramActions } from './diagram-actions';
+import { diagramPicture, downloadDiagramPng } from './diagram-picture';
+import { FundStyles, StyleDraft, StyleRow } from './fund-styles';
+import { LinkInfoCard } from './link-info-card';
+import { NodeSearch } from './node-search';
+import { LogEntry, OperationRunner } from './operation-runner';
+import { SelectionState } from './selection-state';
 
+/** The numbers of the History panel. */
 interface Stats {
   nodes: number;
   links: number;
@@ -77,61 +63,7 @@ interface Stats {
   heapMb: number | null;
 }
 
-interface LogEntry {
-  id: number;
-  op: string;
-  steps: number;
-  changes: number;
-  /** What those changes were, for the dialog behind the number. */
-  details: ChangeDetails;
-  totalMs: number;
-  avgMs: number;
-  minMs: number;
-  maxMs: number;
-  /** From the start of the operation until the result was painted; null if the tab was hidden. */
-  paintMs: number | null;
-}
-
-/** The selected nodes: per field, the value they all share, or null where they differ. */
-type Selection = { count: number } & { [F in EditableField]: NodeData[F] | null };
-
-interface LinkInfo {
-  link: LinkData;
-  from: NodeData | null;
-  to: NodeData | null;
-  /** The ownership percentage as text, or null when there is no data. */
-  ownership: string | null;
-  /** Where the card with this information stands, in pixels from the top left of the canvas. */
-  left: number;
-  top: number;
-}
-
-/**
- * The card that shows a relationship's data next to its info icon. Its width is
- * set in the style sheet to the same number; the height is what the card comes
- * to with its four lines, and is only used to keep the card inside the canvas.
- */
-const LINK_CARD_WIDTH = 270;
-const LINK_CARD_HEIGHT = 178;
-/** Room between the info icon and its card, and between the card and the edge of the canvas. */
-const LINK_CARD_GAP = 14;
-const LINK_CARD_MARGIN = 8;
-
-/** What the styles dialog will apply; null means "leave as it is". */
-interface StyleDraft {
-  color: string | null;
-  shape: go.FigureName | null;
-}
-
-/** The nodes of one fund type, as listed in the styles dialog. */
-interface StyleRow {
-  type: string;
-  count: number;
-  /** The color and the shape they all share, or null where they differ. */
-  color: string | null;
-  shape: go.FigureName | null;
-}
-
+/** What the delete confirmation dialog is asking about. */
 interface DeleteRequest {
   /** Keys of the nodes to delete. */
   keys: number[];
@@ -144,48 +76,49 @@ interface DeleteRequest {
 }
 
 /**
- * Something the user asked for, cut into the steps whose time is measured: one
- * step is one transaction that is recorded, undone or redone.
+ * The page. It puts the pieces together and connects them to the template; the
+ * work itself is done elsewhere:
+ *
+ * - `HistoryService`: the undo history.
+ * - `OperationRunner`: runs and times operations, keeps the benchmark statistics.
+ * - `DiagramActions`: every change to the diagram, each as one operation.
+ * - `SelectionState`: what is selected, and the highlight that goes with it.
+ * - `NodeSearch`: the search for nodes by name.
+ * - `LinkInfoCard`: the card that an info icon opens.
+ * - `FundStyles`: what is ticked and picked in the styles dialog.
+ *
+ * What is left here: creating the diagram and listening to it, loading data,
+ * the dialogs and menus of the page, and the numbers of the History panel.
  */
-interface Operation {
-  /** Shown in the timing log. */
-  name: string;
-  /** Whether there is another step to do. */
-  hasNext: () => boolean;
-  step: () => void;
-  /** Lets the page show its disabled buttons before a long operation blocks it. */
-  showBusyFirst?: boolean;
-}
-
-/** A yes/no setting remembered by the browser; `fallback` when there is none or storage is blocked. */
-function readFlag(key: string, fallback: boolean): boolean {
-  try {
-    const stored = localStorage.getItem(key);
-    return stored === null ? fallback : stored === 'true';
-  } catch {
-    return fallback;
-  }
-}
-
-function writeFlag(key: string, value: boolean): void {
-  try {
-    localStorage.setItem(key, String(value));
-  } catch {
-    // Not remembered, then; the setting still works until the page is closed.
-  }
-}
-
 @Component({
   selector: 'app-perf-diagram',
   templateUrl: './perf-diagram.html',
   styleUrl: './perf-diagram.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  // One history per diagram, so the service lives and dies with this component.
-  providers: [HistoryService],
+  // One diagram per page, so everything that belongs to a diagram lives and dies with the page.
+  providers: [
+    HistoryService,
+    OperationRunner,
+    DiagramActions,
+    SelectionState,
+    NodeSearch,
+    LinkInfoCard,
+    FundStyles,
+  ],
   // Escape puts the card of a relationship away, wherever the keyboard focus is.
   host: { '(document:keydown.escape)': 'closeLinkInfo()' },
 })
 export class PerfDiagram {
+  private readonly history = inject(HistoryService);
+  private readonly runner = inject(OperationRunner);
+  private readonly actions = inject(DiagramActions);
+  private readonly selection = inject(SelectionState);
+  private readonly nodeSearch = inject(NodeSearch);
+  private readonly linkCard = inject(LinkInfoCard);
+  private readonly styles = inject(FundStyles);
+
+  // ----- What the template offers to choose from -----
+
   protected readonly angularVersion = VERSION.full;
   protected readonly gojsVersion = go.Diagram.version;
   protected readonly datasets = DATASETS;
@@ -193,55 +126,66 @@ export class PerfDiagram {
   protected readonly linkTypes = LINK_TYPES;
   protected readonly shapeTiles = SHAPE_TILES;
   protected readonly colors = COLORS;
+  protected readonly maxChangeRows = MAX_CHANGE_ROWS;
+
+  // ----- State that the services own; the template reads it from here -----
+
+  /** True while an operation runs, and from loading a diagram until it is fully shown. */
+  protected readonly busy = this.runner.busy;
+  /** The benchmark statistics. */
+  protected readonly log = this.runner.log;
+  /** What to tell the user after an action failed; null when the last action went well. */
+  protected readonly failure = this.runner.failure;
+  protected readonly selected = this.selection.selected;
+  protected readonly selectedLinks = this.selection.selectedLinks;
+  protected readonly linksOfSelectedNodes = this.selection.linksOfSelectedNodes;
+  protected readonly shapeScope = this.selection.shapeScope;
+  protected readonly searchQuery = this.nodeSearch.query;
+  protected readonly searchMatches = this.nodeSearch.matches;
+  protected readonly searchIndex = this.nodeSearch.index;
+  protected readonly searchSummary = this.nodeSearch.summary;
+  /** The relationship whose card is open. */
+  protected readonly linkInfo = this.linkCard.info;
+  protected readonly styleRows = this.styles.rows;
+  protected readonly styleTypes = this.styles.types;
+  protected readonly styleDraft = this.styles.draft;
+  protected readonly allStyleTypesSelected = this.styles.allTypesSelected;
+  protected readonly styleNodeCount = this.styles.nodeCount;
+  protected readonly nodePreview = this.styles.nodePreview;
+  protected readonly canApplyStyle = this.styles.canApply;
+
+  // ----- State of the page itself -----
 
   /** Id of the dataset the diagram was loaded with. */
   protected readonly datasetId = signal(DEFAULT_DATASET);
   protected readonly layoutType = signal<LayoutType>(DEFAULT_LAYOUT);
   protected readonly linkType = signal<LinkType>(DEFAULT_LINK_TYPE);
-  /** True when the diagram has no nodes; zooming and arranging make no sense then. */
-  protected readonly isEmpty = computed(() => (this.stats()?.nodes ?? 0) === 0);
-  /** What is typed into the search box, and the keys of the nodes whose name contains it. */
-  protected readonly searchQuery = signal('');
-  protected readonly searchMatches = signal<number[]>([]);
-  /** Which of the matches is being looked at; -1 before the first step. */
-  protected readonly searchIndex = signal(-1);
-  protected readonly searchSummary = computed(() => {
-    const found = this.searchMatches().length;
-    if (this.searchQuery().trim() === '') return '';
-    if (found === 0) return 'No nodes found';
-    return this.searchIndex() < 0 ? `${found} found` : `${this.searchIndex() + 1} of ${found}`;
-  });
   /** The diagram's name and description, as shown in the bar above the canvas. */
   protected readonly diagramName = signal('');
   protected readonly diagramDescription = signal('');
+  /** Whether every relationship shows its card in the diagram ("expand all"). */
+  protected readonly cardsExpanded = signal(false);
+  protected readonly stats = signal<Stats | null>(null);
+  protected readonly stateCheck = signal<StateCheck>({ label: '', ok: null });
+  /** True when the diagram has no nodes; zooming and arranging make no sense then. */
+  protected readonly isEmpty = computed(() => (this.stats()?.nodes ?? 0) === 0);
+
   /** The layout in use, with its name and icon, for the tool strip. */
   protected readonly currentLayout = computed(
     () => LAYOUTS.find((layout) => layout.type === this.layoutType()) ?? LAYOUTS[0],
   );
-  /** Whether the tool strip is showing its column of layout icons. */
-  protected readonly layoutMenuOpen = signal(false);
   /** The line type in use, with its name and icon, for the tool strip. */
   protected readonly currentLinkStyle = computed(() => linkStyle(this.linkType()));
-  /** Whether the tool strip is showing its column of line type icons. */
+  /** Which of the tool strip's columns of icons is open. */
+  protected readonly layoutMenuOpen = signal(false);
   protected readonly linkMenuOpen = signal(false);
-  /** Whether the tool strip shows its column of shape icons, for the selected nodes. */
   protected readonly shapeMenuOpen = signal(false);
-  /** The picture of the shape that all selected nodes have; null when they differ or none is selected. */
-  /**
-   * The nodes the Shape tool works on: the selected ones, or, while the tree of a
-   * single selected node is highlighted, every highlighted node. `shape` is the
-   * shape they all have, or null where they differ. Null when there are none.
-   */
-  protected readonly shapeScope = signal<{
-    count: number;
-    shape: string | null;
-    highlighted: boolean;
-  } | null>(null);
+  /** The picture of the shape that all nodes of the Shape tool have; null when they differ. */
   protected readonly selectedShapeTile = computed(() => {
     const shape = this.shapeScope()?.shape;
     return SHAPE_TILES.find((tile) => tile.figure === shape) ?? null;
   });
-  /** The hover text of the shape tool: what the selection has, or what to do first. */
+  /** The hover text of the Shape tool: what its nodes have, or what to do first. */
   protected readonly shapeTip = computed(() => {
     const scope = this.shapeScope();
     if (!scope) return 'Shape: select nodes first';
@@ -250,6 +194,7 @@ export class PerfDiagram {
       ? `Shape of the ${scope.count} highlighted nodes: ${shape}`
       : `Shape: ${shape}`;
   });
+
   protected readonly bulkRuns = signal(50);
   /**
    * Most runs the bulk edit accepts: the number of nodes in the diagram, and
@@ -259,87 +204,25 @@ export class PerfDiagram {
     const nodes = this.stats()?.nodes ?? 1;
     return Math.max(1, Math.min(nodes, Math.floor(BULK_EDIT_BUDGET / nodes)));
   });
-  /** True while an operation runs, and from loading a model until its initial layout is done. */
-  protected readonly busy = signal(true);
-  protected readonly stats = signal<Stats | null>(null);
-  protected readonly stateCheck = signal<StateCheck>({ label: '', ok: null });
-  protected readonly selected = signal<Selection | null>(null);
-  /** Number of relationships selected directly. */
-  protected readonly selectedLinks = signal(0);
-  /** Number of relationships attached to the selected nodes. */
-  protected readonly linksOfSelectedNodes = signal(0);
-  protected readonly log = signal<LogEntry[]>([]);
-  /** What to tell the user after an action failed; null when the last action went well. */
-  protected readonly failure = signal<string | null>(null);
   /** Whether the table of timings below the canvas is shown; closing it gives the canvas its room. */
   protected readonly logOpen = signal(readFlag(LOG_OPEN_KEY, true));
 
   /** A picture of the diagram while it is being printed. */
   protected readonly printImage = signal<string | null>(null);
-  /** What the delete confirmation dialog is asking about. */
   protected readonly deleteRequest = signal<DeleteRequest | null>(null);
-  /** One row per fund type in the diagram, for the styles dialog. */
-  protected readonly styleRows = signal<StyleRow[]>([]);
-  /** The fund types ticked in the styles dialog. */
-  protected readonly styleTypes = signal<ReadonlySet<string>>(new Set());
-  /** The color and shape picked there but not applied yet; null leaves that one as it is. */
-  protected readonly styleDraft = signal<StyleDraft>({ color: null, shape: null });
-  protected readonly allStyleTypesSelected = computed(
-    () => this.styleRows().length > 0 && this.styleTypes().size === this.styleRows().length,
-  );
-  /** How many nodes the ticked fund types cover. */
-  protected readonly styleNodeCount = computed(() =>
-    this.styleRows()
-      .filter((row) => this.styleTypes().has(row.type))
-      .reduce((sum, row) => sum + row.count, 0),
-  );
-  /**
-   * What a node will look like after Apply: the picked color and shape, and for
-   * whatever was not picked, what the first ticked fund type has now.
-   */
-  protected readonly nodePreview = computed(() => {
-    const ticked = this.styleRows().filter((row) => this.styleTypes().has(row.type));
-    const draft = this.styleDraft();
-    const shape = draft.shape ?? ticked[0]?.shape ?? DEFAULT_SHAPE;
-    const color = draft.color ?? ticked[0]?.color ?? DEFAULT_COLOR;
-    const tile = SHAPE_TILES.find((candidate) => candidate.figure === shape) ?? SHAPE_TILES[0];
-    return {
-      path: tile.path,
-      fill: color,
-      // A diamond comes to a point on the left, so its arrows sit further in, as in the diagram.
-      arrowsLeft: shape === 'Diamond' ? 24 : 8,
-      // The delete icon sits where it does in the diagram, which depends on the shape.
-      deleteIcon: deleteIconCentre(shape),
-      textColor: textColorFor(color),
-      subtitle:
-        ticked.length === 0
-          ? 'Fund type'
-          : ticked.length === 1
-            ? ticked[0].type
-            : `${ticked.length} fund types`,
-    };
-  });
-  /** Apply needs at least one fund type and at least a color or a shape. */
-  protected readonly canApplyStyle = computed(() => {
-    const draft = this.styleDraft();
-    return this.styleNodeCount() > 0 && (draft.color !== null || draft.shape !== null);
-  });
   /** What is currently typed into the comment dialog; Save needs it to hold some text. */
   protected readonly commentDraft = signal('');
   /** The node whose comment is being edited in the comment dialog. */
   protected readonly commentTarget = signal<NodeData | null>(null);
   /** The node whose color is being chosen in the color dialog. */
   protected readonly colorTarget = signal<NodeData | null>(null);
-  /** The relationship shown in the info dialog. */
-  protected readonly linkInfo = signal<LinkInfo | null>(null);
-  /** Whether every relationship shows its card in the diagram ("expand all"). */
-  protected readonly cardsExpanded = signal(false);
+  /** The operation whose changes are listed in the changes dialog. */
+  protected readonly changesShown = signal<LogEntry | null>(null);
+
+  // ----- Elements of the template -----
 
   private readonly host = viewChild.required<ElementRef<HTMLDivElement>>('diagramHost');
   private readonly overviewHost = viewChild.required<ElementRef<HTMLDivElement>>('overviewHost');
-  /** The operation whose changes are listed in the changes dialog. */
-  protected readonly changesShown = signal<LogEntry | null>(null);
-  protected readonly maxChangeRows = MAX_CHANGE_ROWS;
   private readonly changesDialog =
     viewChild.required<ElementRef<HTMLDialogElement>>('changesDialog');
   private readonly colorDialog = viewChild.required<ElementRef<HTMLDialogElement>>('colorDialog');
@@ -348,23 +231,20 @@ export class PerfDiagram {
   private readonly deleteDialog = viewChild.required<ElementRef<HTMLDialogElement>>('deleteDialog');
   private readonly stylesDialog = viewChild.required<ElementRef<HTMLDialogElement>>('stylesDialog');
   private readonly resetDialog = viewChild.required<ElementRef<HTMLDialogElement>>('resetDialog');
+
   private diagram!: go.Diagram;
   /** The small picture of the whole diagram in the corner of the canvas. */
   private overview!: go.Overview;
-  /** The undo history of the diagram: recording changes, undo, redo and everything read from it. */
-  private readonly history = inject(HistoryService);
-  /** True while a timed operation runs, so that refreshing the page adds nothing to the measurement. */
-  private measuring = false;
-  private nextLogId = 1;
   /** Stops the animation in which a loaded diagram's nodes appear one by one. */
   private stopReveal: () => void = () => undefined;
   private stopWatchingErrors: () => void = () => undefined;
-  /** True while a node's tree is highlighted and the rest of the diagram dimmed. */
-  private highlighted = false;
-  private queue: Promise<void> = Promise.resolve();
 
   constructor() {
     afterNextRender(() => this.init());
+    // Shapes are picked for some nodes; without any, the column of shapes has nothing to do.
+    effect(() => {
+      if (!this.shapeScope()) this.shapeMenuOpen.set(false);
+    });
     inject(DestroyRef).onDestroy(() => {
       this.stopReveal();
       this.stopWatchingErrors();
@@ -377,6 +257,8 @@ export class PerfDiagram {
     return this.diagram.model as NodeModel;
   }
 
+  // ----- Starting up -----
+
   private init(): void {
     this.diagram = createDiagram(this.host().nativeElement, {
       onLinkInfo: (link) => this.showLinkInfo(link),
@@ -388,10 +270,22 @@ export class PerfDiagram {
     });
     this.overview = createOverview(this.overviewHost().nativeElement, this.diagram);
 
+    this.actions.connect(this.diagram);
+    this.selection.connect(this.diagram);
+    this.nodeSearch.connect(this.diagram);
+    this.linkCard.connect(this.diagram);
+    this.runner.connect(this.diagram, {
+      // Anything the user does ends the highlight and puts an open card away.
+      beforeEach: () => {
+        this.selection.clearHighlight();
+        this.linkCard.close();
+      },
+      afterEach: () => this.refresh(),
+    });
     // The page shows numbers from the history, so it follows every change of it, also
     // the ones GoJS makes itself (dragging a node, editing a text in place).
     this.history.connect(this.diagram, () => {
-      if (!this.measuring) this.refresh();
+      if (!this.runner.isMeasuring) this.refresh();
     });
     // Ctrl/Cmd+Z and Ctrl/Cmd+Y do what the Undo and Redo buttons do, timing included.
     this.history.sendShortcutsTo(
@@ -401,7 +295,14 @@ export class PerfDiagram {
     // Same for the Delete key, which removes whatever is selected.
     this.diagram.commandHandler.deleteSelection = () => void this.deleteSelection();
 
-    // The initial layout writes every node's `loc`, so the snapshot is taken after it.
+    this.listenToDiagram();
+    this.watchForErrors();
+    this.loadModel(this.datasetId());
+    this.refresh();
+  }
+
+  private listenToDiagram(): void {
+    // The initial layout gives every node its place, so the starting state is saved after it.
     this.diagram.addDiagramListener('InitialLayoutCompleted', () => {
       this.history.markInitialState();
       // GoJS clears the history right after this event; read the numbers once it has.
@@ -414,97 +315,159 @@ export class PerfDiagram {
       });
     });
     this.diagram.addDiagramListener('ChangedSelection', () => {
-      this.highlightSelectedTree();
-      this.syncSelection();
-      // Selecting something, like a click on empty canvas, puts a relationship's card away.
-      if (this.diagram.selection.count > 0) this.closeLinkInfo();
-      // Selecting something else takes the attention away from the search result.
-      if (this.diagram.selection.count > 0) this.leaveSearchHit();
+      this.selection.highlightSelected();
+      this.selection.sync();
+      // Selecting something takes the attention away from an open card and from a search result.
+      if (this.diagram.selection.count > 0) {
+        this.linkCard.close();
+        this.nodeSearch.leaveHit();
+      }
     });
-    // Zooming by wheel or pinch counts as an action that ends the highlight.
     this.diagram.addDiagramListener('ViewportBoundsChanged', (e) => {
-      if (e.subject.scale !== this.diagram.scale) this.clearHighlight();
-      this.followLinkInfo();
+      // Zooming by wheel or pinch counts as an action that ends the highlight.
+      if (e.subject.scale !== this.diagram.scale) this.selection.clearHighlight();
+      this.linkCard.follow();
     });
-    this.diagram.addDiagramListener('BackgroundSingleClicked', () => this.closeLinkInfo());
+    this.diagram.addDiagramListener('BackgroundSingleClicked', () => this.linkCard.close());
+  }
 
-    // Errors inside GoJS's own mouse and keyboard handling arrive here, not in runOperation.
+  /** Errors inside GoJS's own mouse and keyboard handling arrive here, not in an operation. */
+  private watchForErrors(): void {
     const onError = (): void => {
       // A drag or a text edit that is under way keeps its transaction, whatever went wrong elsewhere.
       if (this.diagram.currentTool !== this.diagram.defaultTool) return;
-      if (this.measuring || !this.history.hasUnfinishedTransaction) return;
-      this.recoverFrom('An error left a transaction open.');
+      if (this.runner.isMeasuring || !this.history.hasUnfinishedTransaction) return;
+      this.runner.recoverFrom('An error left a transaction open.');
       this.refresh();
     };
     window.addEventListener('error', onError);
     this.stopWatchingErrors = () => window.removeEventListener('error', onError);
+  }
 
-    this.loadModel(this.datasetId());
+  // ----- Loading data -----
+
+  /** Starts a diagram from scratch: an empty canvas to add nodes and relationships to. */
+  protected newDiagram(): void {
+    this.reset(BLANK_DATASET);
+  }
+
+  /** Loads the dataset with this id from scratch, discarding the undo history. */
+  protected reset(datasetId: string): void {
+    this.loadModel(datasetId);
+    this.datasetId.set(datasetId);
+    this.runner.clearLog();
     this.refresh();
   }
 
-  // ----- history -----
+  /** Loads a fresh model that keeps the currently selected layout and line type. */
+  private loadModel(datasetId: string): void {
+    // A reveal of the previous diagram that is still running has nothing left to show.
+    this.stopReveal();
+    // Not a change for the history: see revealNodesOneByOne.
+    withoutUndo(this.diagram, () => (this.diagram.isEnabled = true));
+    // GoJS refuses to replace a model in the middle of a transaction, whether a
+    // tool is using it or an error left it open.
+    this.diagram.currentTool.doCancel();
+    this.history.rollBackUnfinished();
+    this.failure.set(null);
+    this.linkCard.close();
+    const dataset = findDataset(datasetId);
+    const data = dataset.create();
+    // A big diagram's lines are not routed around its nodes, and orthogonal lines
+    // that run across nodes are hard to follow, so it starts with straight ones.
+    if (tooBigToAvoidNodes(data.nodes.length) && avoidsNodes(this.linkType())) {
+      this.linkType.set('straight');
+    }
+    const settings = {
+      layoutType: this.layoutType(),
+      linkType: this.linkType(),
+      // A loaded diagram starts out named after its data; the user can rename it.
+      name: datasetId === BLANK_DATASET ? 'Untitled diagram' : dataset.label,
+      description: '',
+      // A newly loaded diagram starts with its relationship cards put away.
+      cardsExpanded: false,
+    };
+    this.busy.set(true);
+    // A new model gets new parts: none of them dimmed, none of them a search result.
+    this.selection.forgetHighlight();
+    this.nodeSearch.clear();
+    this.diagram.layout = createLayout(settings.layoutType, data.nodes.length);
+    this.history.load(createModel(data, settings));
+  }
+
+  // ----- Keeping the page up to date -----
+
+  /** Reads everything the page shows from the diagram and its history again. */
+  private refresh(): void {
+    const memory = (performance as { memory?: { usedJSHeapSize: number } }).memory;
+    this.stats.set({
+      nodes: this.model.nodeDataArray.length,
+      links: this.model.linkDataArray.length,
+      historyLength: this.history.length,
+      historyIndex: this.history.position,
+      changedEvents: this.history.recordedChanges,
+      canUndo: this.history.canUndo,
+      canRedo: this.history.canRedo,
+      heapMb: memory ? memory.usedJSHeapSize / 1048576 : null,
+    });
+    if (this.stylesDialog().nativeElement.open) this.styles.refresh(this.model.nodeDataArray);
+    this.nodeSearch.update();
+    // The limit follows the node count, so a number typed for a bigger diagram may now be too high.
+    if (this.bulkRuns() > this.maxBulkRuns()) this.bulkRuns.set(this.maxBulkRuns());
+    this.stateCheck.set(this.history.describeState());
+    // A relationship that GoJS removed or moved by itself (the Delete key, a drag).
+    this.linkCard.follow();
+    this.syncSettings();
+    this.selection.sync();
+  }
+
+  /** Makes the controls follow the model's settings, which a change, an undo or a redo alters. */
+  private syncSettings(): void {
+    const { layoutType, linkType, name, description, cardsExpanded } = this.model.modelData;
+    this.cardsExpanded.set(cardsExpanded);
+    this.diagramName.set(name);
+    this.diagramDescription.set(description);
+    this.linkType.set(linkType);
+    if (layoutType === this.layoutType()) return;
+    this.layoutType.set(layoutType);
+    this.actions.zoomToFitSoon();
+  }
+
+  // ----- History -----
 
   protected undo(): Promise<void> {
-    return this.measure(() => {
-      // Saved before the clock starts: redoing everything is later checked against it.
-      this.history.rememberLatestState();
-      return {
-        name: 'Undo',
-        hasNext: once(() => this.history.canUndo),
-        step: () => this.history.undo(),
-      };
-    });
+    return this.actions.undo();
   }
 
   protected redo(): Promise<void> {
-    return this.measure(() => ({
-      name: 'Redo',
-      hasNext: once(() => this.history.canRedo),
-      step: () => this.history.redo(),
-    }));
+    return this.actions.redo();
   }
 
-  /** Undoes one transaction after another until the diagram is as it was loaded. */
   protected undoAll(): Promise<void> {
-    return this.measure(() => {
-      this.history.rememberLatestState();
-      return {
-        name: 'Undo all',
-        hasNext: () => this.history.canUndo,
-        step: () => this.history.undo(),
-        showBusyFirst: true,
-      };
-    });
+    return this.actions.undoAll();
   }
 
-  /** Redoes one transaction after another until the diagram is at its newest state again. */
   protected redoAll(): Promise<void> {
-    return this.measure(() => ({
-      name: 'Redo all',
-      hasNext: () => this.history.canRedo,
-      step: () => this.history.redo(),
-      showBusyFirst: true,
-    }));
+    return this.actions.redoAll();
   }
 
-  // ----- edits -----
+  // ----- Random edits for the benchmark -----
 
   protected randomizeOne(): Promise<void> {
-    return this.measureEdit('Randomize 1 node', 1, (nodes) => [
+    return this.actions.randomize('Randomize 1 node', 1, (nodes) => [
       nodes[Math.floor(Math.random() * nodes.length)],
     ]);
   }
 
   protected randomizeAll(): Promise<void> {
-    return this.measureEdit('Randomize all nodes', 1, (nodes) => nodes);
+    return this.actions.randomize('Randomize all nodes', 1, (nodes) => nodes);
   }
 
   protected runBulk(): Promise<void> {
     // The limit may have dropped since the number was typed, e.g. after loading a bigger diagram.
     const runs = this.validBulkRuns(this.bulkRuns());
     this.bulkRuns.set(runs);
-    return this.measureEdit(`${runs} × randomize all nodes`, runs, (nodes) => nodes);
+    return this.actions.randomize(`${runs} × randomize all nodes`, runs, (nodes) => nodes);
   }
 
   /** Takes over what was typed into the bulk-runs box, corrected to a usable number. */
@@ -521,36 +484,15 @@ export class PerfDiagram {
     return Math.min(this.maxBulkRuns(), Math.max(1, Math.floor(value)));
   }
 
-  /** Adds one new node in the middle of the view, as a single transaction. */
+  // ----- Nodes -----
+
   protected addNode(): Promise<void> {
-    return this.measure(() => {
-      // Higher than every key in use, including those of deleted nodes that
-      // relationships still refer to, so the new node does not take over their lines.
-      const key =
-        Math.max(
-          0,
-          ...this.model.nodeDataArray.map((data) => data.key),
-          ...this.model.linkDataArray.flatMap((link) => [link.from, link.to]),
-        ) + 1;
-      const node: NodeData = {
-        key,
-        title: `New fund ${key}`,
-        subtitle: FUND_TYPES[0],
-        shape: DEFAULT_SHAPE,
-        color: DEFAULT_COLOR,
-        comment: '',
-      };
-      return this.newTransactions(
-        'Add node',
-        once(() => true),
-        () => this.history.record('add node', () => addNodeInView(this.diagram, node)),
-      );
-    });
+    return this.actions.addNode();
   }
 
-  /** Sets one field on every selected node, as a single transaction. */
+  /** Sets one field on every selected node, as a single undo step. */
   protected editSelected(field: EditableField, value: string): Promise<void> {
-    return this.setField(() => this.selectedNodes(), field, value);
+    return this.actions.setField(() => this.selection.selectedNodes(), field, value);
   }
 
   /** Opens the color dialog for one node. */
@@ -567,143 +509,7 @@ export class PerfDiagram {
   protected pickColor(color: string): Promise<void> {
     const node = this.colorTarget();
     this.closeColorPicker();
-    return this.setField(() => (node ? [node] : []), 'color', color);
-  }
-
-  /** Opens the dialog in which color and shape are set per fund type. */
-  protected openStyles(): void {
-    this.refreshStyles();
-    this.styleDraft.set({ color: null, shape: null });
-    this.stylesDialog().nativeElement.showModal();
-  }
-
-  protected closeStyles(): void {
-    this.stylesDialog().nativeElement.close();
-  }
-
-  /**
-   * How a fund type's nodes look, for the small preview in its row. For a ticked
-   * type this already includes the color and shape picked but not yet applied.
-   */
-  protected stylePreview(row: StyleRow): { path: string; fill: string; mixed: boolean } {
-    const draft = this.styleTypes().has(row.type) ? this.styleDraft() : null;
-    const shape = draft?.shape ?? row.shape;
-    const color = draft?.color ?? row.color;
-    const tile = SHAPE_TILES.find((candidate) => candidate.figure === shape) ?? SHAPE_TILES[0];
-    return { path: tile.path, fill: color ?? '#ffffff', mixed: shape === null || color === null };
-  }
-
-  /** Ticks or unticks one fund type in the styles dialog. */
-  protected toggleStyleType(type: string): void {
-    const types = new Set(this.styleTypes());
-    if (!types.delete(type)) types.add(type);
-    this.styleTypes.set(types);
-  }
-
-  /** Ticks every fund type, or none. */
-  protected selectAllStyleTypes(all: boolean): void {
-    this.styleTypes.set(new Set(all ? this.styleRows().map((row) => row.type) : []));
-  }
-
-  /** Picks a color or shape for Apply; picking the same one again takes the choice back. */
-  protected chooseStyle<F extends keyof StyleDraft>(field: F, value: StyleDraft[F]): void {
-    this.styleDraft.update((draft) => ({
-      ...draft,
-      [field]: draft[field] === value ? null : value,
-    }));
-  }
-
-  /**
-   * Gives every node of the ticked fund types the picked color and shape, as one
-   * transaction, and closes the dialog. Nothing in the diagram changes before
-   * this is called.
-   */
-  protected applyStyles(): Promise<void> {
-    const types = this.styleTypes();
-    const { color, shape } = this.styleDraft();
-    this.closeStyles();
-    return this.measure(() => {
-      const nodes = this.model.nodeDataArray.filter(
-        (node) =>
-          types.has(node.subtitle) &&
-          ((color !== null && node.color !== color) || (shape !== null && node.shape !== shape)),
-      );
-      return this.newTransactions(
-        `Style ${nodes.length} ${nodes.length === 1 ? 'node' : 'nodes'}`,
-        once(() => nodes.length > 0),
-        () => {
-          this.history.record('apply styles', () => {
-            for (const node of nodes) {
-              if (color !== null) this.model.set(node, 'color', color);
-              if (shape !== null) this.model.set(node, 'shape', shape);
-            }
-          });
-          this.styleDraft.set({ color: null, shape: null });
-        },
-      );
-    });
-  }
-
-  /** Asks before resetting every node's style. */
-  protected askToResetStyles(): void {
-    this.resetDialog().nativeElement.showModal();
-  }
-
-  protected cancelResetStyles(): void {
-    this.resetDialog().nativeElement.close();
-  }
-
-  /** Resets every node's style and closes both dialogs, so the styles dialog starts afresh next time. */
-  protected confirmResetStyles(): Promise<void> {
-    this.cancelResetStyles();
-    this.closeStyles();
-    this.styleTypes.set(new Set());
-    this.styleDraft.set({ color: null, shape: null });
-    return this.resetStyles();
-  }
-
-  /** Turns every node back into a gray rectangle, as one transaction. */
-  private resetStyles(): Promise<void> {
-    return this.measure(() => {
-      const nodes = this.model.nodeDataArray.filter(
-        (node) => node.shape !== DEFAULT_SHAPE || node.color !== DEFAULT_COLOR,
-      );
-      return this.newTransactions(
-        'Reset styles',
-        once(() => nodes.length > 0),
-        () =>
-          this.history.record('reset styles', () => {
-            for (const node of nodes) {
-              this.model.set(node, 'shape', DEFAULT_SHAPE);
-              this.model.set(node, 'color', DEFAULT_COLOR);
-            }
-          }),
-      );
-    });
-  }
-
-  /** Groups the nodes by fund type (their subtitle) for the styles dialog. */
-  private refreshStyles(): void {
-    const rows = new Map<string, StyleRow>();
-    for (const node of this.model.nodeDataArray) {
-      const row = rows.get(node.subtitle);
-      if (!row) {
-        rows.set(node.subtitle, {
-          type: node.subtitle,
-          count: 1,
-          color: node.color,
-          shape: node.shape,
-        });
-        continue;
-      }
-      row.count++;
-      if (row.color !== node.color) row.color = null;
-      if (row.shape !== node.shape) row.shape = null;
-    }
-    this.styleRows.set([...rows.values()].sort((a, b) => a.type.localeCompare(b.type)));
-    // A type that no node has any more cannot stay ticked.
-    const ticked = [...this.styleTypes()].filter((type) => rows.has(type));
-    if (ticked.length !== this.styleTypes().size) this.styleTypes.set(new Set(ticked));
+    return this.actions.setField(() => (node ? [node] : []), 'color', color);
   }
 
   /** Opens the comment dialog for one node. */
@@ -721,41 +527,32 @@ export class PerfDiagram {
   protected saveComment(text: string): Promise<void> {
     const node = this.commentTarget();
     this.closeComment();
-    return this.setField(() => (node ? [node] : []), 'comment', text.trim());
+    return this.actions.setField(() => (node ? [node] : []), 'comment', text.trim());
   }
 
-  /** Sets `field` to `value` on the picked nodes that do not have it yet, as one transaction. */
-  private setField(
-    pick: () => NodeData[],
-    field: EditableField | 'comment',
-    value: string,
-  ): Promise<void> {
-    return this.measure(() => {
-      const nodes = pick().filter((data) => data[field] !== value);
-      return this.newTransactions(
-        `Set ${field} on ${nodes.length} ${nodes.length === 1 ? 'node' : 'nodes'}`,
-        once(() => nodes.length > 0),
-        () =>
-          this.history.record(`edit ${field}`, () => {
-            for (const data of nodes) this.model.set(data, field, value);
-          }),
-      );
-    });
+  /** Gives the nodes of the Shape tool the picked shape; its column of icons then closes. */
+  protected pickShape(shape: string): Promise<void> {
+    this.shapeMenuOpen.set(false);
+    // Taken now: carrying out the change ends the highlight that says which nodes are meant.
+    const nodes = this.selection.shapeTargets();
+    return this.actions.setField(() => nodes, 'shape', shape);
   }
+
+  // ----- Deleting -----
 
   /**
    * What the Delete key does: asks before deleting when nodes are selected, and
    * removes selected relationships straight away when only those are selected.
    */
   protected deleteSelection(): Promise<void> | void {
-    const nodes = this.selectedNodes();
-    if (nodes.length > 0) return this.askToDelete(nodes, this.selectedLinkData());
+    const nodes = this.selection.selectedNodes();
+    if (nodes.length > 0) return this.askToDelete(nodes, this.selection.selectedLinkData());
     return this.removeSelectedLinks();
   }
 
   /** Asks before deleting the selected nodes. */
   protected deleteSelectedNodes(): void {
-    this.askToDelete(this.selectedNodes());
+    this.askToDelete(this.selection.selectedNodes());
   }
 
   /** Opens the confirmation dialog for deleting these nodes, and these relationships with them. */
@@ -778,215 +575,124 @@ export class PerfDiagram {
     this.deleteDialog().nativeElement.close();
   }
 
-  /**
-   * Deletes what the confirmation dialog asked about, as one transaction: the
-   * nodes, and every relationship that starts or ends at one of them. All other
-   * nodes stay, and no relationship is created or re-attached.
-   */
+  /** Deletes what the confirmation dialog asked about. */
   protected confirmDelete(): Promise<void> {
     const request = this.deleteRequest();
     this.cancelDelete();
-    return this.measure(() => {
-      // Looked up again now, in case something changed while the dialog was open.
-      const nodes = (request?.keys ?? [])
-        .map((key) => this.model.findNodeDataForKey(key))
-        .filter((node) => node !== null);
-      const keys = new Set(nodes.map((node) => node.key));
-      const selected = request?.links ?? [];
-      const links = this.model.linkDataArray.filter(
-        (link) => keys.has(link.from) || keys.has(link.to) || selected.includes(link),
-      );
-      return this.newTransactions(
-        `Delete ${nodes.length} ${nodes.length === 1 ? 'node' : 'nodes'}`,
-        once(() => nodes.length > 0),
-        () =>
-          this.history.record('delete', () => {
-            this.model.removeLinkDataCollection(links);
-            this.model.removeNodeDataCollection(nodes);
-          }),
-      );
-    });
+    return this.actions.deleteNodes(request?.keys ?? [], request?.links ?? []);
   }
+
+  // ----- Relationships -----
 
   /** Removes the relationships that are selected themselves. */
   protected removeSelectedLinks(): Promise<void> {
-    return this.removeLinks(() => this.selectedLinkData());
+    return this.actions.removeLinks(() => this.selection.selectedLinkData());
   }
 
   /** Removes every relationship that starts or ends at one of the selected nodes. */
   protected removeLinksOfSelectedNodes(): Promise<void> {
-    return this.removeLinks(() => this.linkDataOfSelectedNodes());
+    return this.actions.removeLinks(() => this.selection.linkDataOfSelectedNodes());
   }
 
-  /**
-   * Shows the card with a relationship's data next to its info icon. A second
-   * click on the same icon puts the card away again.
-   */
+  /** Shows the card of a relationship beside its info icon; a second click puts it away. */
   private showLinkInfo(link: LinkData): void {
-    if (this.linkInfo()?.link === link) return this.closeLinkInfo();
-    const place = this.linkCardPlace(link);
-    if (!place) return;
-    this.linkInfo.set({
-      link,
-      from: this.model.findNodeDataForKey(link.from),
-      to: this.model.findNodeDataForKey(link.to),
-      ownership: link.ownership === undefined ? null : formatOwnership(link.ownership),
-      ...place,
-    });
-  }
-
-  /**
-   * Where the card of this relationship goes: beside its info icon, to the right
-   * where there is room and to the left otherwise, and never outside the canvas.
-   * Null when the relationship is no longer in the diagram.
-   */
-  private linkCardPlace(link: LinkData): { left: number; top: number } | null {
-    const line = this.diagram.findLinkForData(link);
-    if (!line) return null;
-    const icon = this.diagram.transformDocToView(line.midPoint);
-    const canvasWidth = this.diagram.viewportBounds.width * this.diagram.scale;
-    const canvasHeight = this.diagram.viewportBounds.height * this.diagram.scale;
-    const within = (value: number, size: number, room: number) =>
-      Math.max(LINK_CARD_MARGIN, Math.min(value, room - size - LINK_CARD_MARGIN));
-
-    const fitsOnTheRight =
-      icon.x + LINK_CARD_GAP + LINK_CARD_WIDTH <= canvasWidth - LINK_CARD_MARGIN;
-    const left = fitsOnTheRight ? icon.x + LINK_CARD_GAP : icon.x - LINK_CARD_GAP - LINK_CARD_WIDTH;
-    return {
-      left: Math.round(within(left, LINK_CARD_WIDTH, canvasWidth)),
-      top: Math.round(within(icon.y - LINK_CARD_HEIGHT / 2, LINK_CARD_HEIGHT, canvasHeight)),
-    };
-  }
-
-  /** Keeps an open card with its info icon after the diagram was scrolled, zoomed or changed. */
-  private followLinkInfo(): void {
-    const info = this.linkInfo();
-    if (!info) return;
-    const place = this.model.containsLinkData(info.link) ? this.linkCardPlace(info.link) : null;
-    if (!place) return this.closeLinkInfo();
-    if (place.left !== info.left || place.top !== info.top)
-      this.linkInfo.set({ ...info, ...place });
+    this.linkCard.show(link);
   }
 
   protected closeLinkInfo(): void {
-    this.linkInfo.set(null);
+    this.linkCard.close();
   }
 
-  /**
-   * Shows the card of every relationship, on its line. The nodes are arranged
-   * anew, further apart, so that the cards fit between them and cover none.
-   */
+  /** Removes the relationship whose card is open. */
+  protected removeInfoLink(): Promise<void> {
+    const link = this.linkInfo()?.link;
+    this.closeLinkInfo();
+    return this.actions.removeLinks(() => (link ? [link] : []));
+  }
+
+  /** Shows the card of every relationship, with the nodes further apart to make room. */
   protected expandCards(): Promise<void> {
-    return this.showCards(true);
+    return this.actions.showCards(true);
   }
 
   /** Hides the cards of all relationships and arranges the nodes close together again. */
   protected collapseCards(): Promise<void> {
-    return this.showCards(false);
+    return this.actions.showCards(false);
+  }
+
+  // ----- Styles by fund type -----
+
+  /** Opens the dialog in which color and shape are set per fund type. */
+  protected openStyles(): void {
+    this.styles.refresh(this.model.nodeDataArray);
+    this.styles.clearDraft();
+    this.stylesDialog().nativeElement.showModal();
+  }
+
+  protected closeStyles(): void {
+    this.stylesDialog().nativeElement.close();
+  }
+
+  protected stylePreview(row: StyleRow): { path: string; fill: string; mixed: boolean } {
+    return this.styles.previewOf(row);
+  }
+
+  protected toggleStyleType(type: string): void {
+    this.styles.toggleType(type);
+  }
+
+  protected selectAllStyleTypes(all: boolean): void {
+    this.styles.selectAllTypes(all);
+  }
+
+  protected chooseStyle<F extends keyof StyleDraft>(field: F, value: StyleDraft[F]): void {
+    this.styles.choose(field, value);
   }
 
   /**
-   * One transaction, and so one undo step: the nodes move, and an undo has to
-   * bring back their places and the cards (or their absence) together.
+   * Gives every node of the ticked fund types the picked color and shape, as one
+   * undo step, and closes the dialog. Nothing in the diagram changes before this
+   * is called.
    */
-  private showCards(shown: boolean): Promise<void> {
-    return this.measure(() => ({
-      ...this.newTransactions(
-        shown ? 'Expand all' : 'Collapse all',
-        once(() => shown !== this.model.modelData.cardsExpanded),
-        () => {
-          this.history.record(shown ? 'expand all' : 'collapse all', () => {
-            const d = this.diagram;
-            d.model.set(d.model.modelData, 'cardsExpanded', shown);
-            // The same layout, with or without room for cards between the nodes.
-            const layout = createLayout(this.model.modelData.layoutType, d.nodes.count, shown);
-            resetPortSpots(d);
-            d.layout = layout;
-            layout.isValidLayout = false;
-          });
-          this.zoomToFitSoon();
-        },
-      ),
-      showBusyFirst: true,
-    }));
+  protected applyStyles(): Promise<void> {
+    const types = this.styleTypes();
+    const { color, shape } = this.styleDraft();
+    this.closeStyles();
+    return this.actions.applyStyle(types, color, shape).then(() => this.styles.clearDraft());
   }
 
-  /** Opens the list of what an operation in the statistics changed. */
-  protected showChanges(entry: LogEntry): void {
-    this.changesShown.set(entry);
-    this.changesDialog().nativeElement.showModal();
+  /** Asks before resetting every node's style. */
+  protected askToResetStyles(): void {
+    this.resetDialog().nativeElement.showModal();
   }
 
-  protected closeChanges(): void {
-    this.changesDialog().nativeElement.close();
+  protected cancelResetStyles(): void {
+    this.resetDialog().nativeElement.close();
   }
 
-  protected removeInfoLink(): Promise<void> {
-    const link = this.linkInfo()?.link;
-    this.closeLinkInfo();
-    return this.removeLinks(() => (link ? [link] : []));
+  /** Resets every node's style and closes both dialogs, so the styles dialog starts afresh next time. */
+  protected confirmResetStyles(): Promise<void> {
+    this.cancelResetStyles();
+    this.closeStyles();
+    this.styles.clearAll();
+    return this.actions.resetStyles();
   }
 
-  private removeLinks(pick: () => LinkData[]): Promise<void> {
-    return this.measure(() => {
-      const links = pick();
-      return this.newTransactions(
-        `Remove ${links.length} ${links.length === 1 ? 'relationship' : 'relationships'}`,
-        once(() => links.length > 0),
-        () =>
-          this.history.record('remove relationships', () =>
-            this.model.removeLinkDataCollection(links),
-          ),
-      );
-    });
-  }
+  // ----- Layout, lines and the tool strip -----
 
-  /** Switches the layout as one transaction: the new node positions are part of the undo history. */
   protected changeLayout(type: LayoutType): Promise<void> {
-    const label = LAYOUTS.find((layout) => layout.type === type)?.label ?? type;
-    return this.measure(() => ({
-      ...this.newTransactions(
-        `Layout: ${label}`,
-        once(() => type !== this.model.modelData.layoutType),
-        () =>
-          this.history.record('change layout', () => {
-            const d = this.diagram;
-            d.model.set(d.model.modelData, 'layoutType', type);
-            // GoJS records this assignment too, so undo/redo also swaps the layout object back.
-            // While the cards of all relationships are shown, the nodes keep their room.
-            const layout = createLayout(type, d.nodes.count, this.model.modelData.cardsExpanded);
-            resetPortSpots(d);
-            d.layout = layout;
-            // Layouts are not "ongoing", so ask for this one run explicitly.
-            layout.isValidLayout = false;
-          }),
-      ),
-      showBusyFirst: true,
-    }));
+    return this.actions.changeLayout(type);
   }
 
-  /**
-   * Runs the current layout again as one transaction, which tidies the diagram
-   * after nodes were dragged or relationships removed.
-   */
   protected autoArrange(): Promise<void> {
-    return this.measure(() => ({
-      ...this.newTransactions(
-        'Auto arrange',
-        once(() => true),
-        () => {
-          this.history.record('auto arrange', () => {
-            resetPortSpots(this.diagram);
-            this.diagram.layoutDiagram(true);
-          });
-          this.zoomToFitSoon();
-        },
-      ),
-      showBusyFirst: true,
-    }));
+    return this.actions.autoArrange();
   }
 
-  /** Opens or closes one of the tool strip's two columns of icons; only one is open at a time. */
+  protected changeLinkType(type: LinkType): Promise<void> {
+    return this.actions.changeLinkType(type);
+  }
+
+  /** Opens or closes one of the tool strip's columns of icons; only one is open at a time. */
   protected toggleMenu(menu: 'layout' | 'lines' | 'shape'): void {
     const layout = menu === 'layout' && !this.layoutMenuOpen();
     const lines = menu === 'lines' && !this.linkMenuOpen();
@@ -996,30 +702,16 @@ export class PerfDiagram {
     this.shapeMenuOpen.set(shape);
   }
 
-  /** Gives the selected nodes the shape picked from the tool strip's column of icons, which then closes. */
-  protected pickShape(shape: string): Promise<void> {
-    this.shapeMenuOpen.set(false);
-    // Taken now: carrying out the change ends the highlight that says which nodes are meant.
-    const nodes = this.shapeTargets();
-    return this.setField(() => nodes, 'shape', shape);
+  /** Picks a layout from the tool strip's column of icons, which then closes. */
+  protected pickLayout(type: LayoutType): Promise<void> {
+    this.layoutMenuOpen.set(false);
+    return this.changeLayout(type);
   }
 
-  /** The nodes the Shape tool changes: all highlighted ones, or else the selected ones. */
-  private shapeTargets(): NodeData[] {
-    if (!this.highlighted) return this.selectedNodes();
-    return highlightedNodes(this.diagram).map((node) => node.data as NodeData);
-  }
-
-  /** Works out anew what the Shape tool would change and what shape those nodes have. */
-  private syncShapeScope(): void {
-    const nodes = this.shapeTargets();
-    if (nodes.length === 0) {
-      this.shapeScope.set(null);
-      this.shapeMenuOpen.set(false);
-      return;
-    }
-    const shared = nodes.every((node) => node.shape === nodes[0].shape) ? nodes[0].shape : null;
-    this.shapeScope.set({ count: nodes.length, shape: shared, highlighted: this.highlighted });
+  /** Picks a line type from the tool strip's column of icons, which then closes. */
+  protected pickLinkType(type: LinkType): Promise<void> {
+    this.linkMenuOpen.set(false);
+    return this.changeLinkType(type);
   }
 
   /**
@@ -1033,40 +725,37 @@ export class PerfDiagram {
       : label;
   }
 
-  /** Picks a line type from the tool strip's column of icons, which then closes. */
-  protected pickLinkType(type: LinkType): Promise<void> {
-    this.linkMenuOpen.set(false);
-    return this.changeLinkType(type);
+  protected zoomIn(): void {
+    this.diagram.commandHandler.increaseZoom();
   }
 
-  /** Picks a layout from the tool strip's column of icons, which then closes. */
-  protected pickLayout(type: LayoutType): Promise<void> {
-    this.layoutMenuOpen.set(false);
-    return this.changeLayout(type);
+  protected zoomOut(): void {
+    this.diagram.commandHandler.decreaseZoom();
   }
 
-  /** Switches the line type of every link as one transaction; the new routes are recorded too. */
-  protected changeLinkType(type: LinkType): Promise<void> {
-    return this.measure(() => ({
-      ...this.newTransactions(
-        `Lines: ${linkStyle(type).label}`,
-        once(() => type !== this.model.modelData.linkType),
-        () =>
-          this.history.record('change line type', () =>
-            this.model.set(this.model.modelData, 'linkType', type),
-          ),
-      ),
-      showBusyFirst: true,
-    }));
+  protected zoomToFit(): void {
+    this.selection.clearHighlight();
+    this.diagram.zoomToFit();
   }
 
-  /** Opens or closes the benchmark statistics below the canvas, and remembers the choice. */
-  protected toggleLog(): void {
-    this.logOpen.update((open) => !open);
-    writeFlag(LOG_OPEN_KEY, this.logOpen());
-    // The canvas grows or shrinks with it; GoJS has to be told once the page is laid out again.
-    requestAnimationFrame(() => this.diagram.requestUpdate());
+  // ----- Name, description and search -----
+
+  /** Takes over the name or description typed above the canvas, as one undo step. */
+  protected setDiagramInfo(field: 'name' | 'description', input: HTMLInputElement): Promise<void> {
+    const value = input.value.trim();
+    input.value = value;
+    return this.actions.setDiagramInfo(field, value);
   }
+
+  protected search(query: string): void {
+    this.nodeSearch.search(query);
+  }
+
+  protected searchStep(delta: 1 | -1): void {
+    this.nodeSearch.step(delta);
+  }
+
+  // ----- Export, print and the benchmark statistics -----
 
   /** Carries out what was picked in the Actions dropdown and puts the dropdown back. */
   protected runAction(menu: HTMLSelectElement): void {
@@ -1078,17 +767,9 @@ export class PerfDiagram {
 
   /** Downloads a picture of the whole diagram as a PNG file named after the diagram. */
   protected exportPng(): void {
-    this.diagram.makeImageData({
-      ...this.imageOptions(),
-      returnType: 'blob',
-      callback: (blob: Blob) => {
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = downloadFileName(this.model.modelData.name, 'png');
-        link.click();
-        URL.revokeObjectURL(link.href);
-      },
-    });
+    // The picture shows the diagram as it is, with nothing dimmed.
+    this.selection.clearHighlight();
+    downloadDiagramPng(this.diagram, this.model.modelData.name);
   }
 
   /**
@@ -1097,26 +778,8 @@ export class PerfDiagram {
    * picture has loaded.
    */
   protected print(): void {
-    this.printImage.set(this.diagram.makeImageData(this.imageOptions()) as string);
-  }
-
-  /**
-   * How the diagram is turned into a picture: all of it, not just what is on
-   * screen, on white, sharp, and as it is, without the gold outlines of the
-   * selection and without the dimming of the tree highlight.
-   */
-  private imageOptions(): go.ImageRendererOptions {
-    this.clearHighlight();
-    const bounds = this.diagram.documentBounds;
-    const longest = Math.max(bounds.width, bounds.height, 1);
-    return {
-      background: '#ffffff',
-      parts: picturedParts(this.diagram),
-      // The info icons and percentages live in a temporary layer.
-      showTemporary: true,
-      scale: Math.min(IMAGE_SCALE, IMAGE_MAX_SIDE / longest),
-      maxSize: new go.Size(IMAGE_MAX_SIDE + 100, IMAGE_MAX_SIDE + 100),
-    };
+    this.selection.clearHighlight();
+    this.printImage.set(diagramPicture(this.diagram));
   }
 
   protected printLoaded(): void {
@@ -1124,367 +787,26 @@ export class PerfDiagram {
     this.printImage.set(null);
   }
 
-  protected zoomIn(): void {
-    this.diagram.commandHandler.increaseZoom();
+  /** Opens or closes the benchmark statistics below the canvas, and remembers the choice. */
+  protected toggleLog(): void {
+    this.logOpen.update((open) => !open);
+    writeFlag(LOG_OPEN_KEY, this.logOpen());
+    // The canvas grows or shrinks with it; GoJS has to be told once the page is laid out again.
+    requestAnimationFrame(() => this.diagram.requestUpdate());
   }
 
-  protected zoomOut(): void {
-    this.diagram.commandHandler.decreaseZoom();
+  /** Opens the list of what an operation in the statistics changed. */
+  protected showChanges(entry: LogEntry): void {
+    this.changesShown.set(entry);
+    this.changesDialog().nativeElement.showModal();
   }
 
-  protected zoomToFit(): void {
-    this.clearHighlight();
-    this.diagram.zoomToFit();
-  }
-
-  /** With exactly one node selected, highlights its tree; any other selection ends the highlight. */
-  private highlightSelectedTree(): void {
-    const selection = this.diagram.selection;
-    const only = selection.count === 1 ? selection.first() : null;
-    if (only instanceof go.Node) {
-      highlightTree(this.diagram, only);
-      this.highlighted = true;
-    } else {
-      this.clearHighlight();
-    }
-  }
-
-  private clearHighlight(): void {
-    if (!this.highlighted) return;
-    this.highlighted = false;
-    highlightTree(this.diagram, null);
-    // The Shape tool is back to the selected nodes alone.
-    this.syncShapeScope();
-  }
-
-  /** Looks for the nodes whose name contains what was typed; no result is stepped to yet. */
-  protected search(query: string): void {
-    this.searchQuery.set(query);
-    this.searchIndex.set(-1);
-    showSearchHit(this.diagram, null);
-    this.updateSearch();
-  }
-
-  /** Goes to the next or previous search result: marks that node, centres on it and zooms in. */
-  protected searchStep(delta: 1 | -1): void {
-    const matches = this.searchMatches();
-    if (matches.length === 0) return;
-    const current = this.searchIndex();
-    const next =
-      current < 0
-        ? delta > 0
-          ? 0
-          : matches.length - 1
-        : (current + delta + matches.length) % matches.length;
-    this.searchIndex.set(next);
-    showSearchHit(this.diagram, this.diagram.findNodeForKey(matches[next]));
-  }
-
-  /** Stops looking at a particular search result; the matches and their count stay. */
-  private leaveSearchHit(): void {
-    if (this.searchIndex() < 0) return;
-    this.searchIndex.set(-1);
-    showSearchHit(this.diagram, null);
-  }
-
-  /**
-   * Works out the matches again. Called after every change to the diagram, since
-   * renaming, adding, deleting and undo all alter which nodes match.
-   */
-  private updateSearch(): void {
-    const query = this.searchQuery().trim().toLowerCase();
-    const lookingAt = this.searchMatches()[this.searchIndex()];
-    const matches = query
-      ? this.model.nodeDataArray
-          .filter((node) => node.title.toLowerCase().includes(query))
-          .map((node) => node.key)
-      : [];
-    this.searchMatches.set(matches);
-    // Stay on the result that was being looked at, if it still matches.
-    const index = lookingAt === undefined ? -1 : matches.indexOf(lookingAt);
-    this.searchIndex.set(index);
-    // The node that was being looked at no longer matches, or is gone.
-    if (lookingAt !== undefined && index < 0) showSearchHit(this.diagram, null);
-  }
-
-  /** Takes over the name or description typed above the canvas, as one transaction. */
-  protected setDiagramInfo(field: 'name' | 'description', input: HTMLInputElement): Promise<void> {
-    const value = input.value.trim();
-    input.value = value;
-    return this.measure(() =>
-      this.newTransactions(
-        field === 'name' ? 'Rename diagram' : 'Describe diagram',
-        once(() => value !== this.model.modelData[field]),
-        () =>
-          this.history.record(`edit ${field}`, () =>
-            this.model.set(this.model.modelData, field, value),
-          ),
-      ),
-    );
-  }
-
-  /** Starts a diagram from scratch: an empty canvas to add nodes and relationships to. */
-  protected newDiagram(): void {
-    this.reset(BLANK_DATASET);
-  }
-
-  /** Loads the dataset with this id from scratch, discarding the undo history. */
-  protected reset(datasetId: string): void {
-    this.loadModel(datasetId);
-    this.datasetId.set(datasetId);
-    this.log.set([]);
-    this.refresh();
+  protected closeChanges(): void {
+    this.changesDialog().nativeElement.close();
   }
 
   protected formatMs(value: number | null): string {
     if (value === null) return '–';
     return value < 10 ? value.toFixed(2) : value.toFixed(1);
   }
-
-  // ----- internals -----
-
-  /** Commits `runs` transactions, each giving the picked nodes new values for all custom fields. */
-  private measureEdit(
-    name: string,
-    runs: number,
-    pick: (all: NodeData[]) => NodeData[],
-  ): Promise<void> {
-    return this.measure(() => {
-      const nodes = pick(this.model.nodeDataArray);
-      let remaining = runs;
-      return {
-        ...this.newTransactions(
-          name,
-          () => remaining > 0,
-          () => {
-            remaining--;
-            this.history.record('randomize', () => {
-              for (const data of nodes) {
-                const patch = randomPatch(data);
-                for (const field of EDITABLE_FIELDS) this.model.set(data, field, patch[field]);
-              }
-            });
-          },
-        ),
-        showBusyFirst: runs > 1,
-      };
-    });
-  }
-
-  /** An operation whose every step records one new transaction. */
-  private newTransactions(name: string, hasNext: () => boolean, step: () => void): Operation {
-    return { name, hasNext, step };
-  }
-
-  /** Loads a fresh model that keeps the currently selected layout and line type. */
-  private loadModel(datasetId: string): void {
-    // A reveal of the previous diagram that is still running has nothing left to show.
-    this.stopReveal();
-    // Not a change for the history: see revealNodesOneByOne.
-    withoutUndo(this.diagram, () => (this.diagram.isEnabled = true));
-    // GoJS refuses to replace a model in the middle of a transaction, whether a
-    // tool is using it or an error left it open.
-    this.diagram.currentTool.doCancel();
-    this.history.rollBackUnfinished();
-    this.failure.set(null);
-    this.closeLinkInfo();
-    const dataset = findDataset(datasetId);
-    const data = dataset.create();
-    // A big diagram's lines are not routed around its nodes, and orthogonal lines
-    // that run across nodes are hard to follow, so it starts with straight ones.
-    if (tooBigToAvoidNodes(data.nodes.length) && avoidsNodes(this.linkType())) {
-      this.linkType.set('straight');
-    }
-    const settings = {
-      layoutType: this.layoutType(),
-      linkType: this.linkType(),
-      // A loaded diagram starts out named after its data; the user can rename it.
-      name: datasetId === BLANK_DATASET ? 'Untitled diagram' : dataset.label,
-      description: '',
-      // A newly loaded diagram starts with its relationship cards put away.
-      cardsExpanded: false,
-    };
-    this.busy.set(true);
-    // A new model gets new parts, none of them dimmed.
-    this.highlighted = false;
-    // What was searched for belonged to the diagram that is replaced now.
-    this.searchQuery.set('');
-    this.searchMatches.set([]);
-    this.searchIndex.set(-1);
-    this.diagram.layout = createLayout(settings.layoutType, data.nodes.length);
-    this.history.load(createModel(data, settings));
-  }
-
-  /** Makes the controls follow the model's settings, which a change, an undo or a redo alters. */
-  private syncSettings(): void {
-    const { layoutType, linkType, name, description, cardsExpanded } = this.model.modelData;
-    this.cardsExpanded.set(cardsExpanded);
-    this.diagramName.set(name);
-    this.diagramDescription.set(description);
-    this.linkType.set(linkType);
-    if (layoutType === this.layoutType()) return;
-    this.layoutType.set(layoutType);
-    this.zoomToFitSoon();
-  }
-
-  /** Fits the diagram once GoJS has recomputed its bounds, which it does in its next frame. */
-  private zoomToFitSoon(): void {
-    requestAnimationFrame(() => this.diagram.zoomToFit());
-  }
-
-  /**
-   * Queues a timed operation. Operations run strictly one after another, and each
-   * is planned only when its turn comes, so one requested while another is still
-   * waiting for its frame is neither lost nor based on a stale history index.
-   */
-  private measure(plan: () => Operation): Promise<void> {
-    const run = this.queue.then(() => this.runOperation(plan));
-    this.queue = run.catch(() => undefined);
-    return run;
-  }
-
-  private async runOperation(plan: () => Operation): Promise<void> {
-    // Busy at this point means a model is still loading.
-    if (this.busy()) return;
-    // A drag or a text edit is in the middle of its own transaction; let it finish first.
-    if (!this.history.rollBackUnfinished()) return;
-    this.failure.set(null);
-    this.clearHighlight();
-    this.closeLinkInfo();
-    const { name, hasNext, step, showBusyFirst } = plan();
-    this.busy.set(true);
-    try {
-      // Long runs block the main thread, so let the disabled buttons paint first.
-      if (showBusyFirst) await afterNextPaint();
-
-      this.measuring = true;
-      const positionBefore = this.history.position;
-      const start = performance.now();
-      const result = timeSteps(hasNext, step);
-      this.measuring = false;
-      const paintedAt = await afterNextPaint();
-
-      if (result.steps > 0) {
-        // The transactions this operation recorded, undid or redid.
-        const involved = this.history.transactionsBetween(positionBefore, this.history.position);
-        const entry: LogEntry = {
-          id: this.nextLogId++,
-          op: name,
-          steps: result.steps,
-          changes: involved.reduce((sum, transaction) => sum + transaction.changes.count, 0),
-          details: describeChanges(involved),
-          totalMs: result.totalMs,
-          avgMs: result.totalMs / result.steps,
-          minMs: result.minMs,
-          maxMs: result.maxMs,
-          paintMs: paintedAt === null ? null : paintedAt - start,
-        };
-        this.log.update((entries) => [entry, ...entries].slice(0, MAX_LOG_ENTRIES));
-      }
-    } catch (error) {
-      this.recoverFrom(error);
-    } finally {
-      this.measuring = false;
-      this.refresh();
-      this.busy.set(false);
-    }
-  }
-
-  /** After an action failed: undoes what it had done so far, so that work can go on, and says so. */
-  private recoverFrom(error: unknown): void {
-    console.error('The action failed and was undone.', error);
-    this.measuring = false;
-    this.diagram.currentTool.doCancel();
-    this.history.rollBackUnfinished();
-    this.failure.set(FAILURE_NOTICE);
-  }
-
-  private refresh(): void {
-    const memory = (performance as { memory?: { usedJSHeapSize: number } }).memory;
-    this.stats.set({
-      nodes: this.model.nodeDataArray.length,
-      links: this.model.linkDataArray.length,
-      historyLength: this.history.length,
-      historyIndex: this.history.position,
-      changedEvents: this.history.recordedChanges,
-      canUndo: this.history.canUndo,
-      canRedo: this.history.canRedo,
-      heapMb: memory ? memory.usedJSHeapSize / 1048576 : null,
-    });
-    if (this.stylesDialog().nativeElement.open) this.refreshStyles();
-    this.updateSearch();
-    // The limit follows the node count, so a number typed for a bigger diagram may now be too high.
-    if (this.bulkRuns() > this.maxBulkRuns()) this.bulkRuns.set(this.maxBulkRuns());
-    this.stateCheck.set(this.history.describeState());
-    // A relationship that GoJS removed or moved by itself (the Delete key, a drag).
-    this.followLinkInfo();
-    this.syncSettings();
-    this.syncSelection();
-  }
-
-  private selectedNodes(): NodeData[] {
-    const nodes: NodeData[] = [];
-    this.diagram.selection.each((part) => {
-      if (part instanceof go.Node && part.data) nodes.push(part.data as NodeData);
-    });
-    return nodes;
-  }
-
-  private selectedLinkData(): LinkData[] {
-    const links: LinkData[] = [];
-    this.diagram.selection.each((part) => {
-      if (part instanceof go.Link && part.data) links.push(part.data as LinkData);
-    });
-    return links;
-  }
-
-  private linkDataOfSelectedNodes(): LinkData[] {
-    const links = new Set<LinkData>();
-    this.diagram.selection.each((part) => {
-      if (!(part instanceof go.Node)) return;
-      part.findLinksConnected().each((link) => {
-        if (link.data) links.add(link.data as LinkData);
-      });
-    });
-    return [...links];
-  }
-
-  private syncSelection(): void {
-    this.selectedLinks.set(this.selectedLinkData().length);
-    this.linksOfSelectedNodes.set(this.linkDataOfSelectedNodes().length);
-    const nodes = this.selectedNodes();
-    this.syncShapeScope();
-    const shared = <F extends EditableField>(field: F): NodeData[F] | null =>
-      nodes.every((data) => data[field] === nodes[0][field]) ? nodes[0][field] : null;
-    this.selected.set(
-      nodes.length === 0
-        ? null
-        : {
-            count: nodes.length,
-            title: shared('title'),
-            subtitle: shared('subtitle'),
-            shape: shared('shape'),
-            color: shared('color'),
-          },
-    );
-  }
-}
-
-/** Opens `url` the way a link with target="_blank" does: in a new tab, never a popup window. */
-function openInNewTab(url: string): void {
-  const link = document.createElement('a');
-  link.href = url;
-  link.target = '_blank';
-  link.rel = 'noopener';
-  link.click();
-}
-
-/** Wraps a condition so that it is true for at most one step. */
-function once(condition: () => boolean): () => boolean {
-  let used = false;
-  return () => {
-    if (used) return false;
-    used = true;
-    return condition();
-  };
 }
