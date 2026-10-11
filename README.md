@@ -8,7 +8,8 @@ built and how to run its tests.
 
 The business requirements, rule by rule, are in
 [BUSINESS_REQUIREMENTS.md](BUSINESS_REQUIREMENTS.md). How undo and redo work, step by step and with
-diagrams, is in [UNDO_HISTORY.md](UNDO_HISTORY.md).
+diagrams, is in [UNDO_HISTORY.md](UNDO_HISTORY.md). Test cases to run by hand are in
+[test-cases/](test-cases/); so far there is one file, [undo.md](test-cases/undo.md).
 
 - [What it is for](#what-it-is-for)
 - [Quick start](#quick-start)
