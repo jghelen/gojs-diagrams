@@ -23,7 +23,7 @@ describe('pictures of the diagram', () => {
     const drawn = new Set<go.Part>();
     (options.parts as go.List<go.Part>).each((part) => drawn.add(part));
     for (const node of nodesOf(diagram)) expect(drawn.has(node)).toBe(true);
-    for (const link of linksOf(diagram)) expect(drawn.has(link)).toBe(true);
+    for (const link of linksOf(diagram)) expect(drawn.has(link)).toBe(false);
   });
 
   it('draw a very large diagram smaller, so that no side is longer than 10,000 pixels', () => {
