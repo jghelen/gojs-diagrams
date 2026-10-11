@@ -59,7 +59,7 @@ Then open http://localhost:4200.
 | Overview (bottom right of the canvas) | A small picture of the whole diagram; drag its gold box to move around                                                                                                                                                                                               |
 | Canvas (left)                         | The diagram. Scroll to pan, Ctrl/Cmd + wheel (or pinch) to zoom                                                                                                                                                                                                      |
 | Footer                                | In small print: the versions of Angular and GoJS the app is built with                                                                                                                                                                                               |
-| Side panel (right)                    | **Selected relationships**, **Selected nodes**; with the developer tools also **History** and **Edits**                                                                                                                                                              |
+| Side panel (right)                    | Hidden until you click a node or a line; then **Selected nodes** and **Selected relationships**. With the developer tools it is always shown and starts with **History** and **Edits**                                                                               |
 | Timing table (below the canvas)       | With the developer tools only: one row per operation, newest first                                                                                                                                                                                                   |
 
 ### Developer tools
@@ -192,6 +192,9 @@ node, it ends in "…" and the full text appears when you hover over it.
   out; click empty space to clear the selection. Ctrl/Cmd+A selects everything. Press on empty
   space for a moment and drag to draw a selection box.
 - A selected node has a **gold outline** in its own shape.
+- The side panel on the right is hidden while nothing is selected. It appears when you click a
+  node or a line, over the right edge of the canvas, so the diagram does not move when it comes;
+  the overview steps aside for it. It goes away when you click empty space.
 - The **Selected nodes** panel lets you set the title, legal entity type and colour. With several nodes
   selected the change applies to all of them and is a single undo step. Fields on which the
   selected nodes differ show "Mixed".

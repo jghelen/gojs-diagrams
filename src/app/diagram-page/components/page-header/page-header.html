@@ -1,8 +1,12 @@
 <header class="bar">
   <h1>Fund structure diagrams</h1>
   <label>
-    Data
-    <select [disabled]="busy()" (change)="loadDataset.emit($any($event.target).value)">
+    <!-- No visible label: the name is for screen readers. -->
+    <select
+      aria-label="Data"
+      [disabled]="busy()"
+      (change)="loadDataset.emit($any($event.target).value)"
+    >
       @for (dataset of datasets; track dataset.id) {
         <option [value]="dataset.id" [selected]="dataset.id === datasetId()">
           {{ dataset.label }}

@@ -6,7 +6,7 @@
   (printDiagram)="print()"
 />
 
-<main class="layout">
+<main class="layout" [class.panel-over-canvas]="panelOverCanvas()">
   <section class="canvas">
     <app-diagram-info-bar />
     <div class="diagram-area">

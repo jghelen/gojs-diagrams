@@ -4,9 +4,21 @@
 }
 
 .side {
+  width: 320px;
+  box-sizing: border-box;
   overflow: auto;
   border-left: 1px solid var(--border);
   background: var(--surface);
+}
+
+/* Over the right edge of the canvas, when it comes and goes with the selection. */
+.side.floating {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 6;
+  box-shadow: -6px 0 18px rgb(0 0 0 / 0.1);
 }
 
 .side section {

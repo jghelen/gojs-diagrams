@@ -4,6 +4,7 @@ import {
   DestroyRef,
   ElementRef,
   afterNextRender,
+  computed,
   effect,
   inject,
   signal,
@@ -126,6 +127,12 @@ export class DiagramPage {
   protected readonly datasetId = signal(DEFAULT_DATASET);
   /** What to tell the user after an action failed; null when the last action went well. */
   protected readonly failure = this.runner.failure;
+  /** True while the side panel lies over the right edge of the canvas; the overview then makes room. */
+  protected readonly panelOverCanvas = computed(
+    () =>
+      !this.developerTools.shown() &&
+      (this.selection.selected() !== null || this.selection.selectedLinks() > 0),
+  );
   /** A picture of the diagram while it is being printed. */
   protected readonly printImage = signal<string | null>(null);
 

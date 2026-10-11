@@ -19,8 +19,9 @@ const DEFAULT_BULK_RUNS = 50;
 
 /**
  * The panel on the right: what can be done with the selected relationships and
- * nodes. With the developer tools shown, it starts with the numbers of the undo
- * history and the random edits of the benchmark.
+ * nodes. It appears when a node or a line is clicked and goes away when nothing
+ * is selected any more. With the developer tools shown it is always there, and
+ * starts with the numbers of the undo history and the random edits of the benchmark.
  */
 @Component({
   selector: 'app-side-panel',
@@ -44,6 +45,19 @@ export class SidePanel {
   protected readonly selected = this.selection.selected;
   protected readonly selectedLinks = this.selection.selectedLinks;
   protected readonly linksOfSelectedNodes = this.selection.linksOfSelectedNodes;
+
+  /** The panel is on screen while something is selected, and always with the developer tools. */
+  protected readonly shown = computed(
+    () => this.developerTools.shown() || this.selected() !== null || this.selectedLinks() > 0,
+  );
+  /**
+   * Whether the panel lies over the right edge of the canvas instead of taking
+   * a column of the page. It does when it comes and goes with the selection: a
+   * column that appeared on a click would make the canvas narrower, and the
+   * diagram would jump away from under the mouse. With the developer tools the
+   * panel is always there and has a column of its own.
+   */
+  protected readonly floating = computed(() => !this.developerTools.shown());
 
   /**
    * Most runs the bulk edit accepts: the number of nodes in the diagram, and

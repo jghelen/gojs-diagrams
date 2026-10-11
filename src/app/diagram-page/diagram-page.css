@@ -6,9 +6,17 @@
 }
 
 .layout {
+  /* The side panel lies over this when it comes and goes with the selection. */
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  /* The canvas, and the side panel when it has a column of its own. */
+  grid-template-columns: minmax(0, 1fr) auto;
   min-height: 0;
+}
+
+/* While the side panel lies over the canvas, the overview stands clear of it. */
+.layout.panel-over-canvas .overview {
+  right: 332px;
 }
 
 .canvas {

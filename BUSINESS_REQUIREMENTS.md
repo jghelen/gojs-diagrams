@@ -44,17 +44,17 @@ the business: **does undo/redo stay fast and reliable on large structures** (up 
 
 ## 3. Screen overview
 
-| Area                          | Content                                                                                                                            |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Header, left                  | **Data** dropdown: which diagram to open; next to it **LE: n**, the number of legal entities                                       |
-| Header, right                 | **Styles**, **Actions** menu, **Reset diagram** (reload icon), **New diagram**, **Developer tools** switch                         |
-| Bar above the canvas          | Diagram **name**, **description**, and **search**                                                                                  |
-| Left navigation on the canvas | Add node, Undo, Redo, Zoom in, Zoom out, Zoom to fit, Layout, Lines, Shape, Auto arrange, Expand all, Collapse all (in that order) |
-| Canvas                        | The diagram                                                                                                                        |
-| Overview, bottom right        | A small picture of the whole diagram for moving around                                                                             |
-| Footer                        | In small print: the versions of Angular and GoJS the application is built with                                                     |
-| Side panel, right             | Selected relationships, selected nodes; with the developer tools also History and bulk edits                                       |
-| Below the canvas              | With the developer tools only: timing table (see [14](#14-performance-measurement))                                                |
+| Area                          | Content                                                                                                                                                                |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Header, left                  | **Data** dropdown: which diagram to open; next to it **LE: n**, the number of legal entities                                                                           |
+| Header, right                 | **Styles**, **Actions** menu, **Reset diagram** (reload icon), **New diagram**, **Developer tools** switch                                                             |
+| Bar above the canvas          | Diagram **name**, **description**, and **search**                                                                                                                      |
+| Left navigation on the canvas | Add node, Undo, Redo, Zoom in, Zoom out, Zoom to fit, Layout, Lines, Shape, Auto arrange, Expand all, Collapse all (in that order)                                     |
+| Canvas                        | The diagram                                                                                                                                                            |
+| Overview, bottom right        | A small picture of the whole diagram for moving around                                                                                                                 |
+| Footer                        | In small print: the versions of Angular and GoJS the application is built with                                                                                         |
+| Side panel, right             | Hidden until a node or a line is selected; then selected nodes and selected relationships. With the developer tools always shown, starting with History and bulk edits |
+| Below the canvas              | With the developer tools only: timing table (see [14](#14-performance-measurement))                                                                                    |
 
 Every icon without a text label shows its name when the user hovers over it.
 
@@ -175,6 +175,12 @@ Every icon without a text label shows its name when the user hovers over it.
 
 ### 5.7 Editing nodes
 
+- **BR-5.17a** The side panel is hidden while nothing is selected. It is shown when a node or a
+  relationship is clicked, with the part for nodes, the part for relationships, or both, according
+  to what is selected, and hidden again when the selection is cleared.
+- **BR-5.17b** The panel then lies over the right edge of the canvas and the diagram keeps its
+  place; the overview moves out from under it. With the developer tools shown the panel is always
+  there and has a column of its own.
 - **BR-5.18** With one or more nodes selected, the side panel edits title, legal entity type and colour.
   The change applies to all selected nodes at once and is one undo step.
 - **BR-5.18a** The shape of the selected nodes is set from the **Shape** item of the left

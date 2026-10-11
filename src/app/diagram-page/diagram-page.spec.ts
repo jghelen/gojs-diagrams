@@ -806,10 +806,10 @@ describe('DiagramPage', () => {
     });
 
     it('leaves layout and line type to the tool strip: the header only has the data dropdown', () => {
-      const headerLabels = Array.from(page.querySelectorAll('header label')).map(
-        (label) => label.textContent?.trim().split(/\s+/)[0],
+      const dropdowns = Array.from(page.querySelectorAll('header select')).map((select) =>
+        select.getAttribute('aria-label'),
       );
-      expect(headerLabels).toEqual(['Data']);
+      expect(dropdowns).toEqual(['Data', 'Actions']);
     });
 
     it('does nothing when asked for the layout it already has', async () => {
@@ -1880,8 +1880,8 @@ describe('DiagramPage', () => {
         expect(count().textContent!.trim()).toBe('LE: 30');
         // The hover text says what the short label stands for.
         expect(count().title).toBe('Number of legal entities on the diagram');
-        expect(count().previousElementSibling!.querySelector('select')).not.toBeNull();
-        expect(count().previousElementSibling!.textContent).toContain('Data');
+        const before = count().previousElementSibling!.querySelector('select')!;
+        expect(before.getAttribute('aria-label')).toBe('Data');
       });
 
       it('follows the data that is opened', async () => {
@@ -2701,7 +2701,9 @@ describe('DiagramPage', () => {
         'Developer tools: timings, history numbers and random edits',
       );
       expect(plainPage.querySelector('.log')).toBeNull();
-      expect(headings()).toEqual(['Selected relationships', 'Selected nodes']);
+      // Nothing is selected, so there is no side panel at all.
+      expect(plainPage.querySelector('.side')).toBeNull();
+      expect(headings()).toEqual([]);
       expect(plainPage.textContent).not.toContain('Randomize');
       expect(plainPage.textContent).not.toContain('Benchmark statistics');
     });
@@ -2719,13 +2721,13 @@ describe('DiagramPage', () => {
       expect(toolsSwitch().getAttribute('aria-pressed')).toBe('true');
       expect(toolsSwitch().title).toBe('Hide the developer tools');
       expect(plainPage.querySelector('.log table')).not.toBeNull();
-      expect(headings()).toEqual(['History', 'Edits', 'Selected relationships', 'Selected nodes']);
+      expect(headings()).toEqual(['History', 'Edits']);
 
       toolsSwitch().click();
       await calm();
       expect(toolsSwitch().getAttribute('aria-pressed')).toBe('false');
       expect(plainPage.querySelector('.log')).toBeNull();
-      expect(headings()).toEqual(['Selected relationships', 'Selected nodes']);
+      expect(headings()).toEqual([]);
     });
 
     it('list what was done while they were hidden', async () => {
@@ -2774,6 +2776,133 @@ describe('DiagramPage', () => {
       plain.detectChanges();
       expect(plainBench.busy()).toBe(true);
       expect(toolsSwitch().disabled).toBe(true);
+    });
+  });
+
+  describe('side panel', () => {
+    /** The page as someone sees it who never asked for the developer tools. */
+    let plain: ComponentFixture<DiagramPage>;
+    let plainPage: HTMLElement;
+    let plainDiagram: go.Diagram;
+
+    const panel = () => plainPage.querySelector<HTMLElement>('.side');
+    const headings = () =>
+      Array.from(plainPage.querySelectorAll('.side h2')).map((heading) => heading.textContent);
+    const calm = async () => {
+      for (let i = 0; i < 3; i++) plainDiagram.maybeUpdate();
+      await plain.whenStable();
+    };
+    const selectParts = async (...parts: go.Part[]) => {
+      plainDiagram.selectCollection(parts);
+      await calm();
+    };
+    const node = (key: number) => plainDiagram.findNodeForKey(key)!;
+    const firstLink = () => plainDiagram.links.first()!;
+
+    beforeEach(async () => {
+      localStorage.clear();
+      plain = TestBed.createComponent(DiagramPage);
+      plain.detectChanges();
+      await plain.whenStable();
+      plainPage = plain.nativeElement as HTMLElement;
+      plainDiagram = benchOf(plain).diagram;
+      plainDiagram.viewSize = new go.Size(1000, 700);
+      await calm();
+    });
+
+    afterEach(() => plain.destroy());
+
+    it('is hidden while nothing is selected', () => {
+      expect(panel()).toBeNull();
+      expect(plainPage.textContent).not.toContain('Selected nodes');
+      expect(plainPage.textContent).not.toContain('Selected relationships');
+    });
+
+    it('appears on a click on a node, with what can be done with that node', async () => {
+      const part = node(5);
+      plainDiagram.lastInput.documentPoint = part.actualBounds.center.copy().offset(0, -30);
+      plainDiagram.lastInput.control = false;
+      plainDiagram.lastInput.shift = false;
+      plainDiagram.toolManager.clickSelectingTool.standardMouseSelect();
+      await calm();
+      expect(plainDiagram.selection.first()).toBe(part);
+      expect(headings()).toEqual(['Selected nodes']);
+      const labels = Array.from(panel()!.querySelectorAll('label')).map((label) =>
+        label.textContent!.trim(),
+      );
+      expect(labels).toEqual(['Title', 'Legal entity type']);
+      expect(panel()!.textContent).toContain('Delete node');
+    });
+
+    it('appears on a click on a line, with the button to remove it', async () => {
+      await selectParts(firstLink());
+      expect(headings()).toEqual(['Selected relationships']);
+      expect(panel()!.querySelector('button')!.textContent).toContain('Remove 1 selected');
+    });
+
+    it('shows both parts when nodes and lines are selected together', async () => {
+      await selectParts(node(2), node(3), firstLink());
+      expect(headings()).toEqual(['Selected relationships', 'Selected nodes']);
+      expect(panel()!.textContent).toContain('2 selected');
+    });
+
+    it('goes away again when the selection is cleared, by a click on empty space', async () => {
+      await selectParts(node(5));
+      expect(panel()).not.toBeNull();
+      plainDiagram.clearSelection();
+      await calm();
+      expect(panel()).toBeNull();
+    });
+
+    it('goes away when the selected node is deleted, and stays away', async () => {
+      await selectParts(node(5));
+      const bench = benchOf(plain);
+      bench.askToDelete([node(5).data as NodeData]);
+      await bench.confirmDelete();
+      await calm();
+      expect(plainDiagram.findNodeForKey(5)).toBeNull();
+      expect(panel()).toBeNull();
+    });
+
+    it('lies over the edge of the canvas, so that the diagram does not move when it appears', async () => {
+      const layout = plainPage.querySelector('main.layout')!;
+      expect(layout.classList.contains('panel-over-canvas')).toBe(false);
+
+      await selectParts(node(5));
+      expect(panel()!.classList.contains('floating')).toBe(true);
+      // The overview is told to stand clear of it.
+      expect(layout.classList.contains('panel-over-canvas')).toBe(true);
+
+      plainDiagram.clearSelection();
+      await calm();
+      expect(layout.classList.contains('panel-over-canvas')).toBe(false);
+    });
+
+    it('has a column of its own with the developer tools, where it is always shown', async () => {
+      plainPage.querySelector<HTMLButtonElement>('button[aria-label="Developer tools"]')!.click();
+      await calm();
+      expect(headings()).toEqual(['History', 'Edits']);
+      expect(panel()!.classList.contains('floating')).toBe(false);
+
+      await selectParts(node(5));
+      expect(headings()).toEqual(['History', 'Edits', 'Selected nodes']);
+      expect(panel()!.classList.contains('floating')).toBe(false);
+      expect(plainPage.querySelector('main.layout')!.classList.contains('panel-over-canvas')).toBe(
+        false,
+      );
+    });
+
+    it('still edits the selected nodes', async () => {
+      await selectParts(node(5), node(6));
+      const title = panel()!.querySelector<HTMLInputElement>('label input')!;
+      title.value = 'Renamed here';
+      title.dispatchEvent(new Event('change'));
+      await calm();
+      await plain.whenStable();
+      expect((node(5).data as NodeData).title).toBe('Renamed here');
+      expect((node(6).data as NodeData).title).toBe('Renamed here');
+      // The panel stays, since the nodes are still selected.
+      expect(headings()).toEqual(['Selected nodes']);
     });
   });
 
