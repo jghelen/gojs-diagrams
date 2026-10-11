@@ -13,7 +13,7 @@ interface Bench {
   linkType(): string;
   stats(): { nodes: number; links: number; historyLength: number; historyIndex: number } | null;
   stateCheck(): { label: string; ok: boolean | null };
-  log(): { op: string; steps: number }[];
+  log(): { op: string; steps: number; changes: number }[];
   selected(): { count: number; title: string | null; color: string | null } | null;
   bulkRuns: { (): number; set(value: number): void };
   maxBulkRuns(): number;
@@ -1194,6 +1194,87 @@ describe('PerfDiagram', () => {
       await bench.undo();
       expect(bench.stats()).toMatchObject({ nodes: 0, links: 0 });
       expect(bench.stateCheck().ok).toBe(true);
+    });
+  });
+
+  describe('changes of an operation', () => {
+    const number = () => page.querySelector<HTMLButtonElement>('.log tbody .link-button')!;
+    const changes = () => dialog('Changes:');
+    const rows = () =>
+      Array.from(changes().querySelectorAll('tbody tr')).map((row) =>
+        Array.from(row.querySelectorAll('td')).map((cell) => cell.textContent!.trim()),
+      );
+
+    it('are listed when the number of changes in the statistics is clicked', async () => {
+      await bench.randomizeOne();
+      await settle();
+      const recorded = bench.log()[0].changes;
+      expect(number().textContent!.trim()).toBe(String(recorded));
+
+      number().click();
+      await settle();
+      expect(changes().open).toBe(true);
+      expect(changes().querySelector('h2')!.textContent).toBe('Changes: Randomize 1 node');
+      expect(rows().length).toBe(recorded);
+    });
+
+    it('say that one randomized node is four changes to the data, the rest to the drawing', async () => {
+      await bench.randomizeOne();
+      await settle();
+      number().click();
+      await settle();
+
+      const data = rows().filter((row) => row[1] === 'Data');
+      expect(data.map((row) => row[3])).toEqual(['title', 'fund type', 'shape', 'color']);
+      const drawing = rows().filter((row) => row[1] === 'Drawing');
+      expect(drawing.length).toBe(bench.log()[0].changes - 4);
+      // All of them belong to the one fund that was changed.
+      expect(new Set(rows().map((row) => row[2])).size).toBe(1);
+      const summary = changes().querySelector('.hint')!.textContent!.replace(/\s+/g, ' ');
+      expect(summary).toContain('4 to the data');
+      expect(summary).toContain(`${drawing.length} to the drawing`);
+    });
+
+    it('lists the first 200 changes of a big operation and counts the rest', async () => {
+      await bench.randomizeAll();
+      await settle();
+      number().click();
+      await settle();
+      expect(rows().length).toBe(200);
+      const groups = Array.from(changes().querySelectorAll('.change-groups li')).map((item) =>
+        item.textContent!.replace(/\s+/g, ' ').trim(),
+      );
+      expect(groups.slice(0, 4).sort()).toEqual([
+        'Data color × 30',
+        'Data fund type × 30',
+        'Data shape × 30',
+        'Data title × 30',
+      ]);
+      expect(changes().textContent).toContain(`first 200 of ${bench.log()[0].changes} changes`);
+    });
+
+    it('still shows the changes of an operation after it was undone and replaced', async () => {
+      await bench.randomizeOne();
+      await bench.undo();
+      await bench.randomizeAll();
+      await settle();
+      const first = Array.from(
+        page.querySelectorAll<HTMLButtonElement>('.log tbody .link-button'),
+      ).at(-1)!;
+      first.click();
+      await settle();
+      expect(changes().querySelector('h2')!.textContent).toBe('Changes: Randomize 1 node');
+      expect(rows().filter((row) => row[1] === 'Data').length).toBe(4);
+    });
+
+    it('closes again', async () => {
+      await bench.randomizeOne();
+      await settle();
+      number().click();
+      await settle();
+      changes().querySelector<HTMLButtonElement>('.actions button')!.click();
+      await settle();
+      expect(page.querySelector('dialog.changes')!.hasAttribute('open')).toBe(false);
     });
   });
 

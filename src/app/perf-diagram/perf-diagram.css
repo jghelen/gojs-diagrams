@@ -456,6 +456,62 @@ button.confirm:disabled {
   opacity: 1;
 }
 
+/* The number of changes in the statistics; opens the list of them. */
+button.link-button {
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: #1d4ed8;
+  font: inherit;
+  text-decoration: underline;
+}
+
+.modal.changes {
+  width: min(860px, calc(100vw - 32px));
+}
+
+.change-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 84px;
+  margin: 10px 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+  font-size: 12px;
+}
+
+.change-groups li {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.change-kind {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.change-kind.data {
+  color: #166534;
+}
+
+.change-list {
+  max-height: 46vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.change-list th,
+.change-list td {
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .modal.styles {
   width: min(680px, calc(100vw - 32px));
 }

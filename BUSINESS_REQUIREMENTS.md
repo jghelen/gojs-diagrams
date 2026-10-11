@@ -382,6 +382,11 @@ This part serves the evaluation of the technology rather than the end user.
   the table was left open or closed.
 - **BR-14.7** The left navigation always stays inside the canvas. Where the canvas is too low
   for one column of icons, they continue in a second column; they never cover the statistics.
+- **BR-14.8** The number of changes of an operation can be clicked. A dialog then lists what
+  changed: the fund or relationship, the property, and the value before and after. Changes to
+  the data (what the action did) are told apart from changes to the drawing (what the screen
+  adjusted as a result). A summary counts the changes per property; of a large operation the
+  first 200 are listed one by one.
 
 ## 15. Not available yet
 

@@ -26,6 +26,7 @@ import {
   showSearchHit,
   textColorFor,
 } from '../diagram/diagram-factory';
+import { ChangeDetails, MAX_CHANGE_ROWS, describeChanges } from '../diagram/change-details';
 import { downloadFileName } from '../diagram/file-name';
 import { BLANK_DATASET, DATASETS, DEFAULT_DATASET, findDataset } from '../diagram/datasets';
 import {
@@ -75,6 +76,8 @@ interface LogEntry {
   op: string;
   steps: number;
   changes: number;
+  /** What those changes were, for the dialog behind the number. */
+  details: ChangeDetails;
   totalMs: number;
   avgMs: number;
   minMs: number;
@@ -312,6 +315,11 @@ export class PerfDiagram {
   private readonly host = viewChild.required<ElementRef<HTMLDivElement>>('diagramHost');
   private readonly overviewHost = viewChild.required<ElementRef<HTMLDivElement>>('overviewHost');
   private readonly linkDialog = viewChild.required<ElementRef<HTMLDialogElement>>('linkDialog');
+  /** The operation whose changes are listed in the changes dialog. */
+  protected readonly changesShown = signal<LogEntry | null>(null);
+  protected readonly maxChangeRows = MAX_CHANGE_ROWS;
+  private readonly changesDialog =
+    viewChild.required<ElementRef<HTMLDialogElement>>('changesDialog');
   private readonly colorDialog = viewChild.required<ElementRef<HTMLDialogElement>>('colorDialog');
   private readonly commentDialog =
     viewChild.required<ElementRef<HTMLDialogElement>>('commentDialog');
@@ -816,6 +824,16 @@ export class PerfDiagram {
     this.linkDialog().nativeElement.showModal();
   }
 
+  /** Opens the list of what an operation in the statistics changed. */
+  protected showChanges(entry: LogEntry): void {
+    this.changesShown.set(entry);
+    this.changesDialog().nativeElement.showModal();
+  }
+
+  protected closeChanges(): void {
+    this.changesDialog().nativeElement.close();
+  }
+
   protected closeLinkInfo(): void {
     this.linkDialog().nativeElement.close();
   }
@@ -1238,6 +1256,7 @@ export class PerfDiagram {
           op: name,
           steps: result.steps,
           changes: this.countChanges(...range),
+          details: describeChanges(this.transactionsIn(...range)),
           totalMs: result.totalMs,
           avgMs: result.totalMs / result.steps,
           minMs: result.minMs,
@@ -1288,6 +1307,15 @@ export class PerfDiagram {
   }
 
   /** Number of ChangedEvents recorded in history[from..to]. */
+  /** The transactions at these positions of the history, as far as they exist. */
+  private transactionsIn(from: number, to: number): go.Transaction[] {
+    const history = this.undoManager.history;
+    const found: go.Transaction[] = [];
+    const last = Math.min(to, history.count - 1);
+    for (let i = Math.max(from, 0); i <= last; i++) found.push(history.elt(i));
+    return found;
+  }
+
   private countChanges(from: number, to: number): number {
     const history = this.undoManager.history;
     let total = 0;
