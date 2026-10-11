@@ -7,8 +7,8 @@ on:
   #    added to it, so that it is known to be sound before it is merged.
   pull_request:
     branches: [main]
-    # "Ready for review" too: a pull request that was blocked (see the last job)
-    # and is declared ready by hand is checked again.
+    # "Ready for review" too: a pull request that is blocked (see the jobs that
+    # hold and release it) and is declared ready by hand is checked again.
     types: [opened, synchronize, reopened, ready_for_review]
   # 2. When something lands on main: a merged pull request, or a direct push.
   push:
@@ -22,7 +22,52 @@ concurrency:
 permissions:
   contents: read
 
+# A pull request can only be merged once its checks have passed: not while they
+# are running, and not after they failed.
+#
+# A workflow cannot switch off the "Merge pull request" button itself. What it
+# can do is turn the pull request into a draft, and GitHub does not merge
+# drafts. So the first job makes the pull request a draft and gives it the label
+# below, the checks run, and the last job makes it ready again if they passed.
+# If they failed it stays a draft until a later commit passes them.
+#
+# A pull request that somebody made a draft by hand has no such label. It is
+# checked like any other, but it is left a draft whatever the outcome.
+env:
+  HELD_LABEL: merge-blocked
+
 jobs:
+  hold:
+    name: Hold merging while the checks run
+    # Only for pull requests from this repository: one from a fork may not change anything here.
+    if: >-
+      ${{
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+      # Labels belong to issues as far as permissions go.
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Make the pull request a draft until its checks have passed
+        run: |
+          held() { gh api "repos/$GH_REPO/issues/$PR/labels" --jq '.[].name' | grep -qx "$HELD_LABEL"; }
+          if [ "$(gh pr view "$PR" --json isDraft --jq .isDraft)" = "true" ] && ! held; then
+            echo "A draft that somebody made by hand: left as it is."
+            exit 0
+          fi
+          gh label create "$HELD_LABEL" --force --color B60205 \
+            --description "The checks are running or have failed. Cannot be merged until they pass."
+          gh api --method POST "repos/$GH_REPO/issues/$PR/labels" -f "labels[]=$HELD_LABEL" --silent
+          gh pr ready "$PR" --undo
+
   verify:
     name: Format, lint, build, test
     runs-on: ubuntu-latest
@@ -52,16 +97,11 @@ jobs:
       - name: Unit tests
         run: npm test -- --watch=false
 
-  # A workflow cannot switch off the "Merge pull request" button itself. What it
-  # can do is turn the pull request into a draft, and GitHub does not merge
-  # drafts. So: when the checks fail, the pull request becomes a draft and gets
-  # the label below; when a later commit passes them, it is made ready again.
-  # A pull request that somebody made a draft by hand has no label and is left alone.
-  block-merge:
-    name: Block merging while the checks fail
-    needs: verify
-    # Also when `verify` failed, which is what this job is for; not when the run was cancelled.
-    # Only for pull requests from this repository: one from a fork may not change anything here.
+  release:
+    name: Allow merging once the checks have passed
+    needs: [hold, verify]
+    # Also when `verify` failed, to say so; not when the run was cancelled, because
+    # then a newer run is on its way and will decide.
     if: >-
       ${{
         !cancelled() &&
@@ -72,26 +112,24 @@ jobs:
     timeout-minutes: 5
     permissions:
       pull-requests: write
-      # Labels belong to issues as far as permissions go.
       issues: write
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       PR: ${{ github.event.pull_request.number }}
-      LABEL: checks-failed
     steps:
-      - name: Checks failed, so make the pull request a draft
-        if: needs.verify.result == 'failure'
-        run: |
-          gh label create "$LABEL" --force --color B60205 \
-            --description "The checks failed. This pull request cannot be merged until they pass."
-          gh api --method POST "repos/$GH_REPO/issues/$PR/labels" -f "labels[]=$LABEL" --silent
-          gh pr ready "$PR" --undo
-
-      - name: Checks pass, so make it ready again if this workflow blocked it
+      - name: Checks passed, so make the pull request ready again
         if: needs.verify.result == 'success'
         run: |
-          if gh api "repos/$GH_REPO/issues/$PR/labels" --jq '.[].name' | grep -qx "$LABEL"; then
+          if gh api "repos/$GH_REPO/issues/$PR/labels" --jq '.[].name' | grep -qx "$HELD_LABEL"; then
             gh pr ready "$PR"
-            gh api --method DELETE "repos/$GH_REPO/issues/$PR/labels/$LABEL" --silent
+            gh api --method DELETE "repos/$GH_REPO/issues/$PR/labels/$HELD_LABEL" --silent
+          else
+            echo "Not held by this workflow: left as it is."
           fi
+
+      - name: Checks failed, so the pull request stays a draft
+        if: needs.verify.result != 'success'
+        run: |
+          echo "::error::The checks did not pass. This pull request stays a draft and cannot be merged until a later commit passes them."
+          exit 1

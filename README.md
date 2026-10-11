@@ -576,16 +576,25 @@ four things, and fails if any of them does:
 | Build      | `npm run build`             | Anything that does not compile, and a bundle over its size budget                            |
 | Unit tests | `npm test -- --watch=false` | Behaviour that changed                                                                       |
 
-**A pull request whose checks failed cannot be merged.** A workflow cannot disable the merge
-button itself, so the last job of the workflow turns such a pull request into a draft, which
-GitHub does not merge, and gives it the label `checks-failed`. When a later commit passes the
-checks, the same job makes the pull request ready again and removes the label. A pull request you
-made a draft yourself has no such label and stays a draft.
+**A pull request can only be merged once its checks have passed**: not while they are running,
+and not after they failed. A workflow cannot disable the merge button itself, so it uses the one
+thing GitHub never merges, a draft:
+
+1. As soon as the workflow starts, the job **Hold merging while the checks run** turns the pull
+   request into a draft and gives it the label `merge-blocked`.
+2. The checks run.
+3. If they passed, the job **Allow merging once the checks have passed** makes the pull request
+   ready again and removes the label. If they failed, it stays a draft, until a later commit
+   passes them.
+
+A pull request you made a draft yourself has no such label; it is checked, but stays a draft
+whatever the outcome. Between opening a pull request and the start of the workflow, a few
+seconds, the button is still enabled.
 
 This is a stand-in for the setting GitHub has for the purpose: Settings → Branches → a protection
 rule for `main` with "Require status checks to pass before merging" and the check
-`Format, lint, build, test`. With that rule the merge button is disabled directly, and the last
-job is no longer needed.
+`Format, lint, build, test`. With that rule the merge button is disabled directly, from the first
+moment, and the two jobs are no longer needed.
 
 Run all four locally, the same way, before pushing:
 
