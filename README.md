@@ -114,6 +114,11 @@ and undo if there is something to undo, stay available.
 
 Switching the layout or the line type, and Auto arrange, are undo steps like any other change.
 
+When a diagram is loaded, its nodes appear one after another, each relationship as soon as both
+of its ends are there. It never takes longer than a second and a half, and until it is finished
+every control and the diagram itself are disabled. The animation is skipped if your system asks
+for reduced motion.
+
 ### A node
 
 A node is a fund. It shows the fund's name, and under it the **fund type**. Every node starts as a
@@ -356,18 +361,45 @@ npm test -- --watch=false --include src/app/diagram/undo-history.spec.ts
 
 ### What is covered
 
-| File                                                       | What it checks                                                                                                                                                                                                                              |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `diagram/node-data.spec.ts`                                | Generated funds and relationships: counts, one parent per fund, no duplicates, ownership with two decimals, default gray square                                                                                                             |
-| `diagram/sample-data.spec.ts`                              | The sample fund structure is one tree with the expected funds, fund types and ownership                                                                                                                                                     |
-| `diagram/datasets.spec.ts`                                 | The Data dropdown's entries and the 30-fund default                                                                                                                                                                                         |
-| `diagram/link-types.spec.ts`                               | The four line types, and which of them avoid nodes                                                                                                                                                                                          |
-| `diagram/layouts.spec.ts`                                  | Every layout positions all nodes without overlaps; tree direction; small versus big trees                                                                                                                                                   |
-| `diagram/diagram-factory.spec.ts`                          | Nodes (fixed size, icons, arrows, rule, red comment dot, gold outline), clicks on icons and selection, lines (black, solid or dotted, info icon, ownership label, meeting the outline of a shape), tree highlight, adding a node, drag rule |
-| `diagram/undo-history.spec.ts`                             | Undo/redo of every kind of change back to the exact initial state, more than 999 steps, deleted nodes coming back with their relationships                                                                                                  |
-| `diagram/shape-tiles.spec.ts`, `diagram/benchmark.spec.ts` | Shape pictures for the Styles dialog; the timing helpers                                                                                                                                                                                    |
-| `perf-diagram/perf-diagram.spec.ts`                        | The page: loading, undo/redo and the state check, bulk-run input, multi-node edits, comments, delete confirmation, relationships, layout and line type, tree highlight, the Styles dialog, the canvas tools, the Actions menu, Add Batch    |
-| `new-batch/new-batch.spec.ts`                              | The batch address and its placeholder page                                                                                                                                                                                                  |
+| File                                                       | What it checks                                                                                                                                                                                                                                                                                                                                                      |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `diagram/node-data.spec.ts`                                | Generated funds and relationships: counts, one parent per fund, no duplicates, ownership with two decimals, default gray square                                                                                                                                                                                                                                     |
+| `diagram/sample-data.spec.ts`                              | The sample fund structure is one tree with the expected funds, fund types and ownership                                                                                                                                                                                                                                                                             |
+| `diagram/datasets.spec.ts`                                 | The Data dropdown's entries and the 30-fund default                                                                                                                                                                                                                                                                                                                 |
+| `diagram/link-types.spec.ts`                               | The four line types, and which of them avoid nodes                                                                                                                                                                                                                                                                                                                  |
+| `diagram/layouts.spec.ts`                                  | Every layout positions all nodes without overlaps; tree direction; small versus big trees                                                                                                                                                                                                                                                                           |
+| `diagram/diagram-factory.spec.ts`                          | Nodes (fixed size, icons, arrows, rule, red comment dot, gold outline), clicks on icons and selection, lines (black, solid or dotted, info icon, ownership label, meeting the outline of a shape), tree highlight, adding a node, drag rule                                                                                                                         |
+| `diagram/undo-history.spec.ts`                             | Undo/redo of every kind of change back to the exact initial state, more than 999 steps, deleted nodes coming back with their relationships                                                                                                                                                                                                                          |
+| `diagram/shape-tiles.spec.ts`, `diagram/benchmark.spec.ts` | Shape pictures for the Styles dialog; the timing helpers                                                                                                                                                                                                                                                                                                            |
+| `perf-diagram/perf-diagram.spec.ts`                        | The page: loading and its animation (everything disabled until all nodes are shown), undo/redo and the state check, bulk-run input, multi-node edits, comments, delete confirmation, relationships, layout and line type, tree highlight, the Styles dialog, the canvas tools, the Actions menu, name and description, search, the overview, new diagram, Add Batch |
+| `new-batch/new-batch.spec.ts`                              | The batch address and its placeholder page                                                                                                                                                                                                                                                                                                                          |
+
+### What is not covered
+
+The tests run without a real browser, so some things can only be checked by hand:
+
+- **Colours and layout that come from CSS.** The green confirm buttons, the dark red **Delete**
+  button, the dark green selection in the Styles dialog, and where the header, the tool strip
+  and the overview sit on the page.
+- **How the diagram looks.** Nothing compares pixels: the rainbow of the color icon, the dotted
+  lines, the gold outline and the dimming are checked as settings on the diagram, not as a
+  picture. Text is measured at a fixed width per character, so the exact place where a long title
+  is cut off is not checked either.
+- **The browser's own download and print steps.** The tests check that **Export PNG** asks for a
+  sharp picture of the whole diagram and that **Print** prepares one; saving the file and the
+  print dialog are replaced by stand-ins.
+- **Real mouse gestures.** Dragging a node, drawing a relationship from the link handle, dragging
+  the box in the overview and zooming with the mouse wheel are not acted out. The rules behind
+  them are tested directly: where a node may be dropped, and where a relationship may start.
+- **A real new tab.** The test for **Add Batch** checks that a new tab is asked for with the right
+  address, not what a particular browser then does.
+- **Speed.** No test fails when something gets slower. The tests check that a diagram with more
+  than 200 nodes is loaded with straight lines, and that the loading animation ends within its
+  time limit, but not how long loading, undo or redo really take.
+- **Other browsers.** Nothing is run in Chrome, Safari or Firefox.
+- **Features without behaviour.** The up and down arrows on a node, **Save** and **Save As** do
+  nothing yet; the tests only check that they are there (and that the two menu entries are
+  disabled).
 
 ### How the test environment works
 

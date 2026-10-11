@@ -21,6 +21,7 @@ import {
   deleteIconCentre,
   highlightTree,
   picturedParts,
+  revealNodesOneByOne,
   showModel,
   showSearchHit,
   textColorFor,
@@ -299,6 +300,8 @@ export class PerfDiagram {
   /** True while a timed operation runs, so the model listener adds nothing to the measurement. */
   private measuring = false;
   private nextLogId = 1;
+  /** Stops the animation in which a loaded diagram's nodes appear one by one. */
+  private stopReveal: () => void = () => undefined;
   /** True while a node's tree is highlighted and the rest of the diagram dimmed. */
   private highlighted = false;
   private queue: Promise<void> = Promise.resolve();
@@ -306,6 +309,7 @@ export class PerfDiagram {
   constructor() {
     afterNextRender(() => this.init());
     inject(DestroyRef).onDestroy(() => {
+      this.stopReveal();
       if (this.overview) this.overview.div = null;
       if (this.diagram) this.diagram.div = null;
     });
@@ -350,9 +354,14 @@ export class PerfDiagram {
     // The initial layout writes every node's `loc`, so the snapshot is taken after it.
     this.diagram.addDiagramListener('InitialLayoutCompleted', () => {
       this.initialJson = this.model.toJson();
-      this.busy.set(false);
       // GoJS clears the history right after this event; read the numbers once it has.
       queueMicrotask(() => this.refresh());
+      // The nodes now appear one by one; everything stays disabled until they are all there.
+      this.overview.isEnabled = false;
+      this.stopReveal = revealNodesOneByOne(this.diagram, () => {
+        this.overview.isEnabled = true;
+        this.busy.set(false);
+      });
     });
     this.diagram.addDiagramListener('ChangedSelection', () => {
       this.syncSelection();
@@ -1084,6 +1093,9 @@ export class PerfDiagram {
 
   /** Loads a fresh model that keeps the currently selected layout and line type. */
   private loadModel(datasetId: string): void {
+    // A reveal of the previous diagram that is still running has nothing left to show.
+    this.stopReveal();
+    this.diagram.isEnabled = true;
     const dataset = findDataset(datasetId);
     const data = dataset.create();
     // Routing every link around the nodes takes about a second at 200 nodes, seven

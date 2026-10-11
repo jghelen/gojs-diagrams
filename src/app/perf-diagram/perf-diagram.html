@@ -32,7 +32,13 @@
       </svg>
       Styles
     </button>
-    <select #actions class="actions-menu" aria-label="Actions" (change)="runAction(actions)">
+    <select
+      #actions
+      class="actions-menu"
+      aria-label="Actions"
+      [disabled]="busy()"
+      (change)="runAction(actions)"
+    >
       <option value="" selected hidden>Actions</option>
       <option value="save" disabled>Save</option>
       <option value="save-as" disabled>Save As</option>
@@ -97,6 +103,7 @@
           aria-label="Search nodes by name"
           placeholder="Search nodes"
           [value]="searchQuery()"
+          [disabled]="busy()"
           (input)="search($any($event.target).value)"
           (keydown.enter)="searchStep($any($event).shiftKey ? -1 : 1)"
         />
@@ -106,7 +113,7 @@
           class="icon-button"
           title="Previous result"
           aria-label="Previous result"
-          [disabled]="searchMatches().length === 0"
+          [disabled]="busy() || searchMatches().length === 0"
           (click)="searchStep(-1)"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
@@ -116,7 +123,7 @@
           class="icon-button"
           title="Next result"
           aria-label="Next result"
-          [disabled]="searchMatches().length === 0"
+          [disabled]="busy() || searchMatches().length === 0"
           (click)="searchStep(1)"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
@@ -167,7 +174,7 @@
           type="button"
           title="Zoom in"
           aria-label="Zoom in"
-          [disabled]="isEmpty()"
+          [disabled]="busy() || isEmpty()"
           (click)="zoomIn()"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -179,7 +186,7 @@
           type="button"
           title="Zoom out"
           aria-label="Zoom out"
-          [disabled]="isEmpty()"
+          [disabled]="busy() || isEmpty()"
           (click)="zoomOut()"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -191,7 +198,7 @@
           type="button"
           title="Zoom to fit"
           aria-label="Zoom to fit"
-          [disabled]="isEmpty()"
+          [disabled]="busy() || isEmpty()"
           (click)="zoomToFit()"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -361,6 +368,7 @@
           aria-label="Number of bulk transactions"
           [max]="maxBulkRuns()"
           [value]="bulkRuns()"
+          [disabled]="busy()"
           (change)="setBulkRuns(bulkInput)"
         />
         <button type="button" [disabled]="busy()" (click)="runBulk()">× randomize all</button>

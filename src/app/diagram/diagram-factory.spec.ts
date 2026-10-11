@@ -6,7 +6,13 @@ import {
   linksOf,
   nodesOf,
 } from '../../testing/diagram-harness';
-import { addNodeInView, createModel, highlightTree, textColorFor } from './diagram-factory';
+import {
+  addNodeInView,
+  createModel,
+  highlightTree,
+  revealNodesOneByOne,
+  textColorFor,
+} from './diagram-factory';
 import {
   DEFAULT_COLOR,
   DEFAULT_SHAPE,
@@ -99,6 +105,55 @@ describe('nodes', () => {
       }
       expect((node.findObject('ARROWS') as go.Panel).elements.count).toBe(2);
     }
+  });
+
+  it('name their icons on hover', () => {
+    const { diagram } = createTestDiagram();
+    const node = diagram.findNodeForKey(1)!;
+    const hoverText = (name: string) => {
+      const texts: string[] = [];
+      (node.findObject(name)!.toolTip as go.Adornment).elements.each((element) => {
+        if (element instanceof go.TextBlock) texts.push(element.text);
+      });
+      return texts.join('');
+    };
+    expect(hoverText('COLOR')).toBe('Change color');
+    expect(hoverText('COMMENT')).toBe('Add comment');
+    expect(hoverText('BATCH')).toBe('Add Batch');
+    expect(hoverText('DELETE')).toBe('Delete node');
+  });
+
+  it('show the full title and subtitle on hover, only when they were cut off', () => {
+    const test = createTestDiagram();
+    const texts = () => {
+      const content = test.diagram.findNodeForKey(1)!.elt(2) as go.Panel;
+      return [content.elt(0) as go.TextBlock, content.elt(1) as go.TextBlock];
+    };
+    /** What hovering over that text would show: null when the hint stays hidden. */
+    const hoverText = (text: go.TextBlock) => {
+      const tools = test.diagram.toolManager;
+      tools.showToolTip(text.toolTip as go.Adornment, text);
+      const tip = tools.currentToolTip as go.Adornment;
+      let shown = '';
+      tip.elements.each((element) => {
+        if (element instanceof go.TextBlock) shown += element.text;
+      });
+      const visible = tip.visible;
+      tools.hideToolTip();
+      return visible ? shown : null;
+    };
+
+    setAll(test, 'title', 'Short');
+    setAll(test, 'subtitle', 'UCITS');
+    for (const text of texts()) expect(hoverText(text)).toBeNull();
+
+    const longTitle = 'A very long fund name that cannot possibly fit inside a node';
+    const longSubtitle = 'an equally long fund type that would run out of the node as well';
+    setAll(test, 'title', longTitle);
+    setAll(test, 'subtitle', longSubtitle);
+    const [title, subtitle] = texts();
+    expect(hoverText(title)).toBe(longTitle);
+    expect(hoverText(subtitle)).toBe(longSubtitle);
   });
 
   it('keep every icon inside the node for every shape', () => {
@@ -327,6 +382,133 @@ describe('relationship lines', () => {
         expect(onOutline).toBeCloseTo(1, 1);
       }
     }
+  });
+});
+
+describe('revealNodesOneByOne', () => {
+  const setHidden = (hidden: boolean) =>
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+  const visibleNodes = (test: TestDiagram) =>
+    nodesOf(test.diagram).filter((node) => node.opacity === 1).length;
+
+  afterEach(() => {
+    vi.useRealTimers();
+    setHidden(true);
+  });
+
+  it('shows the nodes one after another, with the diagram disabled until all are there', () => {
+    const test = createTestDiagram();
+    setHidden(false);
+    vi.useFakeTimers();
+    let done = false;
+
+    revealNodesOneByOne(test.diagram, () => (done = true));
+    expect(visibleNodes(test)).toBe(0);
+    expect(test.diagram.isEnabled).toBe(false);
+
+    vi.advanceTimersByTime(400);
+    const partWay = visibleNodes(test);
+    expect(partWay).toBeGreaterThan(0);
+    expect(partWay).toBeLessThan(30);
+    expect(done).toBe(false);
+
+    vi.advanceTimersByTime(3000);
+    expect(visibleNodes(test)).toBe(30);
+    expect(done).toBe(true);
+    expect(test.diagram.isEnabled).toBe(true);
+  });
+
+  it('shows a relationship once both of its ends are shown, and ends with everything visible', () => {
+    const test = createTestDiagram();
+    setHidden(false);
+    vi.useFakeTimers();
+    revealNodesOneByOne(test.diagram, () => undefined);
+
+    vi.advanceTimersByTime(400);
+    for (const link of linksOf(test.diagram)) {
+      const bothEnds = link.fromNode!.opacity === 1 && link.toNode!.opacity === 1;
+      expect(link.opacity === 1).toBe(bothEnds);
+      expect(link.findAdornment('Info')!.opacity).toBe(link.opacity);
+    }
+
+    vi.advanceTimersByTime(3000);
+    for (const link of linksOf(test.diagram)) expect(link.opacity).toBe(1);
+  });
+
+  it('never takes longer than a second and a half, however many nodes there are', () => {
+    const test = createTestDiagram({ count: 200, linkType: 'straight' });
+    setHidden(false);
+    vi.useFakeTimers();
+    let done = false;
+    revealNodesOneByOne(test.diagram, () => (done = true));
+    vi.advanceTimersByTime(1700);
+    expect(done).toBe(true);
+    expect(visibleNodes(test)).toBe(200);
+  });
+
+  it('is display only: it adds nothing to the undo history', () => {
+    const test = createTestDiagram();
+    const initial = test.model.toJson();
+    setHidden(false);
+    vi.useFakeTimers();
+    revealNodesOneByOne(test.diagram, () => undefined);
+    vi.advanceTimersByTime(3000);
+    expect(test.model.undoManager.history.count).toBe(0);
+    expect(test.model.toJson()).toBe(initial);
+  });
+
+  it('skips the animation when the page is hidden, where no frames are drawn', () => {
+    const test = createTestDiagram();
+    setHidden(true);
+    let done = false;
+    revealNodesOneByOne(test.diagram, () => (done = true));
+    expect(done).toBe(true);
+    expect(visibleNodes(test)).toBe(30);
+    expect(test.diagram.isEnabled).toBe(true);
+  });
+
+  it('skips the animation when the system asks for reduced motion', () => {
+    const test = createTestDiagram();
+    setHidden(false);
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query.includes('reduce') }));
+    let done = false;
+    revealNodesOneByOne(test.diagram, () => (done = true));
+    vi.unstubAllGlobals();
+    expect(done).toBe(true);
+    expect(visibleNodes(test)).toBe(30);
+    expect(test.diagram.isEnabled).toBe(true);
+  });
+
+  it('still finishes when the browser draws no frames, as in a background tab', () => {
+    const test = createTestDiagram();
+    setHidden(false);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const frames = vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(0);
+    let done = false;
+    revealNodesOneByOne(test.diagram, () => (done = true));
+
+    vi.advanceTimersByTime(1000);
+    expect(visibleNodes(test)).toBe(0);
+    vi.advanceTimersByTime(1000);
+    expect(visibleNodes(test)).toBe(30);
+    for (const link of linksOf(test.diagram)) expect(link.opacity).toBe(1);
+    expect(test.diagram.isEnabled).toBe(true);
+    expect(done).toBe(true);
+    frames.mockRestore();
+  });
+
+  it('can be stopped', () => {
+    const test = createTestDiagram();
+    setHidden(false);
+    vi.useFakeTimers();
+    let done = false;
+    const stop = revealNodesOneByOne(test.diagram, () => (done = true));
+    vi.advanceTimersByTime(200);
+    stop();
+    const reached = visibleNodes(test);
+    vi.advanceTimersByTime(3000);
+    expect(visibleNodes(test)).toBe(reached);
+    expect(done).toBe(false);
   });
 });
 

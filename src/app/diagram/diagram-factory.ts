@@ -940,6 +940,90 @@ export function createOverview(div: HTMLDivElement, diagram: go.Diagram): go.Ove
   return overview;
 }
 
+/** How long one node takes to appear, and the longest the whole reveal may take. */
+const REVEAL_STEP_MS = 40;
+const REVEAL_MAX_MS = 1500;
+/** How long after that everything is shown anyway, if no frames were drawn. */
+const REVEAL_GRACE_MS = 500;
+
+/**
+ * Makes the nodes of a freshly loaded diagram appear one after another, each
+ * relationship as soon as both of its ends are there, and calls `done` when
+ * everything is shown. Until then the diagram does not react to the mouse or
+ * the keyboard. A big diagram shows several nodes per frame, so that the whole
+ * reveal never takes longer than REVEAL_MAX_MS.
+ *
+ * Nothing is animated, and `done` is called at once, when the page is hidden
+ * (no frames are drawn then) or the user has asked for reduced motion.
+ * Returns a function that stops a reveal that is still running.
+ */
+export function revealNodesOneByOne(diagram: go.Diagram, done: () => void): () => void {
+  const reducedMotion =
+    typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const nodes: go.Node[] = [];
+  diagram.nodes.each((node) => nodes.push(node));
+  if (document.hidden || reducedMotion || nodes.length === 0) {
+    done();
+    return () => undefined;
+  }
+
+  // Display only: none of this is recorded for undo.
+  const withoutUndo = (work: () => void) => {
+    const skips = diagram.skipsUndoManager;
+    diagram.skipsUndoManager = true;
+    work();
+    diagram.skipsUndoManager = skips;
+  };
+  const show = (part: go.Part, visible: boolean) => {
+    part.opacity = visible ? 1 : 0;
+    for (const category of [INFO_ADORNMENT, OWNERSHIP_ADORNMENT]) {
+      const adornment = part.findAdornment(category);
+      if (adornment) adornment.opacity = part.opacity;
+    }
+  };
+
+  diagram.isEnabled = false;
+  withoutUndo(() => {
+    nodes.forEach((node) => show(node, false));
+    diagram.links.each((link) => show(link, false));
+  });
+
+  const duration = Math.min(REVEAL_MAX_MS, nodes.length * REVEAL_STEP_MS);
+  const start = performance.now();
+  let shown = 0;
+  let frame = 0;
+  let timer = 0;
+  const stop = () => {
+    cancelAnimationFrame(frame);
+    clearTimeout(timer);
+  };
+  const step = (all = false): void => {
+    const progress = all ? 1 : Math.min(1, (performance.now() - start) / duration);
+    const target = Math.max(shown + 1, Math.ceil(progress * nodes.length));
+    withoutUndo(() => {
+      for (; shown < Math.min(target, nodes.length); shown++) {
+        const node = nodes[shown];
+        show(node, true);
+        node.findLinksConnected().each((link) => {
+          if (link.getOtherNode(node)?.opacity === 1) show(link, true);
+        });
+      }
+    });
+    if (shown < nodes.length) {
+      frame = requestAnimationFrame(() => step());
+      return;
+    }
+    stop();
+    diagram.isEnabled = true;
+    done();
+  };
+  frame = requestAnimationFrame(() => step());
+  // No frames are drawn while the page is in the background. The diagram must not
+  // stay disabled because of that, so a timer shows whatever is still missing.
+  timer = window.setTimeout(() => step(true), duration + REVEAL_GRACE_MS);
+  return stop;
+}
+
 /** Shows `model` in the diagram with an empty, unlimited undo history. */
 export function showModel(diagram: go.Diagram, model: NodeModel): void {
   diagram.model = model;

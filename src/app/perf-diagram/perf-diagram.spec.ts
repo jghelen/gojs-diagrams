@@ -132,6 +132,89 @@ describe('PerfDiagram', () => {
     });
   });
 
+  describe('loading animation', () => {
+    const overview = () =>
+      (fixture.componentInstance as unknown as { overview: go.Overview }).overview;
+    /** The controls on the page itself; those of the dialogs are not on screen. */
+    const controls = () =>
+      Array.from(
+        page.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLSelectElement>(
+          'button, input, select',
+        ),
+      ).filter((control) => !control.closest('dialog'));
+    const visibleNodes = () => {
+      let count = 0;
+      diagram.nodes.each((node) => (count += node.opacity === 1 ? 1 : 0));
+      return count;
+    };
+    let frames: FrameRequestCallback[];
+
+    /** Draws frames, as a browser would, until the page asks for no more. */
+    const drawFrames = async (time: number) => {
+      const now = vi.spyOn(performance, 'now').mockReturnValue(time);
+      for (let i = 0; i < 20 && frames.length > 0; i++) {
+        for (const frame of frames.splice(0)) frame(time);
+      }
+      now.mockRestore();
+      await settle();
+    };
+
+    beforeEach(() => {
+      // A page that is on screen, with frames that are only drawn when the test says so.
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+      frames = [];
+      vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) =>
+        frames.push(callback),
+      );
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    });
+
+    it('keeps every control, the diagram and the overview disabled until all nodes are shown', async () => {
+      bench.reset('fund-structure');
+      await settle();
+      expect(bench.busy()).toBe(true);
+      expect(visibleNodes()).toBe(0);
+      expect(diagram.isEnabled).toBe(false);
+      expect(overview().isEnabled).toBe(false);
+      expect(controls().length).toBeGreaterThan(15);
+      for (const control of controls()) expect(control.disabled).toBe(true);
+
+      await drawFrames(performance.now() + 60_000);
+      expect(bench.busy()).toBe(false);
+      expect(visibleNodes()).toBe(24);
+      expect(diagram.isEnabled).toBe(true);
+      expect(overview().isEnabled).toBe(true);
+      expect(controls().filter((control) => !control.disabled).length).toBeGreaterThan(15);
+    });
+
+    it('leaves the history empty and the initial state intact', async () => {
+      bench.reset('fund-structure');
+      await settle();
+      await drawFrames(performance.now() + 60_000);
+      expect(bench.stats()).toMatchObject({ nodes: 24, historyLength: 0, historyIndex: -1 });
+      expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
+    });
+
+    it('starts over when other data is loaded while nodes are still appearing', async () => {
+      bench.reset('fund-structure');
+      await settle();
+      bench.reset('100');
+      await settle();
+      expect(bench.busy()).toBe(true);
+      expect(visibleNodes()).toBe(0);
+
+      await drawFrames(performance.now() + 60_000);
+      expect(bench.busy()).toBe(false);
+      expect(bench.stats()).toMatchObject({ nodes: 100 });
+      expect(visibleNodes()).toBe(100);
+      expect(diagram.isEnabled).toBe(true);
+    });
+  });
+
   describe('undo and redo', () => {
     it('undoes everything back to the initial state and redoes it to the latest', async () => {
       await bench.randomizeAll();
