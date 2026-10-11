@@ -76,6 +76,7 @@ describe('FundStyles', () => {
     expect(preview).toMatchObject({ fill: '#1e3a8a', subtitle: first, arrowsLeft: 24 });
     // Light text on the dark fill.
     expect(preview.textColor).not.toBe(textOnLightFill);
+    styles.toggleType(second);
     expect(styles.nodePreview().subtitle).toBe('2 fund types');
   });
 
