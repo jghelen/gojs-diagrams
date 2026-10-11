@@ -42,6 +42,7 @@ import {
   LinkType,
   avoidsNodes,
   linkStyle,
+  tooBigToAvoidNodes,
 } from '../diagram/link-types';
 import {
   COLORS,
@@ -151,9 +152,6 @@ const IMAGE_MAX_SIDE = 10_000;
 
 /** Upper limit for runs × nodes of one bulk edit; beyond it the page is blocked for too long. */
 const BULK_EDIT_BUDGET = 40_000;
-
-/** Largest node count that is loaded with a line type that is routed around the nodes. */
-const AVOID_NODES_LIMIT = 200;
 
 @Component({
   selector: 'app-perf-diagram',
@@ -854,6 +852,17 @@ export class PerfDiagram {
     this.linkMenuOpen.set(lines);
   }
 
+  /**
+   * The name of a line type as the tool strip shows it on hover. On a big diagram
+   * the orthogonal types are not routed around the nodes, and their names say so.
+   */
+  protected linkTypeLabel(type: LinkType): string {
+    const label = linkStyle(type).label;
+    return avoidsNodes(type) && tooBigToAvoidNodes(this.stats()?.nodes ?? 0)
+      ? `${label} (crosses nodes on a diagram this big)`
+      : label;
+  }
+
   /** Picks a line type from the tool strip's column of icons, which then closes. */
   protected pickLinkType(type: LinkType): Promise<void> {
     this.linkMenuOpen.set(false);
@@ -1098,9 +1107,9 @@ export class PerfDiagram {
     this.diagram.isEnabled = true;
     const dataset = findDataset(datasetId);
     const data = dataset.create();
-    // Routing every link around the nodes takes about a second at 200 nodes, seven
-    // at 500 and minutes beyond that, so bigger diagrams start with straight lines.
-    if (data.nodes.length > AVOID_NODES_LIMIT && avoidsNodes(this.linkType())) {
+    // A big diagram's lines are not routed around its nodes, and orthogonal lines
+    // that run across nodes are hard to follow, so it starts with straight ones.
+    if (tooBigToAvoidNodes(data.nodes.length) && avoidsNodes(this.linkType())) {
       this.linkType.set('straight');
     }
     const settings = {
@@ -1115,6 +1124,10 @@ export class PerfDiagram {
     this.tipJson = null;
     // A new model gets new parts, none of them dimmed.
     this.highlighted = false;
+    // What was searched for belonged to the diagram that is replaced now.
+    this.searchQuery.set('');
+    this.searchMatches.set([]);
+    this.searchIndex.set(-1);
     this.diagram.layout = createLayout(settings.layoutType, data.nodes.length);
     showModel(this.diagram, createModel(data, settings));
   }

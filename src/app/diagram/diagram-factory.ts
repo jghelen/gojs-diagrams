@@ -2,7 +2,7 @@
 // slower debug build under `ng serve`, which would inflate the timings.
 import * as go from 'gojs/release/go';
 import { LayoutType } from './layouts';
-import { LinkType, linkStyle } from './link-types';
+import { LinkType, linkStyle, routingFor } from './link-types';
 import { LinkData, LinkKind, NodeData, formatOwnership } from './node-data';
 
 /** Model-wide settings. Kept in the model so that switching them is undone with everything else. */
@@ -614,7 +614,9 @@ export interface IconClicks {
 function createLink(...parts: go.GraphObject[]): go.Link {
   // Drawn behind the nodes. Links can be selected and removed, but not reconnected.
   return new RelationshipLink({ layerName: go.LayerNames.Background })
-    .bindModel('routing', 'linkType', (type: LinkType) => linkStyle(type).routing)
+    .bindModel('routing', 'linkType', (type: LinkType, link: go.Link) =>
+      routingFor(type, link.diagram?.model.nodeDataArray.length ?? 0),
+    )
     .bindModel('curve', 'linkType', (type: LinkType) => linkStyle(type).curve)
     .bindModel('corner', 'linkType', (type: LinkType) => linkStyle(type).corner)
     .add(
@@ -943,6 +945,13 @@ export function createOverview(div: HTMLDivElement, diagram: go.Diagram): go.Ove
 /** How long one node takes to appear, and the longest the whole reveal may take. */
 const REVEAL_STEP_MS = 40;
 const REVEAL_MAX_MS = 1500;
+/**
+ * A diagram with more nodes than this is shown in REVEAL_LARGE_MS: its nodes are
+ * too small to be told apart anyway, and opening it must not take noticeably
+ * longer than drawing it does.
+ */
+const REVEAL_LARGE_FROM = 200;
+const REVEAL_LARGE_MS = 500;
 /** How long after that everything is shown anyway, if no frames were drawn. */
 const REVEAL_GRACE_MS = 500;
 
@@ -951,7 +960,8 @@ const REVEAL_GRACE_MS = 500;
  * relationship as soon as both of its ends are there, and calls `done` when
  * everything is shown. Until then the diagram does not react to the mouse or
  * the keyboard. A big diagram shows several nodes per frame, so that the whole
- * reveal never takes longer than REVEAL_MAX_MS.
+ * reveal never takes longer than REVEAL_MAX_MS, and a very big one many more, so
+ * that it takes no longer than REVEAL_LARGE_MS.
  *
  * Nothing is animated, and `done` is called at once, when the page is hidden
  * (no frames are drawn then) or the user has asked for reduced motion.
@@ -988,7 +998,10 @@ export function revealNodesOneByOne(diagram: go.Diagram, done: () => void): () =
     diagram.links.each((link) => show(link, false));
   });
 
-  const duration = Math.min(REVEAL_MAX_MS, nodes.length * REVEAL_STEP_MS);
+  const duration =
+    nodes.length > REVEAL_LARGE_FROM
+      ? REVEAL_LARGE_MS
+      : Math.min(REVEAL_MAX_MS, nodes.length * REVEAL_STEP_MS);
   const start = performance.now();
   let shown = 0;
   let frame = 0;

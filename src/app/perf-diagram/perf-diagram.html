@@ -242,7 +242,7 @@
           <button
             type="button"
             aria-label="Lines"
-            [title]="'Lines: ' + currentLinkStyle().label"
+            [title]="'Lines: ' + linkTypeLabel(linkType())"
             [attr.aria-expanded]="linkMenuOpen()"
             [disabled]="busy() || isEmpty()"
             (click)="toggleMenu('lines')"
@@ -257,8 +257,8 @@
                 <button
                   type="button"
                   role="menuitemradio"
-                  [title]="style.label"
-                  [attr.aria-label]="style.label"
+                  [title]="linkTypeLabel(style.type)"
+                  [attr.aria-label]="linkTypeLabel(style.type)"
                   [attr.aria-checked]="style.type === linkType()"
                   [class.current]="style.type === linkType()"
                   (click)="pickLinkType(style.type)"

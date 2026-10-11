@@ -68,13 +68,14 @@ Every icon without a text label shows its name when the user hovers over it.
 - **BR-4.3** Every fund in a newly opened diagram is a very light gray square with a dark gray
   border.
 - **BR-4.4** A diagram opens laid out top to bottom, with lines that go around the nodes. A
-  diagram of more than 200 funds opens with straight lines instead, so that it opens quickly.
+  diagram of 500 funds or more opens with straight lines instead, so that it opens quickly.
 
 ### 4.2 Loading animation
 
 - **BR-4.5** When a diagram is opened, its nodes are drawn one after another. A relationship is
   drawn as soon as both funds it connects are on screen.
-- **BR-4.6** The animation takes at most 1.5 seconds, whatever the size of the diagram.
+- **BR-4.6** The animation takes at most 1.5 seconds. On a diagram of more than 200 funds it takes
+  half a second, so that large diagrams still open quickly.
 - **BR-4.7** Until the whole diagram is drawn, every action is disabled: the header, the left
   navigation, name, description and search, the side panel, the overview and the diagram itself.
 - **BR-4.8** The animation is skipped for users whose system is set to reduce motion.
@@ -184,7 +185,8 @@ Every icon without a text label shows its name when the user hovers over it.
 - **BR-6.1** All lines are black and end in an arrowhead at the target fund.
 - **BR-6.2** A line starts and ends exactly on the outline of the shape, for every shape. There is
   no gap between line and node.
-- **BR-6.3** With the default line types, lines go around nodes and do not run across them.
+- **BR-6.3** On a diagram of fewer than 500 funds, with the default line types, lines go around nodes
+  and do not run across them. On bigger diagrams lines may cross nodes (see BR-9.6).
 
 ### 6.2 Ownership
 
@@ -275,8 +277,12 @@ The **Styles** button (palette icon) opens a dialog that gives all funds of a ty
 
 - **BR-9.5** The Lines item, below Layout, opens a column of icons, one per line type, each named
   on hover: Orthogonal rounded, Orthogonal square, Straight, Curved.
-- **BR-9.6** The two orthogonal types route lines around nodes. Straight and curved lines cannot;
-  their names say "(crosses nodes)".
+- **BR-9.6** Straight and curved lines cannot go around nodes; their names say "(crosses
+  nodes)". The two orthogonal types route lines around nodes on diagrams of fewer than 500 funds.
+- **BR-9.6a** On a diagram of 500 funds or more, the orthogonal types keep their right-angled
+  look but are not routed around nodes, because that would block the screen for many seconds or
+  minutes. Their names in the Lines column then say "(crosses nodes on a diagram this big)".
+  Switching the line type must never freeze the screen, whatever the size of the diagram.
 - **BR-9.7** Switching the line type is one undo step.
 - **BR-9.8** Only one of the two columns (Layout, Lines) is open at a time.
 
@@ -305,6 +311,8 @@ The **Styles** button (palette icon) opens a dialog that gives all funds of a ty
 - **BR-10.7** Clicking any other node removes the focus from the search match.
 - **BR-10.8** Clearing the search box removes the outline and the count.
 - **BR-10.9** Searching is display only and is never an undo step.
+- **BR-10.10** Reset diagram, opening other data and New diagram empty the search box and remove
+  the count and the outline.
 
 ## 11. Undo and redo
 
@@ -362,11 +370,11 @@ This part serves the evaluation of the technology rather than the end user.
 
 ## 15. Not available yet
 
-| Item                               | Status                                                                          |
-| ---------------------------------- | ------------------------------------------------------------------------------- |
-| Save, Save As                      | Listed in the Actions menu, disabled. Diagrams are not stored anywhere          |
-| Up and down arrows on a node       | Shown, without an action. The intended behaviour is to be defined               |
-| Add Batch target page              | A placeholder page that shows the fund's id                                     |
-| Undo all / Redo all in one click   | Not offered on screen; the user steps with Undo and Redo                        |
-| Lines around nodes above 200 funds | Off by default for speed; can be switched on by hand at the cost of a long wait |
-| Real fund data                     | The diagrams are a fixed sample and generated test data                         |
+| Item                                 | Status                                                                                      |
+| ------------------------------------ | ------------------------------------------------------------------------------------------- |
+| Save, Save As                        | Listed in the Actions menu, disabled. Diagrams are not stored anywhere                      |
+| Up and down arrows on a node         | Shown, without an action. The intended behaviour is to be defined                           |
+| Add Batch target page                | A placeholder page that shows the fund's id                                                 |
+| Undo all / Redo all in one click     | Not offered on screen; the user steps with Undo and Redo                                    |
+| Lines around nodes from 500 funds up | Not offered: it would block the screen for too long. Orthogonal lines may cross nodes there |
+| Real fund data                       | The diagrams are a fixed sample and generated test data                                     |

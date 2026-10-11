@@ -266,6 +266,20 @@ describe('relationship lines', () => {
     }
   });
 
+  it('go around the nodes on a small diagram, and keep only their right angles on a big one', () => {
+    const small = createTestDiagram({ count: 30, linkType: 'avoid' });
+    for (const link of linksOf(small.diagram)) expect(link.routing).toBe(go.Routing.AvoidsNodes);
+
+    const big = createTestDiagram({ count: 500, linkType: 'straight' });
+    for (const type of ['avoid', 'orthogonal'] as const) {
+      big.model.commit((m) => m.set(m.modelData, 'linkType', type), 'change line type');
+      for (const link of linksOf(big.diagram)) {
+        expect(link.routing).toBe(go.Routing.Orthogonal);
+        expect(link.isOrthogonal).toBe(true);
+      }
+    }
+  });
+
   it('carry an info icon at their middle, except those the user drew', () => {
     const test = createTestDiagram();
     const from = test.diagram.findNodeForKey(2)!;
@@ -444,6 +458,20 @@ describe('revealNodesOneByOne', () => {
     vi.advanceTimersByTime(1700);
     expect(done).toBe(true);
     expect(visibleNodes(test)).toBe(200);
+  });
+
+  it('takes only half a second on a diagram of more than 200 nodes', () => {
+    const test = createTestDiagram({ count: 300, linkType: 'straight' });
+    setHidden(false);
+    vi.useFakeTimers();
+    let done = false;
+    revealNodesOneByOne(test.diagram, () => (done = true));
+    vi.advanceTimersByTime(250);
+    expect(visibleNodes(test)).toBeGreaterThan(100);
+    expect(visibleNodes(test)).toBeLessThan(300);
+    vi.advanceTimersByTime(350);
+    expect(done).toBe(true);
+    expect(visibleNodes(test)).toBe(300);
   });
 
   it('is display only: it adds nothing to the undo history', () => {

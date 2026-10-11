@@ -1044,6 +1044,30 @@ describe('PerfDiagram', () => {
       expect(marked()).toEqual([]);
     });
 
+    it('is emptied when the diagram is reset, when other data is loaded and on a new diagram', async () => {
+      const reload = page.querySelector<HTMLButtonElement>('button[aria-label="Reset diagram"]')!;
+      const blank = page.querySelector<HTMLButtonElement>('button[aria-label="New diagram"]')!;
+      const loads: (() => void)[] = [
+        () => reload.click(),
+        () => bench.reset('fund-structure'),
+        () => blank.click(),
+      ];
+      for (const load of loads) {
+        // A new diagram is empty, so the search before it runs on the sample funds.
+        await type('fund');
+        expect(count()).not.toBe('');
+        step('Next result').click();
+        await settle();
+
+        load();
+        await settle();
+        expect(box().value).toBe('');
+        expect(count()).toBe('');
+        expect(marked()).toEqual([]);
+        expect(step('Next result').disabled).toBe(true);
+      }
+    });
+
     it('follows renames: the count changes when a matching node is renamed', async () => {
       const house = model().nodeDataArray[0].title.split(' ')[0];
       const before = titled(house).length;
@@ -1091,7 +1115,44 @@ describe('PerfDiagram', () => {
       expect(model().modelData.linkType).toBe('straight');
     }, 20_000);
 
-    it('keep node-avoiding lines up to 200 nodes', async () => {
+    it('switch to orthogonal lines without routing them around the nodes, as one undo step', async () => {
+      bench.reset('500');
+      await settle();
+      await bench.changeLinkType('avoid');
+      await settle();
+      expect(bench.linkType()).toBe('avoid');
+      expect(bench.stats()).toMatchObject({ historyLength: 1 });
+      diagram.links.each((link) => expect(link.routing).toBe(go.Routing.Orthogonal));
+
+      await bench.undo();
+      expect(bench.linkType()).toBe('straight');
+      expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
+    }, 20_000);
+
+    it('say in the Lines menu that orthogonal lines cross nodes there', async () => {
+      const titles = async () => {
+        page.querySelector<HTMLButtonElement>('button[aria-label="Lines"]')!.click();
+        await settle();
+        const found = Array.from(
+          page.querySelectorAll<HTMLButtonElement>('.nav-flyout button'),
+        ).map((choice) => choice.title);
+        page.querySelector<HTMLButtonElement>('button[aria-label="Lines"]')!.click();
+        await settle();
+        return found;
+      };
+      expect((await titles())[0]).toBe('Orthogonal, rounded');
+
+      bench.reset('500');
+      await settle();
+      expect(await titles()).toEqual([
+        'Orthogonal, rounded (crosses nodes on a diagram this big)',
+        'Orthogonal, square (crosses nodes on a diagram this big)',
+        'Straight (crosses nodes)',
+        'Curved (crosses nodes)',
+      ]);
+    }, 20_000);
+
+    it('keep node-avoiding lines below 500 nodes', async () => {
       bench.reset('100');
       await settle();
       expect(bench.linkType()).toBe('avoid');

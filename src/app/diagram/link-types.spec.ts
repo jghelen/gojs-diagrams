@@ -1,5 +1,13 @@
 import * as go from 'gojs/release/go';
-import { DEFAULT_LINK_TYPE, LINK_TYPES, avoidsNodes, linkStyle } from './link-types';
+import {
+  AVOID_NODES_BELOW,
+  DEFAULT_LINK_TYPE,
+  LINK_TYPES,
+  avoidsNodes,
+  linkStyle,
+  routingFor,
+  tooBigToAvoidNodes,
+} from './link-types';
 
 describe('link types', () => {
   it('offers two orthogonal types, straight and curved', () => {
@@ -41,5 +49,24 @@ describe('link types', () => {
 
   it('starts with lines that avoid nodes', () => {
     expect(avoidsNodes(DEFAULT_LINK_TYPE)).toBe(true);
+  });
+
+  it('routes around the nodes only on diagrams of fewer than 500 nodes', () => {
+    expect(AVOID_NODES_BELOW).toBe(500);
+    expect(tooBigToAvoidNodes(499)).toBe(false);
+    expect(tooBigToAvoidNodes(500)).toBe(true);
+    for (const type of ['avoid', 'orthogonal'] as const) {
+      expect(routingFor(type, 200)).toBe(go.Routing.AvoidsNodes);
+      expect(routingFor(type, 499)).toBe(go.Routing.AvoidsNodes);
+      expect(routingFor(type, 500)).toBe(go.Routing.Orthogonal);
+      expect(routingFor(type, 2000)).toBe(go.Routing.Orthogonal);
+    }
+  });
+
+  it('routes straight and curved lines the same way on every size of diagram', () => {
+    for (const type of ['straight', 'curved'] as const) {
+      expect(routingFor(type, 30)).toBe(go.Routing.Normal);
+      expect(routingFor(type, 2000)).toBe(go.Routing.Normal);
+    }
   });
 });

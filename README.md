@@ -73,7 +73,8 @@ see how many nodes match, whatever the case of the letters. The **<** and **>** 
 and Shift+Enter, step through the matches: the node you are on gets a thick gold outline, is
 brought to the middle of the view and, if the diagram was zoomed out, zoomed in to full size. The
 counter then reads "2 of 7". Clicking another node takes the outline away again. Searching never
-changes the diagram or its undo history.
+changes the diagram or its undo history. Resetting the diagram, loading other data or starting a
+new diagram empties the search box.
 
 ### Finding your way around
 
@@ -103,9 +104,11 @@ and undo if there is something to undo, stay available.
   see one icon per layout (hover over an icon for its name) and click the one you want: Top to
   bottom, Bottom to top, Circle, Layered digraph, Force-directed or Grid.
 - **Lines**, the icon under the layout icon in the tool strip, picks how relationships are
-  drawn. Click it to see one icon per line type, named on hover. The two "Orthogonal" types
-  route around nodes; "Straight" and "Curved" cannot, and say "(crosses nodes)". Routing around
-  nodes is slow on large diagrams, so above 200 nodes a new diagram starts with straight lines.
+  drawn. Click it to see one icon per line type, named on hover. "Straight" and "Curved" lines
+  cross whatever lies between their ends, and say "(crosses nodes)". The two "Orthogonal" types
+  are routed around the nodes on a diagram of fewer than 500 nodes. Routing around nodes takes
+  minutes on bigger diagrams, so there the orthogonal types keep their right angles but may
+  cross nodes (their names then say so), and a new diagram starts with straight lines.
 - **Auto arrange**, the last icon of the tool strip, runs the current layout again, which tidies
   up after you moved nodes by hand.
 - **Zoom to fit**, in the tool strip under zoom out, shows the whole diagram.
@@ -118,7 +121,8 @@ and undo if there is something to undo, stay available.
 Switching the layout or the line type, and Auto arrange, are undo steps like any other change.
 
 When a diagram is loaded, its nodes appear one after another, each relationship as soon as both
-of its ends are there. It never takes longer than a second and a half, and until it is finished
+of its ends are there. It never takes longer than a second and a half, and only half a second
+on a diagram of more than 200 nodes, so that big diagrams still open quickly. Until it is finished
 every control and the diagram itself are disabled. The animation is skipped if your system asks
 for reduced motion.
 
@@ -369,7 +373,7 @@ npm test -- --watch=false --include src/app/diagram/undo-history.spec.ts
 | `diagram/node-data.spec.ts`                                | Generated funds and relationships: counts, one parent per fund, no duplicates, ownership with two decimals, default gray square                                                                                                                                                                                                                                     |
 | `diagram/sample-data.spec.ts`                              | The sample fund structure is one tree with the expected funds, fund types and ownership                                                                                                                                                                                                                                                                             |
 | `diagram/datasets.spec.ts`                                 | The Data dropdown's entries and the 30-fund default                                                                                                                                                                                                                                                                                                                 |
-| `diagram/link-types.spec.ts`                               | The four line types, and which of them avoid nodes                                                                                                                                                                                                                                                                                                                  |
+| `diagram/link-types.spec.ts`                               | The four line types, which of them avoid nodes, and that they only do so on diagrams of fewer than 500 nodes                                                                                                                                                                                                                                                        |
 | `diagram/layouts.spec.ts`                                  | Every layout positions all nodes without overlaps; tree direction; small versus big trees                                                                                                                                                                                                                                                                           |
 | `diagram/diagram-factory.spec.ts`                          | Nodes (fixed size, icons, arrows, rule, red comment dot, gold outline), clicks on icons and selection, lines (black, solid or dotted, info icon, ownership label, meeting the outline of a shape), tree highlight, adding a node, drag rule                                                                                                                         |
 | `diagram/undo-history.spec.ts`                             | Undo/redo of every kind of change back to the exact initial state, more than 999 steps, deleted nodes coming back with their relationships                                                                                                                                                                                                                          |
@@ -396,8 +400,8 @@ The tests run without a real browser, so some things can only be checked by hand
   them are tested directly: where a node may be dropped, and where a relationship may start.
 - **A real new tab.** The test for **Add Batch** checks that a new tab is asked for with the right
   address, not what a particular browser then does.
-- **Speed.** No test fails when something gets slower. The tests check that a diagram with more
-  than 200 nodes is loaded with straight lines, and that the loading animation ends within its
+- **Speed.** No test fails when something gets slower. The tests check that a diagram of 500
+  nodes or more is loaded with straight lines, and that the loading animation ends within its
   time limit, but not how long loading, undo or redo really take.
 - **Other browsers.** Nothing is run in Chrome, Safari or Firefox.
 - **Features without behaviour.** The up and down arrows on a node, **Save** and **Save As** do
@@ -450,9 +454,15 @@ Read the [licence](#licence) section before publishing a build on the public int
 ## Known limits
 
 - **Large diagrams and node-avoiding lines.** Routing every line around the nodes takes about a
-  second at 200 nodes, about seven seconds at 500 and minutes beyond that. A diagram with more
-  than 200 nodes is therefore loaded with straight lines, which takes a fraction of a second.
-  You can switch back in the tool strip, at the cost of that wait.
+  second at 200 nodes, about seven seconds at 500 and minutes beyond that, and the page does not
+  respond meanwhile. Lines are therefore routed around nodes only on diagrams of fewer than 500
+  nodes; between 200 and 500 that means a wait of one to several seconds when the diagram is
+  loaded or the line type is switched. A bigger diagram is loaded with straight lines, and when you pick an orthogonal line
+  type there, the lines get their right angles but may run across nodes. Switching the line
+  type on 2000 nodes then takes well under a second.
+- **Crossing the 500-node mark by hand.** Whether lines avoid nodes is decided when a diagram is
+  loaded and when the line type is switched. If you add or delete nodes across the limit, the
+  existing lines keep the routing they had until you switch the line type again.
 - **Lines across nodes.** With the orthogonal line types this is rare but not impossible; GoJS
   falls back to a plain line when it finds no way around.
 - **The children of a deleted node** stay in the diagram without a parent; nothing re-attaches
