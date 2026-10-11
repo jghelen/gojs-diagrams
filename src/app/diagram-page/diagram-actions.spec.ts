@@ -11,7 +11,7 @@ import { NODE_NUDGE, QUICK_LAYOUTS } from '../diagram/constants';
 import { LAYOUTS } from '../diagram/layouts';
 import { allLinkCardsShown } from '../diagram/diagram-factory';
 import { DiagramActions } from './diagram-actions';
-import { OperationRunner } from './operation-runner';
+import { OperationRunner } from './operation-runner/operation-runner';
 
 describe('DiagramActions', () => {
   let test: TestDiagram;

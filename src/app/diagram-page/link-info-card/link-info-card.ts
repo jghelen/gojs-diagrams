@@ -1,7 +1,7 @@
 import { Injectable, signal } from '@angular/core';
 import * as go from 'gojs/release/go';
-import { NodeModel } from '../diagram/diagram-factory';
-import { LinkData, NodeData, formatOwnership } from '../diagram/node-data';
+import { NodeModel } from '../../diagram/diagram-factory';
+import { LinkData, NodeData, formatOwnership } from '../../diagram/node-data';
 
 /** What the card of a relationship shows, and where it stands. */
 export interface LinkInfo {

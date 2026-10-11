@@ -5,20 +5,20 @@ import * as go from 'gojs/release/go';
 import { DEFAULT_COLOR, DEFAULT_SHAPE, DEVELOPER_TOOLS_KEY } from '../diagram/constants';
 import { NodeModel } from '../diagram/diagram-factory';
 import { LinkData, NodeData } from '../diagram/node-data';
-import { BenchmarkStatistics } from './components/benchmark-statistics';
-import { DiagramInfoBar } from './components/diagram-info-bar';
-import { NodeDialogs } from './components/node-dialogs';
-import { PageHeader } from './components/page-header';
-import { RelationshipCard } from './components/relationship-card';
-import { SidePanel } from './components/side-panel';
-import { StylesDialog } from './components/styles-dialog';
-import { ToolStrip } from './components/tool-strip';
+import { BenchmarkStatistics } from './components/benchmark-statistics/benchmark-statistics';
+import { DiagramInfoBar } from './components/diagram-info-bar/diagram-info-bar';
+import { NodeDialogs } from './components/node-dialogs/node-dialogs';
+import { PageHeader } from './components/page-header/page-header';
+import { RelationshipCard } from './components/relationship-card/relationship-card';
+import { SidePanel } from './components/side-panel/side-panel';
+import { StylesDialog } from './components/style-dialog/styles-dialog';
+import { ToolStrip } from './components/tool-strip/tool-strip';
 import { DiagramActions } from './diagram-actions';
-import { DiagramState } from './diagram-state';
-import { LinkInfoCard } from './link-info-card';
-import { OperationRunner } from './operation-runner';
+import { DiagramState } from './diagram-state/diagram-state';
+import { LinkInfoCard } from './link-info-card/link-info-card';
+import { OperationRunner } from './operation-runner/operation-runner';
 import { DiagramPage } from './diagram-page';
-import { SelectionState } from './selection-state';
+import { SelectionState } from './selection-state/selection-state';
 
 /**
  * What these tests drive: members of the page, of its parts and of its services,

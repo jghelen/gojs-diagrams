@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, ElementRef, inject, viewChild } from '@angular/core';
-import { COLORS, STYLE_FIELDS } from '../../diagram/constants';
-import { SHAPE_TILES } from '../../diagram/shape-tiles';
-import { DiagramActions } from '../diagram-actions';
-import { FundStyles, StyleDraft, StyleRow } from '../fund-styles';
-import { OperationRunner } from '../operation-runner';
+import { COLORS, STYLE_FIELDS } from '../../../diagram/constants';
+import { SHAPE_TILES } from '../../../diagram/shape-tiles';
+import { DiagramActions } from '../../diagram-actions';
+import { FundStyles, StyleDraft, StyleRow } from '../../fund-styles';
+import { OperationRunner } from '../../operation-runner/operation-runner';
 
 /**
  * The dialog "Styles by legal entity field": pick a field, tick some of its

@@ -6,13 +6,13 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { LAYOUTS, LayoutType } from '../../diagram/layouts';
-import { LINK_TYPES, LinkType, linkStyle } from '../../diagram/link-types';
-import { SHAPE_TILES } from '../../diagram/shape-tiles';
-import { DiagramActions } from '../diagram-actions';
-import { DiagramState } from '../diagram-state';
-import { OperationRunner } from '../operation-runner';
-import { SelectionState } from '../selection-state';
+import { LAYOUTS, LayoutType } from '../../../diagram/layouts';
+import { LINK_TYPES, LinkType, linkStyle } from '../../../diagram/link-types';
+import { SHAPE_TILES } from '../../../diagram/shape-tiles';
+import { DiagramActions } from '../../diagram-actions';
+import { DiagramState } from '../../diagram-state/diagram-state';
+import { OperationRunner } from '../../operation-runner/operation-runner';
+import { SelectionState } from '../../selection-state/selection-state';
 
 /**
  * The tools on the left edge of the canvas: add a node, undo and redo, zoom,

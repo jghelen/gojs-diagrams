@@ -1,5 +1,5 @@
-import { TestDiagram, createTestDiagram, linksOf, nodesOf } from '../../testing/diagram-harness';
-import { LinkData, NodeData } from '../diagram/node-data';
+import { TestDiagram, createTestDiagram, linksOf, nodesOf } from '../../../testing/diagram-harness';
+import { LinkData, NodeData } from '../../diagram/node-data';
 import { SelectionState } from './selection-state';
 
 describe('SelectionState', () => {

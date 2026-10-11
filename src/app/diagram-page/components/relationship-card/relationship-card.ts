@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { DiagramActions } from '../diagram-actions';
-import { LinkInfoCard } from '../link-info-card';
-import { OperationRunner } from '../operation-runner';
+import { DiagramActions } from '../../diagram-actions';
+import { LinkInfoCard } from '../../link-info-card/link-info-card';
+import { OperationRunner } from '../../operation-runner/operation-runner';
 
 /**
  * The card with the data of one relationship, shown on the canvas beside the

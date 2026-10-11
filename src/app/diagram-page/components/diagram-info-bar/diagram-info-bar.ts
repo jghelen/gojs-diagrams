@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { DiagramActions } from '../diagram-actions';
-import { DiagramState } from '../diagram-state';
-import { NodeSearch } from '../node-search';
-import { OperationRunner } from '../operation-runner';
+import { DiagramActions } from '../../diagram-actions';
+import { DiagramState } from '../../diagram-state/diagram-state';
+import { NodeSearch } from '../../node-search/node-search';
+import { OperationRunner } from '../../operation-runner/operation-runner';
 
 /** The bar above the canvas: the diagram's name and description, and the search for nodes. */
 @Component({

@@ -1,6 +1,6 @@
 import * as go from 'gojs/release/go';
-import { TestDiagram, createTestDiagram } from '../../testing/diagram-harness';
-import { LinkData, formatOwnership } from '../diagram/node-data';
+import { TestDiagram, createTestDiagram } from '../../../testing/diagram-harness';
+import { LinkData, formatOwnership } from '../../diagram/node-data';
 import { LinkInfoCard } from './link-info-card';
 
 describe('LinkInfoCard', () => {

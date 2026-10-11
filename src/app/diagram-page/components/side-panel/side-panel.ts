@@ -6,13 +6,13 @@ import {
   linkedSignal,
   output,
 } from '@angular/core';
-import { BULK_EDIT_BUDGET, COLORS } from '../../diagram/constants';
-import { EditableField } from '../../diagram/node-data';
-import { DeveloperTools } from '../developer-tools';
-import { DiagramActions } from '../diagram-actions';
-import { DiagramState } from '../diagram-state';
-import { OperationRunner } from '../operation-runner';
-import { SelectionState } from '../selection-state';
+import { BULK_EDIT_BUDGET, COLORS } from '../../../diagram/constants';
+import { EditableField } from '../../../diagram/node-data';
+import { DeveloperTools } from '../../developer-tools';
+import { DiagramActions } from '../../diagram-actions';
+import { DiagramState } from '../../diagram-state/diagram-state';
+import { OperationRunner } from '../../operation-runner/operation-runner';
+import { SelectionState } from '../../selection-state/selection-state';
 
 /** How many bulk runs the box suggests at first. */
 const DEFAULT_BULK_RUNS = 50;

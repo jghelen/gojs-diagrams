@@ -1,7 +1,7 @@
 import { Injectable, signal } from '@angular/core';
 import * as go from 'gojs/release/go';
-import { highlightTree, highlightedNodes } from '../diagram/diagram-factory';
-import { EditableField, LinkData, NodeData } from '../diagram/node-data';
+import { highlightTree, highlightedNodes } from '../../diagram/diagram-factory';
+import { EditableField, LinkData, NodeData } from '../../diagram/node-data';
 
 /** The selected nodes: per field, the value they all share, or null where they differ. */
 export type Selection = { count: number } & { [F in EditableField]: NodeData[F] | null };

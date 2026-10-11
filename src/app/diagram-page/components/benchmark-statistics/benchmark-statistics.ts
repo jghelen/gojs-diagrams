@@ -7,10 +7,10 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { LOG_OPEN_KEY } from '../../diagram/constants';
-import { readFlag, writeFlag } from '../browser';
-import { DeveloperTools } from '../developer-tools';
-import { LogEntry, OperationRunner } from '../operation-runner';
+import { LOG_OPEN_KEY } from '../../../diagram/constants';
+import { readFlag, writeFlag } from '../../browser';
+import { DeveloperTools } from '../../developer-tools';
+import { LogEntry, OperationRunner } from '../../operation-runner/operation-runner';
 
 /**
  * The benchmark statistics below the canvas: one row per operation with its

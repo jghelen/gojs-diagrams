@@ -1,4 +1,4 @@
-import { TestDiagram, createTestDiagram } from '../../testing/diagram-harness';
+import { TestDiagram, createTestDiagram } from '../../../testing/diagram-harness';
 import { NodeSearch } from './node-search';
 
 describe('NodeSearch', () => {

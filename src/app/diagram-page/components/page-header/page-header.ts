@@ -1,10 +1,10 @@
 import { ChangeDetectionStrategy, Component, VERSION, inject, input, output } from '@angular/core';
 import * as go from 'gojs/release/go';
-import { BLANK_DATASET } from '../../diagram/constants';
-import { DATASETS } from '../../diagram/datasets';
-import { DeveloperTools } from '../developer-tools';
-import { DiagramState } from '../diagram-state';
-import { OperationRunner } from '../operation-runner';
+import { BLANK_DATASET } from '../../../diagram/constants';
+import { DATASETS } from '../../../diagram/datasets';
+import { DeveloperTools } from '../../developer-tools';
+import { DiagramState } from '../../diagram-state/diagram-state';
+import { OperationRunner } from '../../operation-runner/operation-runner';
 
 /**
  * The bar at the top of the page: which data the diagram shows, what can be

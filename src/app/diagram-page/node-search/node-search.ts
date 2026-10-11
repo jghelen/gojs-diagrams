@@ -1,6 +1,6 @@
 import { Injectable, computed, signal } from '@angular/core';
 import * as go from 'gojs/release/go';
-import { NodeModel, showSearchHit } from '../diagram/diagram-factory';
+import { NodeModel, showSearchHit } from '../../diagram/diagram-factory';
 
 /**
  * The search for nodes by name: what was typed, which nodes match, and which

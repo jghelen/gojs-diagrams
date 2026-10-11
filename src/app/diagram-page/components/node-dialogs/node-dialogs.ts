@@ -6,9 +6,9 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { COLORS } from '../../diagram/constants';
-import { LinkData, NodeData } from '../../diagram/node-data';
-import { DiagramActions } from '../diagram-actions';
+import { COLORS } from '../../../diagram/constants';
+import { LinkData, NodeData } from '../../../diagram/node-data';
+import { DiagramActions } from '../../diagram-actions';
 
 /** What the delete confirmation dialog is asking about. */
 export interface DeleteRequest {
