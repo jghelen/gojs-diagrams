@@ -206,7 +206,7 @@ flowchart TD
 undo or a redo did not put everything back.
 
 The copy of the newest state is thrown away as soon as a new change is recorded, by the app or by
-GoJS itself (a drag, a text edit), because the newest state is then another one.
+GoJS itself (a drag, a relationship drawn by hand), because the newest state is then another one.
 
 ## 7. Changes that are deliberately not recorded
 
@@ -242,7 +242,7 @@ The diagram would be stuck until the page is reloaded. So:
 2. `rollBackUnfinished()` ends it and takes back whatever it had changed so far.
 3. The page shows a notice: "That action could not be completed and was undone."
 
-`rollBackUnfinished()` does nothing while the user is in the middle of a drag, a text edit or
+`rollBackUnfinished()` does nothing while the user is in the middle of a drag or of
 drawing a relationship. The open transaction then belongs to that gesture, and it ends by itself
 when the gesture does.
 

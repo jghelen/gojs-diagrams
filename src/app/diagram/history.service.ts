@@ -286,7 +286,7 @@ export class HistoryService {
    * page is reloaded.
    *
    * Returns false, and changes nothing, while the user is in the middle of a
-   * drag, a text edit or drawing a relationship. The unfinished transaction is
+   * drag or of drawing a relationship. The unfinished transaction is
    * then the one of that gesture, and it ends by itself when the gesture does.
    */
   rollBackUnfinished(): boolean {

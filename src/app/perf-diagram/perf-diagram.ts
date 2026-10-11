@@ -283,7 +283,7 @@ export class PerfDiagram {
       afterEach: () => this.refresh(),
     });
     // The page shows numbers from the history, so it follows every change of it, also
-    // the ones GoJS makes itself (dragging a node, editing a text in place).
+    // the ones GoJS makes itself (dragging a node, drawing a relationship).
     this.history.connect(this.diagram, () => {
       if (!this.runner.isMeasuring) this.refresh();
     });
@@ -334,7 +334,7 @@ export class PerfDiagram {
   /** Errors inside GoJS's own mouse and keyboard handling arrive here, not in an operation. */
   private watchForErrors(): void {
     const onError = (): void => {
-      // A drag or a text edit that is under way keeps its transaction, whatever went wrong elsewhere.
+      // A drag that is under way keeps its transaction, whatever went wrong elsewhere.
       if (this.diagram.currentTool !== this.diagram.defaultTool) return;
       if (this.runner.isMeasuring || !this.history.hasUnfinishedTransaction) return;
       this.runner.recoverFrom('An error left a transaction open.');

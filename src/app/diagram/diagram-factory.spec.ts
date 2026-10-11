@@ -88,6 +88,87 @@ describe('nodes', () => {
     expect(countNodeOverlaps(test.diagram)).toBe(0);
   });
 
+  it('cannot have their title or subtitle edited on the node itself', () => {
+    const test = createTestDiagram();
+    const node = test.diagram.findNodeForKey(1)!;
+    const content = node.elt(2) as go.Panel;
+    const title = content.elt(0) as go.TextBlock;
+    const subtitle = content.elt(1) as go.TextBlock;
+    expect(title.editable).toBe(false);
+    expect(subtitle.editable).toBe(false);
+
+    // A click on the text of a selected node used to open a text box; so did F2.
+    test.diagram.select(node);
+    test.clickAt(title.getDocumentBounds().center);
+    expect(test.diagram.currentTool).toBe(test.diagram.defaultTool);
+    expect(test.diagram.commandHandler.canEditTextBlock()).toBe(false);
+    expect(test.diagram.toolManager.textEditingTool.textBlock).toBeNull();
+  });
+
+  it('are moved, not edited, when a selected node is dragged by its title', () => {
+    const test = createTestDiagram({ layout: 'grid' });
+    const node = test.diagram.findNodeForKey(4)!;
+    test.diagram.select(node);
+    test.settle();
+    const title = ((node.elt(2) as go.Panel).elt(0) as go.TextBlock).getDocumentBounds().center;
+    const before = node.location.copy();
+    const free = test.diagram.documentBounds.width + 400;
+
+    const at = (point: go.Point, change: Partial<go.InputEvent>): go.InputEvent => {
+      const event = new go.InputEvent();
+      event.diagram = test.diagram;
+      event.documentPoint = point.copy();
+      event.viewPoint = test.diagram.transformDocToView(point);
+      event.button = 0;
+      event.buttons = 1;
+      return Object.assign(event, change);
+    };
+    test.diagram.lastInput = at(title, { down: true });
+    test.diagram.firstInput = test.diagram.lastInput.copy();
+    test.diagram.currentTool.doMouseDown();
+    for (const part of [0.3, 1]) {
+      test.diagram.lastInput = at(new go.Point(title.x + free * part, title.y), {});
+      test.diagram.currentTool.doMouseMove();
+    }
+    test.diagram.lastInput = at(new go.Point(title.x + free, title.y), { up: true, buttons: 0 });
+    test.diagram.currentTool.doMouseUp();
+    test.settle();
+
+    expect(node.location.x).toBeCloseTo(before.x + free, 0);
+    expect((node.data as NodeData).title).not.toBe('');
+    expect(test.diagram.currentTool).toBe(test.diagram.defaultTool);
+  });
+
+  it('keep their title and subtitle centred, also when the text is cut off', () => {
+    const test = createTestDiagram();
+    setAll(test, 'title', 'Silverlake Multi-Strategy Fund 17');
+    setAll(test, 'subtitle', 'A fund type with a name that is much too long to fit');
+    for (const shape of SHAPES) {
+      setAll(test, 'shape', shape);
+      const node = test.diagram.findNodeForKey(1)!;
+      const content = node.elt(2) as go.Panel;
+      for (const text of [content.elt(0) as go.TextBlock, content.elt(1) as go.TextBlock]) {
+        expect(text.isOverflowed).toBe(true);
+        expect(text.textAlign).toBe('center');
+        // The block of text sits in the middle of the node, and the text in the middle of the block.
+        expect(text.getDocumentBounds().centerX).toBeCloseTo(node.actualBounds.centerX, 0);
+      }
+    }
+  });
+
+  it('cut a long title in the middle of a word, so that the line is used to its end', () => {
+    const test = createTestDiagram();
+    const node = test.diagram.findNodeForKey(1)!;
+    const title = (node.elt(2) as go.Panel).elt(0) as go.TextBlock;
+    expect(title.wrap).toBe(go.Wrap.BreakAll);
+    expect(title.maxLines).toBe(1);
+    // One short word followed by a very long one: cut between words, only the short word would show.
+    setAll(test, 'title', 'Ab Cdefghijklmnopqrstuvwxyzabcdefghijklmnop');
+    const cut = (test.diagram.findNodeForKey(1)!.elt(2) as go.Panel).elt(0) as go.TextBlock;
+    expect(cut.isOverflowed).toBe(true);
+    expect(cut.naturalBounds.width).toBeGreaterThan(cut.maxSize.width * 0.7);
+  });
+
   it('have a rule between the text and the icons', () => {
     const { diagram } = createTestDiagram();
     const content = diagram.findNodeForKey(1)!.elt(2) as go.Panel;
@@ -323,6 +404,68 @@ describe('relationship lines', () => {
         expect(link.isOrthogonal).toBe(true);
       }
     }
+  });
+
+  it('draw the main holdings thicker than the co-investments, so that the tree stands out', () => {
+    const { diagram } = createTestDiagram();
+    const width = (kind: string) =>
+      (
+        linksOf(diagram)
+          .find((link) => (link.data as LinkData).category === kind)!
+          .findObject('LINE') as go.Shape
+      ).strokeWidth;
+    expect(width('hierarchy')).toBeGreaterThan(width('relation'));
+  });
+
+  it('cross each other plainly, without a hop at the crossing', () => {
+    for (const linkType of ['avoid', 'orthogonal', 'straight'] as const) {
+      const { diagram } = createTestDiagram({ count: 30, linkType });
+      for (const link of linksOf(diagram)) expect(link.curve).toBe(go.Curve.None);
+    }
+  });
+
+  it('stand out in gold and thicker while the mouse is on them, and are as before afterwards', () => {
+    const test = createTestDiagram();
+    const link = linksOf(test.diagram)[0];
+    const line = link.findObject('LINE') as go.Shape;
+    const arrow = link.findObject('ARROW') as go.Shape;
+    const width = line.strokeWidth;
+    const event = new go.InputEvent();
+
+    link.mouseEnter!(event, link, null);
+    expect(line.stroke).toBe('#d4a017');
+    expect(arrow.fill).toBe('#d4a017');
+    expect(line.strokeWidth).toBeGreaterThan(width);
+    // Entering twice does not make it thicker twice.
+    link.mouseEnter!(event, link, null);
+    expect(line.strokeWidth).toBe(width + 1.5);
+
+    link.mouseLeave!(event, link, null);
+    expect(line.stroke).toBe('#000000');
+    expect(arrow.fill).toBe('#000000');
+    expect(line.strokeWidth).toBe(width);
+    // Only the one line the mouse was on had changed.
+    for (const other of linksOf(test.diagram)) {
+      expect((other.findObject('LINE') as go.Shape).stroke).toBe('#000000');
+    }
+  });
+
+  it('do not record the hover in the undo history, nor slip it into the next step', () => {
+    const test = createTestDiagram();
+    const link = linksOf(test.diagram)[0];
+    const event = new go.InputEvent();
+    link.mouseEnter!(event, link, null);
+    link.mouseLeave!(event, link, null);
+    expect(test.history.length).toBe(0);
+
+    link.mouseEnter!(event, link, null);
+    test.history.record('edit', () => test.model.set(test.model.nodeDataArray[0], 'comment', 'x'));
+    const recorded: string[] = [];
+    test.model.undoManager.history
+      .last()!
+      .changes.each((change) => recorded.push(String(change.propertyName)));
+    expect(recorded).not.toContain('stroke');
+    expect(recorded).not.toContain('strokeWidth');
   });
 
   it('carry an info icon at their middle, except those the user drew', () => {
@@ -1019,13 +1162,13 @@ describe('drawing a relationship', () => {
     expect(linkStartAt(test, bounds.center)).toBeNull();
   });
 
-  it('can be caught within a few pixels of the edge, inside or outside, however far zoomed out', () => {
+  it('can be caught on the edge or just outside it, however far the diagram is zoomed out', () => {
     const test = createTestDiagram();
     const bounds = test.diagram.findNodeForKey(4)!.actualBounds;
     for (const scale of [1, 0.5, 0.34]) {
       test.diagram.scale = scale;
-      // Six pixels on screen inside the right edge, and six pixels outside it.
-      expect(linkStartAt(test, new go.Point(bounds.right - 6 / scale, bounds.centerY))).toBe(4);
+      // Two pixels on screen inside the right edge, and six pixels outside it.
+      expect(linkStartAt(test, new go.Point(bounds.right - 2 / scale, bounds.centerY))).toBe(4);
       expect(linkStartAt(test, new go.Point(bounds.right + 6 / scale, bounds.centerY))).toBe(4);
     }
     // At life size, 30 units is 30 pixels inside the edge: too far, that drag moves the node.
@@ -1033,12 +1176,23 @@ describe('drawing a relationship', () => {
     expect(linkStartAt(test, new go.Point(bounds.right - 30, bounds.centerY))).toBeNull();
   });
 
-  it('leaves the middle of the node for moving it, even when zoomed far out', () => {
+  it('leaves all of the node but a thin rim for moving it, at every zoom', () => {
     const test = createTestDiagram();
-    test.diagram.scale = 0.1;
     const bounds = test.diagram.findNodeForKey(4)!.actualBounds;
-    expect(linkStartAt(test, new go.Point(bounds.centerX - 20, bounds.centerY))).toBeNull();
-    expect(linkStartAt(test, new go.Point(bounds.left + 30, bounds.centerY))).toBeNull();
+    for (const scale of [1, 0.5, 0.34, 0.1]) {
+      test.diagram.scale = scale;
+      // Twelve units inside each edge, and the place of the title.
+      for (const point of [
+        new go.Point(bounds.left + 12, bounds.centerY),
+        new go.Point(bounds.right - 12, bounds.centerY),
+        new go.Point(bounds.centerX, bounds.top + 12),
+        new go.Point(bounds.centerX, bounds.bottom - 12),
+        new go.Point(bounds.centerX, bounds.top + 30),
+        bounds.center,
+      ]) {
+        expect(linkStartAt(test, point)).toBeNull();
+      }
+    }
   });
 
   it('never starts from another node than the one under the pointer', () => {
@@ -1189,6 +1343,47 @@ describe('drawing a relationship', () => {
     drag(test, from, new go.Point(from.x + free, from.y));
     expect(manualLinks(test)).toEqual([]);
     expect(node.location.equals(before)).toBe(false);
+  });
+
+  it('moves the node when it is dragged by its title in a diagram that is zoomed to fit', () => {
+    const test = createTestDiagram({ layout: 'grid' });
+    test.diagram.scale = 0.34;
+    const node = test.diagram.findNodeForKey(4)!;
+    // Where the title is: 30 units below the top edge.
+    const from = new go.Point(node.actualBounds.centerX, node.actualBounds.top + 30);
+    const before = node.location.copy();
+    const free = test.diagram.documentBounds.width + 400;
+    drag(test, from, new go.Point(from.x + free, from.y));
+
+    expect(manualLinks(test)).toEqual([]);
+    expect(node.location.x).toBeCloseTo(before.x + free, 0);
+    expect(node.location.y).toBeCloseTo(before.y, 0);
+    // One undo step, and it puts the node back.
+    expect(test.model.undoManager.history.count).toBe(1);
+    test.model.undoManager.undo();
+    expect(node.location.equals(before)).toBe(true);
+  });
+
+  it('moves the node from anywhere but its rim, at the zoom a diagram opens with', () => {
+    for (const offset of [
+      [0, -30],
+      [-60, 0],
+      [60, 20],
+      [0, 34],
+    ]) {
+      const test = createTestDiagram({ layout: 'grid' });
+      test.diagram.scale = 0.34;
+      const node = test.diagram.findNodeForKey(4)!;
+      const from = new go.Point(
+        node.actualBounds.centerX + offset[0],
+        node.actualBounds.centerY + offset[1],
+      );
+      const before = node.location.copy();
+      const free = test.diagram.documentBounds.width + 400;
+      drag(test, from, new go.Point(from.x + free, from.y));
+      expect(manualLinks(test)).toEqual([]);
+      expect(node.location.equals(before)).toBe(false);
+    }
   });
 
   it('is not drawn when the drag ends on empty canvas', () => {

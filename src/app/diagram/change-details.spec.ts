@@ -12,7 +12,8 @@ describe('describeChanges', () => {
     const node = test.model.nodeDataArray[4];
     test.model.commit((m) => {
       m.set(node, 'title', 'New title');
-      m.set(node, 'subtitle', 'Hedge fund');
+      // A fund type that no generated fund has, so that this is a change whatever the data.
+      m.set(node, 'subtitle', 'Money market fund');
       m.set(node, 'shape', 'Diamond');
       m.set(node, 'color', '#1e3a8a');
     }, 'edit');
@@ -24,7 +25,7 @@ describe('describeChanges', () => {
     expect(details.total).toBe(test.model.undoManager.history.last()!.changes.count);
     expect(details.rows.filter((row) => row.kind === 'data')).toEqual([
       expect.objectContaining({ property: 'title', after: 'New title' }),
-      expect.objectContaining({ property: 'fund type', after: 'Hedge fund' }),
+      expect.objectContaining({ property: 'fund type', after: 'Money market fund' }),
       expect.objectContaining({ property: 'shape', before: 'Rectangle', after: 'Diamond' }),
       expect.objectContaining({ property: 'color', before: '#f3f4f6', after: '#1e3a8a' }),
     ]);

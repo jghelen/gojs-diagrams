@@ -6,7 +6,7 @@ import {
   nodesOf,
 } from '../../testing/diagram-harness';
 import { LAYOUTS, LayoutType, createLayout, resetPortSpots } from './layouts';
-import { DEFAULT_LAYOUT } from './constants';
+import { DEFAULT_LAYOUT, NODE_GAP } from './constants';
 
 const ALL_LAYOUTS = LAYOUTS.map((layout) => layout.type);
 
@@ -95,9 +95,53 @@ describe('tree direction', () => {
   });
 });
 
+describe('room between nodes', () => {
+  /** The smallest free space between any two nodes of a diagram, across or down. */
+  const smallestGap = (diagram: go.Diagram): number => {
+    const boxes = nodesOf(diagram).map((node) => node.actualBounds);
+    let smallest = Infinity;
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const dx = Math.max(boxes[i].left - boxes[j].right, boxes[j].left - boxes[i].right);
+        const dy = Math.max(boxes[i].top - boxes[j].bottom, boxes[j].top - boxes[i].bottom);
+        smallest = Math.min(smallest, Math.max(dx, dy));
+      }
+    }
+    return smallest;
+  };
+
+  it('is wide enough in every layout for lines and their percentages to pass', () => {
+    for (const layout of ['grid', 'layered', 'force'] as const) {
+      const { diagram } = createTestDiagram({ count: 30, layout, linkType: 'straight' });
+      expect(smallestGap(diagram)).toBeGreaterThanOrEqual(NODE_GAP - 1);
+    }
+    // On a circle the room is measured along the circle, so across or down it is a little less.
+    const circle = createTestDiagram({ count: 30, layout: 'circle', linkType: 'straight' });
+    expect(smallestGap(circle.diagram)).toBeGreaterThanOrEqual(NODE_GAP * 0.75);
+  });
+});
+
 describe('force-directed layout', () => {
   it('leaves no overlapping nodes even in a densely linked diagram', () => {
     const { diagram } = createTestDiagram({ count: 100, layout: 'force', linkType: 'straight' });
+    expect(countNodeOverlaps(diagram)).toBe(0);
+  });
+
+  it('arranges the same diagram the same way every time', () => {
+    const places = () =>
+      nodesOf(createTestDiagram({ count: 30, layout: 'force', linkType: 'straight' }).diagram).map(
+        (node) => `${Math.round(node.location.x)},${Math.round(node.location.y)}`,
+      );
+    expect(places()).toEqual(places());
+  });
+
+  it('leaves no overlapping nodes with room for cards either', () => {
+    const { diagram } = createTestDiagram({
+      count: 100,
+      layout: 'force',
+      linkType: 'straight',
+      cardsExpanded: true,
+    });
     expect(countNodeOverlaps(diagram)).toBe(0);
   });
 });

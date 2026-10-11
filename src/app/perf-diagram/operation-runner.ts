@@ -115,7 +115,7 @@ export class OperationRunner {
   private async runOperation(plan: () => Operation): Promise<void> {
     // Busy at this point means a diagram is still loading.
     if (this.busy()) return;
-    // A drag or a text edit is in the middle of its own transaction; let it finish first.
+    // A drag is in the middle of its own transaction; let it finish first.
     if (!this.history.rollBackUnfinished()) return;
     this.failure.set(null);
     this.beforeEach();

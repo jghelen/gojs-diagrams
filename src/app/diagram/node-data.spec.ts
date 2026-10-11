@@ -27,7 +27,8 @@ describe('createNodes', () => {
 
   it('names every node like a fund, ending in its key', () => {
     for (const node of createNodes(100)) {
-      expect(node.title).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+ \d+$/);
+      // A house, what the fund is called, and its number: "Atlas Direct Lending 17".
+      expect(node.title).toMatch(/^[A-Z][a-z]+ [A-Z][A-Za-z -]+ \d+$/);
       expect(node.title.endsWith(` ${node.key}`)).toBe(true);
     }
   });
@@ -70,8 +71,8 @@ describe.each([30, 200])('createLinks for %i nodes', (count) => {
     expect(Math.max(...children.values())).toBeLessThanOrEqual(4);
   });
 
-  it('adds one and a half cross links per node', () => {
-    expect(relations(links)).toHaveLength(Math.floor(count * 1.5));
+  it('adds one co-investment for every two funds', () => {
+    expect(relations(links)).toHaveLength(Math.floor(count * 0.5));
   });
 
   it('never links a node to itself or repeats a link', () => {

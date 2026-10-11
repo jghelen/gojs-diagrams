@@ -7,17 +7,21 @@ describe('createFundStructure', () => {
   const hierarchy = links.filter((link) => link.category === 'hierarchy');
   const relations = links.filter((link) => link.category === 'relation');
 
-  it('has an umbrella fund with three families of two funds each', () => {
+  it('has a fund of funds at the top that invests through two feeders and two funds of funds', () => {
     expect(nodes).toHaveLength(24);
-    expect(nodes[0].title).toBe('Meridian SICAV');
-    const childrenOf = (key: number) =>
+    expect(nodes[0]).toMatchObject({ title: 'Meridian Global FoF', subtitle: 'Fund of funds' });
+    const holdingsOf = (key: number) =>
       hierarchy.filter((link) => link.from === key).map((link) => link.to);
-    const families = childrenOf(1);
-    expect(families).toHaveLength(3);
-    for (const family of families) expect(childrenOf(family)).toHaveLength(2);
+    const typeOf = (key: number) => nodes.find((node) => node.key === key)!.subtitle;
+    expect(holdingsOf(1).map(typeOf).sort()).toEqual([
+      'Feeder fund',
+      'Feeder fund',
+      'Fund of funds',
+      'Fund of funds',
+    ]);
   });
 
-  it('is one tree: every fund but the umbrella has exactly one fund above it', () => {
+  it('is one tree: every fund but the top one has exactly one main investor', () => {
     expect(hierarchy).toHaveLength(nodes.length - 1);
     const parents = new Map(hierarchy.map((link) => [link.to, link.from]));
     expect(parents.size).toBe(nodes.length - 1);
@@ -54,7 +58,7 @@ describe('createFundStructure', () => {
     expect(nodes.filter((node) => node.comment !== '')).toHaveLength(2);
   });
 
-  it('adds three cross holdings between existing funds', () => {
+  it('adds three co-investments between existing funds', () => {
     expect(relations).toHaveLength(3);
     for (const link of links) {
       expect(keys.has(link.from)).toBe(true);

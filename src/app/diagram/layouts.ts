@@ -1,6 +1,6 @@
 import * as go from 'gojs/release/go';
 import { LinkKind } from './node-data';
-import { CLASSIC_TREE_LIMIT } from './constants';
+import { CLASSIC_TREE_LIMIT, NODE_GAP } from './constants';
 
 export type LayoutType = 'top-bottom' | 'bottom-top' | 'circle' | 'layered' | 'force' | 'grid';
 
@@ -62,8 +62,18 @@ class HierarchyLayeredLayout extends go.LayeredDigraphLayout {
   }
 }
 
-/** Free space left between nodes, wide enough for links to be routed through it. */
-const NODE_GAP = 40;
+/** A source of random numbers that gives the same numbers every time for the same seed. */
+function seededRandom(seed: number): { random: () => number } {
+  let state = seed;
+  return {
+    random: () => {
+      state = (state + 0x6d2b79f5) | 0;
+      let t = Math.imul(state ^ (state >>> 15), 1 | state);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    },
+  };
+}
 
 /** How much free space a layout leaves between nodes: side by side, and one above the other. */
 interface Gaps {
@@ -88,6 +98,40 @@ class SpacedForceDirectedLayout extends go.ForceDirectedLayout {
   /** The free space this layout guarantees between any two nodes. */
   gaps: Gaps = NORMAL_GAPS;
 
+  /**
+   * Pushes apart every pair of nodes that is still too close. Spreading the
+   * whole layout out (see commitLayout) cannot separate two nodes that ended up
+   * at almost the same point, so those are moved away from each other directly,
+   * each by half of what is missing, along the direction that needs less.
+   */
+  private separate(vertexes: go.LayoutVertex[]): void {
+    for (let pass = 0; pass < 60; pass++) {
+      let moved = false;
+      for (let i = 0; i < vertexes.length; i++) {
+        const a = vertexes[i];
+        for (let j = i + 1; j < vertexes.length; j++) {
+          const b = vertexes[j];
+          const dx = b.centerX - a.centerX;
+          const dy = b.centerY - a.centerY;
+          const missingX = (a.width + b.width) / 2 + this.gaps.across - Math.abs(dx);
+          const missingY = (a.height + b.height) / 2 + this.gaps.down - Math.abs(dy);
+          if (missingX <= 0 || missingY <= 0) continue;
+          moved = true;
+          if (missingX < missingY) {
+            const push = ((dx >= 0 ? 1 : -1) * (missingX + 0.5)) / 2;
+            a.centerX -= push;
+            b.centerX += push;
+          } else {
+            const push = ((dy >= 0 ? 1 : -1) * (missingY + 0.5)) / 2;
+            a.centerY -= push;
+            b.centerY += push;
+          }
+        }
+      }
+      if (!moved) return;
+    }
+  }
+
   override commitLayout(): void {
     const vertexes = this.network?.vertexes.toArray() ?? [];
     let scale = 1;
@@ -110,6 +154,7 @@ class SpacedForceDirectedLayout extends go.ForceDirectedLayout {
         vertex.centerY *= scale;
       }
     }
+    this.separate(vertexes);
     super.commitLayout();
   }
 }
@@ -207,6 +252,9 @@ export function createLayout(
         defaultSpringLength: 80,
         defaultElectricalCharge: 300,
         setsPortSpots: false,
+        // The same starting positions every time, so the same diagram is always
+        // arranged the same way, as with the other layouts.
+        randomNumberGenerator: seededRandom(nodeCount),
       });
       layout.gaps = gaps;
       return layout;

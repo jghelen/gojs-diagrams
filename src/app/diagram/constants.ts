@@ -86,6 +86,23 @@ export const DEFAULT_LAYOUT: LayoutType = 'top-bottom';
 /** The line type a diagram is first shown with: orthogonal, rounded, routed around nodes. */
 export const DEFAULT_LINK_TYPE: LinkType = 'avoid';
 
+/**
+ * How many co-investments the generated diagrams have per fund, on top of the
+ * one main investor each fund has. Half a co-investment per fund is about what
+ * real fund structures show, and it keeps the lines few enough to be followed.
+ * For a denser diagram to load-test with, raise this number.
+ */
+export const CO_INVESTMENTS_PER_FUND = 0.5;
+
+/**
+ * Free space left between two nodes by every layout: wide enough for several
+ * lines to run side by side with their percentages.
+ */
+export const NODE_GAP = 60;
+
+/** The color of a line while the mouse is on it, so that one line can be followed among many. */
+export const HOVER_COLOR = '#d4a017';
+
 // ----- Sizes from which the app behaves differently -----
 
 /**

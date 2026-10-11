@@ -100,9 +100,10 @@ and undo if there is something to undo, stay available.
 
 ### Choosing what to look at
 
-- **Data** picks the diagram. "Sample fund structure" is an umbrella fund with three families of
-  sub-funds and their feeder funds (24 funds). The others are generated diagrams of 30, 100, 200,
-  500, 1000 or 2000 funds. The app opens with 30.
+- **Data** picks the diagram. "Sample fund structure" is a fund of funds with what it holds, four
+  levels deep (24 funds). The others are generated diagrams of 30, 100, 200, 500, 1000 or 2000
+  funds. The app opens with 30. All of them are built like real holdings of investment funds,
+  with invented names: see [What the data means](#what-the-data-means).
 - **Layout**, the icon under the zoom buttons in the tool strip, arranges the nodes. Click it to
   see one icon per layout (hover over an icon for its name) and click the one you want: Top to
   bottom, Bottom to top, Circle, Layered digraph, Force-directed or Grid.
@@ -128,6 +129,28 @@ of its ends are there. It never takes longer than a second and a half, and only 
 on a diagram of more than 200 nodes, so that big diagrams still open quickly. Until it is finished
 every control and the diagram itself are disabled. The animation is skipped if your system asks
 for reduced motion.
+
+### What the data means
+
+Every diagram shows which fund invests in which. A line runs **from the fund that invests to the
+fund it invests in**, and the percentage at its arrowhead is the part of that fund the investor
+owns. The data follows the way funds are really built on one another:
+
+- A **fund of funds** is at the top. It invests through **feeder funds** and further funds of
+  funds, and directly in strategy funds.
+- A **feeder fund** invests in exactly one fund, its master, usually of the same house, and holds
+  a large part of it.
+- A **strategy fund** (private equity, venture capital, hedge fund, private credit, real estate,
+  infrastructure) invests in sub-funds and co-investment vehicles of its own strategy.
+- Every fund but the top one has one **main investor**, which holds the largest stake in it.
+  Other funds may hold smaller stakes as **co-investments**: about one for every two funds.
+- All stakes in a fund add up to at most 100%. What is missing belongs to investors that are not
+  in the diagram.
+- Money flows one way only: no fund invests, directly or through others, in a fund that invests
+  in it.
+- For about one line in five the percentage is not known and is left out.
+
+The names of the houses and funds are invented, and so are the percentages; no real fund is shown.
 
 ### A node
 
@@ -166,8 +189,8 @@ node, it ends in "…" and the full text appears when you hover over it.
   those nodes gets the gold outline and the rest of the diagram is dimmed. The highlight goes
   away when you click empty space, select a second node, zoom, or do anything else.
 - **Drag** a node to move it. A node cannot be dropped on top of another node.
-- Click the title or subtitle of a node that is already selected, or press F2, to edit the text
-  in place.
+- The title and subtitle cannot be edited on the node itself; change them in the **Selected
+  nodes** panel. A press on a node, also on its text, selects it or moves it.
 
 ### Styling by fund type
 
@@ -196,12 +219,14 @@ gray square. That, too, is one undo step.
 
 There are three kinds of line. All are black and end in an arrowhead.
 
-| Line           | Meaning                                     | Info icon |
-| -------------- | ------------------------------------------- | --------- |
-| Solid, thicker | Hierarchy: the fund above to the fund below | yes       |
-| Solid, thin    | Another relationship between two funds      | yes       |
-| Dotted         | A relationship you drew yourself            | no        |
+| Line           | Meaning                                                                  | Info icon |
+| -------------- | ------------------------------------------------------------------------ | --------- |
+| Solid, thicker | A main holding: the fund above is the largest investor in the fund below | yes       |
+| Solid, thin    | A co-investment: a smaller stake another fund holds                      | yes       |
+| Dotted         | A relationship you drew yourself                                         | no        |
 
+- **Following a line:** move the mouse over a line and it turns gold and thicker, so that one
+  line can be followed among the others.
 - **Ownership:** a dark green percentage near the arrowhead says how much of the fund the line
   points at is owned by the fund it comes from, e.g. `62.50%`. Lines without known ownership show
   nothing.

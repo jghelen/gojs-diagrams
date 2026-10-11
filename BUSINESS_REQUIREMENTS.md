@@ -30,17 +30,17 @@ the business: **does undo/redo stay fast and reliable on large structures** (up 
 
 ## 2. Terms
 
-| Term                | Meaning                                                                                |
-| ------------------- | -------------------------------------------------------------------------------------- |
-| Diagram             | One fund structure: its funds, their relationships, a name and a description           |
-| Node                | One fund, drawn as a shape with the fund's name and fund type                          |
-| Fund type           | The kind of fund, shown as the node's subtitle (for example "Feeder fund")             |
-| Relationship        | A line with an arrow from one fund to another                                          |
-| Hierarchy           | The relationship from a fund to the fund directly below it; together these form a tree |
-| Manual relationship | A relationship the user drew by hand in the diagram                                    |
-| Ownership           | The percentage of the target fund that the source fund owns                            |
-| Tree of a node      | The chain from the node up to the top fund, plus every fund below the node             |
-| Undo step           | One user action that can be taken back with a single Undo                              |
+| Term                | Meaning                                                                                                          |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Diagram             | One fund structure: its funds, their relationships, a name and a description                                     |
+| Node                | One fund, drawn as a shape with the fund's name and fund type                                                    |
+| Fund type           | The kind of fund, shown as the node's subtitle (for example "Feeder fund")                                       |
+| Relationship        | A line with an arrow from one fund to another                                                                    |
+| Hierarchy           | The main holding: the line from a fund to a fund in which it is the largest investor; together these form a tree |
+| Manual relationship | A relationship the user drew by hand in the diagram                                                              |
+| Ownership           | The percentage of the target fund that the source fund owns                                                      |
+| Tree of a node      | The chain from the node up to the top fund, plus every fund below the node                                       |
+| Undo step           | One user action that can be taken back with a single Undo                                                        |
 
 ## 3. Screen overview
 
@@ -62,9 +62,21 @@ Every icon without a text label shows its name when the user hovers over it.
 ### 4.1 Opening a diagram
 
 - **BR-4.1** The application opens with the diagram of 30 generated funds.
-- **BR-4.2** The **Data** dropdown offers: a sample fund structure (24 funds: one umbrella fund,
-  three fund families, their sub-funds and feeder funds), generated diagrams of 30, 100, 200, 500,
-  1000 and 2000 funds, and an empty diagram.
+- **BR-4.2** The **Data** dropdown offers: a sample fund structure (24 funds: a fund of funds and
+  what it holds, four levels deep), generated diagrams of 30, 100, 200, 500, 1000 and 2000 funds,
+  and an empty diagram.
+- **BR-4.2a** Every dataset reads like real holdings of investment funds. A line runs from the
+  fund that invests to the fund it invests in; its percentage is the part of that fund the
+  investor owns. Names and percentages are invented; no real fund is shown.
+- **BR-4.2b** The rules the data follows:
+  1. one fund of funds is at the top, and no fund invests in it;
+  2. every other fund has exactly one main investor, which holds the largest known stake in it;
+  3. other funds may hold smaller stakes in it (co-investments), about one for every two funds;
+  4. all stakes in a fund add up to at most 100%;
+  5. a feeder fund invests in exactly one fund;
+  6. the sub-funds of a strategy fund have the same strategy;
+  7. there is no circular ownership;
+  8. percentages have two decimals, and for some lines there is no data.
 - **BR-4.3** Every fund in a newly opened diagram is a very light gray square with a dark gray
   border.
 - **BR-4.4** A diagram opens laid out top to bottom, with lines that go around the nodes. A
@@ -104,6 +116,8 @@ Every icon without a text label shows its name when the user hovers over it.
 - **BR-5.2** All nodes have the same size, whatever their shape.
 - **BR-5.3** A name or fund type that does not fit is cut off with "…". Hovering over it shows the
   full text. Text never runs outside the node.
+- **BR-5.3a** Name and fund type are centred in the node, also when they are cut off. A long name
+  is cut where the line ends, in the middle of a word if need be.
 - **BR-5.4** Text is dark on a light fill and light on a dark fill, so it stays readable in every
   colour.
 
@@ -159,11 +173,15 @@ Every icon without a text label shows its name when the user hovers over it.
   every highlighted node, including the nodes joined by a hand-drawn relationship, as one undo
   step. Its hover text then says how many nodes that is.
 - **BR-5.19** Where the selected nodes differ on a field, the panel shows "Mixed".
-- **BR-5.20** Title and subtitle can also be edited directly on a selected node.
+- **BR-5.20** Title and subtitle cannot be edited directly on the node. They are changed in the
+  side panel only. A press on the text of a node selects or moves the node.
 
 ### 5.8 Moving nodes
 
 - **BR-5.21** A node is moved by dragging it.
+- **BR-5.21a** A node can be dragged from anywhere on it except a thin rim along its edge, at
+  every zoom level. A drag that starts on that rim, or just outside the node, draws a
+  relationship instead (see BR-6.11).
 - **BR-5.22** Nodes must never overlap: a node cannot be dropped on another node.
 - **BR-5.23** After a move, lines that would now cross the moved node are routed around it.
 
@@ -182,17 +200,21 @@ Every icon without a text label shows its name when the user hovers over it.
 
 ### 6.1 Kinds of relationship
 
-| Kind                | Drawn as             | Info icon | Where it comes from |
-| ------------------- | -------------------- | --------- | ------------------- |
-| Hierarchy           | Solid black, thicker | Yes       | The loaded data     |
-| Other relationship  | Solid black, thin    | Yes       | The loaded data     |
-| Manual relationship | **Dotted** black     | No        | Drawn by the user   |
+| Kind                               | Drawn as             | Info icon | Where it comes from |
+| ---------------------------------- | -------------------- | --------- | ------------------- |
+| Main holding (hierarchy)           | Solid black, thicker | Yes       | The loaded data     |
+| Co-investment (other relationship) | Solid black, thin    | Yes       | The loaded data     |
+| Manual relationship                | **Dotted** black     | No        | Drawn by the user   |
 
 - **BR-6.1** All lines are black and end in an arrowhead at the target fund.
 - **BR-6.2** A line starts and ends exactly on the outline of the shape, for every shape. There is
   no gap between line and node.
 - **BR-6.3** On a diagram of fewer than 500 funds, with the default line types, lines go around nodes
   and do not run across them. On bigger diagrams lines may cross nodes (see BR-9.6).
+- **BR-6.3a** Layouts leave 60 units of free space between nodes, so that several lines and their
+  percentages can pass between two nodes.
+- **BR-6.3b** While the mouse is on a line, that line is drawn in gold and thicker, so that it
+  can be followed among the others. Lines cross each other plainly, without a hop at the crossing.
 
 ### 6.2 Ownership
 

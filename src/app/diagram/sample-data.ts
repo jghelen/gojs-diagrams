@@ -1,7 +1,7 @@
 import { LinkData, NodeData } from './node-data';
 import { DEFAULT_COLOR, DEFAULT_SHAPE } from './constants';
 
-/** One fund in the sample structure, with the funds below it. */
+/** One fund in the sample structure, with the funds it invests in. */
 interface Fund {
   name: string;
   /** The type of fund, shown as the node's subtitle. */
@@ -12,88 +12,98 @@ interface Fund {
   funds?: Fund[];
 }
 
-// An umbrella fund with three families of sub-funds, one per asset class. Each
-// family has two funds, and investors come into those through feeder and
-// co-investment funds. It is meant for showing the tree layouts, not for load testing.
-const UMBRELLA_FUND: Fund = {
-  name: 'Meridian SICAV',
-  type: 'Umbrella fund',
+// A fund of funds and what it holds, four levels deep. It invests through two
+// feeders, each of which holds one private equity fund, and through two further
+// funds of funds, one for credit and one for real assets. A line runs from the
+// fund that invests to the fund it invests in; the stake is the part of that
+// fund the investor owns. The names are invented. It is meant for showing the
+// tree layouts, not for load testing.
+const TOP_FUND: Fund = {
+  name: 'Meridian Global FoF',
+  type: 'Fund of funds',
   comment: 'Annual audit is due on 31 March.',
   funds: [
     {
-      name: 'Meridian Equity',
-      type: 'Private equity',
-      stake: 100,
+      name: 'Meridian PE Feeder',
+      type: 'Feeder fund',
+      stake: 64,
       funds: [
         {
           name: 'Buyout Fund IV',
-          type: 'Buyout',
-          stake: 62.5,
+          type: 'Private equity',
+          stake: 48.75,
           funds: [
-            { name: 'Buyout IV US', type: 'Feeder fund', stake: 48.75 },
-            { name: 'Buyout IV EU', type: 'Feeder fund', stake: 36.2 },
-            { name: 'Buyout IV Co-Invest', type: 'Co-investment' },
-          ],
-        },
-        {
-          name: 'Growth Fund II',
-          type: 'Growth equity',
-          stake: 37.5,
-          comment: 'Capital call notice has been sent to investors.',
-          funds: [
-            { name: 'Growth II US', type: 'Feeder fund', stake: 55 },
-            { name: 'Growth II EU', type: 'Feeder fund' },
-            { name: 'Growth II Co-Invest', type: 'Co-investment', stake: 12.33 },
+            { name: 'Buyout IV Co-Invest', type: 'Private equity', stake: 35.5 },
+            { name: 'Buyout IV Parallel', type: 'Private equity' },
           ],
         },
       ],
     },
     {
-      name: 'Meridian Credit',
-      type: 'Private credit',
+      name: 'Growth Feeder',
+      type: 'Feeder fund',
+      stake: 55,
+      funds: [
+        {
+          name: 'Growth Fund II',
+          type: 'Private equity',
+          stake: 37.5,
+          comment: 'Capital call notice has been sent to investors.',
+          funds: [
+            { name: 'Growth II Co-Invest', type: 'Private equity', stake: 12.33 },
+            { name: 'Growth II Annex', type: 'Private equity' },
+          ],
+        },
+      ],
+    },
+    {
+      name: 'Meridian Credit FoF',
+      type: 'Fund of funds',
       stake: 100,
       funds: [
         {
-          name: 'Direct Lending',
-          type: 'Direct lending',
-          stake: 80.25,
-          funds: [
-            { name: 'Lending Onshore', type: 'Feeder fund', stake: 51.01 },
-            { name: 'Lending Offshore', type: 'Feeder fund' },
-          ],
+          name: 'Direct Lending III',
+          type: 'Private credit',
+          stake: 22.4,
+          funds: [{ name: 'Senior Loan Sleeve', type: 'Private credit', stake: 51 }],
         },
         {
           name: 'Structured Credit',
-          type: 'Structured credit',
-          funds: [
-            { name: 'CLO Equity', type: 'Feeder fund', stake: 24.9 },
-            { name: 'Trade Finance', type: 'Feeder fund' },
-          ],
+          type: 'Private credit',
+          stake: 18,
+          funds: [{ name: 'CLO Equity Tranche', type: 'Private credit', stake: 40 }],
         },
+        { name: 'Mezzanine Fund II', type: 'Private credit' },
       ],
     },
     {
       name: 'Meridian Real Assets',
-      type: 'Real assets',
-      stake: 75,
+      type: 'Fund of funds',
+      stake: 80.25,
       funds: [
         {
-          name: 'Infrastructure',
-          type: 'Infrastructure',
-          stake: 66.67,
+          name: 'Core Real Estate',
+          type: 'Real estate',
+          stake: 31,
           funds: [
-            { name: 'Infra Onshore', type: 'Feeder fund', stake: 40 },
-            { name: 'Infra Offshore', type: 'Feeder fund', stake: 60 },
+            { name: 'Logistics Property', type: 'Real estate', stake: 45 },
+            { name: 'Office Portfolio', type: 'Real estate', stake: 28.6 },
           ],
         },
         {
-          name: 'Real Estate',
-          type: 'Real estate',
-          stake: 33.33,
+          name: 'Infrastructure I',
+          type: 'Infrastructure',
+          stake: 27.5,
           funds: [
-            { name: 'Real Estate Onshore', type: 'Feeder fund' },
-            { name: 'Real Estate Offshore', type: 'Feeder fund' },
+            { name: 'Renewable Energy', type: 'Infrastructure', stake: 60 },
+            { name: 'Toll Roads Vehicle', type: 'Infrastructure' },
           ],
+        },
+        {
+          name: 'Venture Access',
+          type: 'Venture capital',
+          stake: 9.9,
+          funds: [{ name: 'Seed Fund III', type: 'Venture capital', stake: 33.3 }],
         },
       ],
     },
@@ -101,15 +111,16 @@ const UMBRELLA_FUND: Fund = {
 };
 
 /**
- * Holdings outside the tree, by fund name, with the percentage owned where it is known.
+ * Co-investments on top of the tree, by fund name: a second, smaller investor in
+ * a fund, with the percentage it owns where that is known.
  */
-const CROSS_LINKS: [from: string, to: string, stake?: number][] = [
-  ['Growth Fund II', 'Infrastructure', 8.5],
-  ['Direct Lending', 'Buyout Fund IV'],
-  ['Real Estate', 'Structured Credit', 15.75],
+const CO_INVESTMENTS: [from: string, to: string, stake?: number][] = [
+  ['Meridian Credit FoF', 'Buyout Fund IV', 8.5],
+  ['Meridian Real Assets', 'Direct Lending III'],
+  ['Meridian Global FoF', 'Core Real Estate', 15.75],
 ];
 
-/** The sample fund structure as node and link data: the fund tree plus a few cross links. */
+/** The sample fund structure as node and link data: the tree of holdings plus a few co-investments. */
 export function createFundStructure(): { nodes: NodeData[]; links: LinkData[] } {
   const nodes: NodeData[] = [];
   const links: LinkData[] = [];
@@ -135,8 +146,8 @@ export function createFundStructure(): { nodes: NodeData[]; links: LinkData[] } 
     for (const below of fund.funds ?? []) add(below, key);
   };
 
-  add(UMBRELLA_FUND);
-  for (const [from, to, stake] of CROSS_LINKS) {
+  add(TOP_FUND);
+  for (const [from, to, stake] of CO_INVESTMENTS) {
     addLink(keyOf.get(from)!, keyOf.get(to)!, 'relation', stake);
   }
   return { nodes, links };

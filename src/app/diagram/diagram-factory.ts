@@ -7,6 +7,7 @@ import { LinkType, linkStyle, routingFor } from './link-types';
 import { LinkData, LinkKind, NodeData, formatOwnership } from './node-data';
 import {
   DIMMED_OPACITY,
+  HOVER_COLOR,
   LINE_COLOR,
   NODE_BORDER,
   OWNERSHIP_COLOR,
@@ -122,7 +123,18 @@ function textLimit(reach: number): (figure: go.FigureName) => go.Size {
     );
 }
 
-const ONE_LINE = { maxLines: 1, overflow: go.TextOverflow.Ellipsis };
+/**
+ * A text of one line that ends in "…" where it does not fit. It is cut in the
+ * middle of a word if need be: cut between words only, "Silverlake
+ * Multi-Strategy 17" would show as "Silverlake…" and leave half the line empty.
+ */
+const ONE_LINE = {
+  maxLines: 1,
+  overflow: go.TextOverflow.Ellipsis,
+  wrap: go.Wrap.BreakAll,
+};
+/** The title and subtitle of a node: one line each, centred in the node, also when cut off. */
+const NODE_TEXT = { ...ONE_LINE, textAlign: 'center' as const };
 
 const COLOR_ICON = 'COLOR';
 const COMMENT_ICON = 'COMMENT';
@@ -278,17 +290,24 @@ export function deleteIconCentre(figure: go.FigureName): { x: number; y: number 
 
 /**
  * How near to the edge of a node a drag may start and still draw a relationship:
- * this many pixels on screen, on either side of the edge, whatever the zoom. A
- * diagram that is zoomed to fit is often drawn at a third of its size, where the
- * rim that GoJS itself offers for this is three pixels wide and easily missed,
- * and a miss moves the node instead.
+ * this many pixels on screen, whatever the zoom. A diagram that is zoomed to fit
+ * is often drawn at a third of its size, where the rim that GoJS itself offers
+ * for this is three pixels wide and easily missed.
  */
 const EDGE_REACH_PX = 8;
 /**
- * The same reach is never more than this many diagram units, so that when the
- * diagram is zoomed far out the middle of a node is still left for moving it.
+ * Outside a node, the reach is never more than this many diagram units: far
+ * enough to be caught, and less than half the gap to the next node.
  */
-const EDGE_REACH_MAX = 20;
+const EDGE_REACH_OUTSIDE = 20;
+/**
+ * Inside a node, the reach is never more than this many diagram units. A drag
+ * that starts on a node is far more often meant to move it, so only a thin rim
+ * along the edge draws a relationship and all the rest of the node moves it. To
+ * draw one in a diagram that is zoomed far out, start on the edge or just
+ * outside it.
+ */
+const EDGE_REACH_INSIDE = 9;
 
 /** How far a point is from the edge of a rectangle; inside it, from the nearest side. */
 function distanceToEdge(bounds: go.Rect, point: go.Point): number {
@@ -309,12 +328,14 @@ function distanceToEdge(bounds: go.Rect, point: go.Point): number {
  * node never reaches the edge of another.
  */
 function nodeWithEdgeNear(diagram: go.Diagram, point: go.Point): go.Node | null {
-  const reach = Math.min(EDGE_REACH_MAX, EDGE_REACH_PX / diagram.scale);
+  const onScreen = EDGE_REACH_PX / diagram.scale;
   const hitPart = diagram.findObjectAt(point)?.part;
   const over = hitPart instanceof go.Adornment ? hitPart.adornedPart : hitPart;
   if (over instanceof go.Node) {
-    return distanceToEdge(over.actualBounds, point) <= reach ? over : null;
+    const rim = Math.min(EDGE_REACH_INSIDE, onScreen);
+    return distanceToEdge(over.actualBounds, point) <= rim ? over : null;
   }
+  const reach = Math.min(EDGE_REACH_OUTSIDE, onScreen);
   let nearest: go.Node | null = null;
   let distance = reach;
   diagram.findPartsNear(point, reach, true).each((part) => {
@@ -338,7 +359,7 @@ function linkFromEdge(diagram: go.Diagram): void {
   };
   // GoJS ends a new line at the nearest node it may go to within 100 units of
   // where the mouse is let go. Dropped on a node it may not go to, the line would
-  // then jump to a neighbour of that node. Nodes are at least 40 units apart, so
+  // then jump to a neighbour of that node. Nodes are at least 60 units apart, so
   // with this reach it can only end at the node it was dropped on or next to.
   tool.portGravity = 20;
   // Two funds that already have a relationship, whichever way it points and
@@ -429,21 +450,21 @@ function createNodeTemplate(): go.Node {
       }).bind('figure', 'shape'),
       new go.Panel(go.PanelTypes.Vertical).add(
         new go.TextBlock({
-          ...ONE_LINE,
+          ...NODE_TEXT,
           font: 'bold 12px system-ui, sans-serif',
-          editable: true,
+          // Not editable on the node: a press on the text is for selecting and
+          // moving the node. The title is changed in the side panel.
           toolTip: fullTextHint('title'),
         })
-          .bindTwoWay('text', 'title')
+          .bind('text', 'title')
           .bind('maxSize', 'shape', textLimit(TITLE_REACH))
           .bind('stroke', 'color', textColorFor),
         new go.TextBlock({
-          ...ONE_LINE,
+          ...NODE_TEXT,
           font: '10px system-ui, sans-serif',
-          editable: true,
           toolTip: fullTextHint('subtitle'),
         })
-          .bindTwoWay('text', 'subtitle')
+          .bind('text', 'subtitle')
           .bind('maxSize', 'shape', textLimit(SUBTITLE_REACH))
           .bind('stroke', 'color', textColorFor),
         // A thin rule between the text and the icons.
@@ -988,20 +1009,55 @@ export interface IconClicks {
   onNodeDelete: (node: NodeData) => void;
 }
 
+/** How much thicker a line is drawn while the mouse is on it. */
+const HOVER_EXTRA_WIDTH = 1.5;
+/** The thickness each line had before the mouse came, to give it back afterwards. */
+const widthBeforeHover = new WeakMap<go.Link, number>();
+
+/**
+ * Draws a line in gold and thicker while the mouse is on it, and as it was
+ * before once the mouse has left. Display only, never an undo step.
+ */
+function showHovered(link: go.Link, hovered: boolean): void {
+  const line = link.findObject(LINE);
+  const arrow = link.findObject(ARROWHEAD);
+  if (!(line instanceof go.Shape) || !link.diagram) return;
+  if (hovered === widthBeforeHover.has(link)) return;
+  withoutUndo(link.diagram, () => {
+    if (hovered) {
+      widthBeforeHover.set(link, line.strokeWidth);
+      line.strokeWidth += HOVER_EXTRA_WIDTH;
+    } else {
+      line.strokeWidth = widthBeforeHover.get(link) ?? line.strokeWidth;
+      widthBeforeHover.delete(link);
+    }
+    line.stroke = hovered ? HOVER_COLOR : LINE_COLOR;
+    if (arrow instanceof go.Shape) arrow.fill = hovered ? HOVER_COLOR : LINE_COLOR;
+  });
+}
+
 /** A link whose line type follows `modelData.linkType`. */
 function createLink(...parts: go.GraphObject[]): go.Link {
   // Drawn behind the nodes. Links can be selected and removed, but not reconnected.
-  return new RelationshipLink({ layerName: go.LayerNames.Background })
-    .bindModel('routing', 'linkType', (type: LinkType, link: go.Link) =>
-      routingFor(type, link.diagram?.model.nodeDataArray.length ?? 0),
-    )
-    .bindModel('curve', 'linkType', (type: LinkType) => linkStyle(type).curve)
-    .bindModel('corner', 'linkType', (type: LinkType) => linkStyle(type).corner)
-    .add(
-      // A wide invisible stroke along the same path, so thin lines are easy to click.
-      new go.Shape({ isPanelMain: true, stroke: 'transparent', strokeWidth: 8 }),
-      ...parts,
-    );
+  return (
+    new RelationshipLink({
+      layerName: go.LayerNames.Background,
+      // With the mouse on it, a line stands out, so that it can be followed among the others.
+      mouseEnter: (_event, link) => showHovered(link as go.Link, true),
+      mouseLeave: (_event, link) => showHovered(link as go.Link, false),
+    })
+      .bindModel('routing', 'linkType', (type: LinkType, link: go.Link) =>
+        routingFor(type, link.diagram?.model.nodeDataArray.length ?? 0),
+      )
+      // Lines cross without hops: a little arc at every crossing reads as clutter, not as help.
+      .bindModel('curve', 'linkType', (type: LinkType) => linkStyle(type).curve)
+      .bindModel('corner', 'linkType', (type: LinkType) => linkStyle(type).corner)
+      .add(
+        // A wide invisible stroke along the same path, so thin lines are easy to click.
+        new go.Shape({ isPanelMain: true, stroke: 'transparent', strokeWidth: 8 }),
+        ...parts,
+      )
+  );
 }
 
 /** Name of the visible line in every link template (there is a wide invisible one for clicking too). */
@@ -1017,13 +1073,14 @@ function createLinkTemplates(): go.Map<string, go.Link> {
     {
       key: 'hierarchy' satisfies LinkKind,
       value: createLink(
-        new go.Shape({ name: LINE, isPanelMain: true, stroke: LINE_COLOR, strokeWidth: 1.5 }),
+        // The main holdings are the backbone of the diagram, so they are drawn the thickest.
+        new go.Shape({ name: LINE, isPanelMain: true, stroke: LINE_COLOR, strokeWidth: 2 }),
         new go.Shape({
           name: ARROWHEAD,
           toArrow: go.Arrowheads.Standard,
           fill: LINE_COLOR,
           stroke: null,
-          scale: 0.8,
+          scale: 0.9,
         }),
       ),
     },
