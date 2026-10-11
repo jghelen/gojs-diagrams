@@ -3,8 +3,9 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import * as go from 'gojs/release/go';
 import { DEFAULT_COLOR, DEFAULT_SHAPE, DEVELOPER_TOOLS_KEY } from '../diagram/constants';
+import { DATASETS, Dataset } from '../diagram/datasets';
 import { NodeModel } from '../diagram/diagram-factory';
-import { LinkData, NodeData } from '../diagram/node-data';
+import { createLinks, createNodes, LinkData, NodeData } from '../diagram/node-data';
 import { BenchmarkStatistics } from './components/benchmark-statistics/benchmark-statistics';
 import { DiagramInfoBar } from './components/diagram-info-bar/diagram-info-bar';
 import { NodeDialogs } from './components/node-dialogs/node-dialogs';
@@ -2008,6 +2009,164 @@ describe('DiagramPage', () => {
     });
   });
 
+  describe('special characters in the diagram name', () => {
+    const name = () =>
+      page.querySelector<HTMLInputElement>('.canvas-bar input[aria-label="Diagram name"]')!;
+    const notes = () =>
+      Array.from(page.querySelectorAll('.canvas-bar .name-note')).map((note) =>
+        note.textContent!.replace(/\s+/g, ' ').trim(),
+      );
+    /** Types into the name box the way a keyboard or a paste does, with the cursor at `cursor`. */
+    const typed = async (value: string, cursor = value.length) => {
+      name().value = value;
+      name().setSelectionRange(cursor, cursor);
+      name().dispatchEvent(new Event('input'));
+      await settle();
+    };
+
+    describe('while typing', () => {
+      it('are taken out at once, and a note below the boxes says why', async () => {
+        await typed('Meridian: holdings');
+        expect(name().value).toBe('Meridian holdings');
+        expect(notes()).toEqual(['Letters, digits and spaces only']);
+      });
+
+      it('are taken out of pasted text too', async () => {
+        await typed('<b>Fund/2026</b> #1 (draft)');
+        expect(name().value).toBe('bFund2026b 1 draft');
+      });
+
+      it('leave the cursor where the user was typing', async () => {
+        // "Meri|dian" with a "/" typed at the bar.
+        await typed('Meri/dian', 5);
+        expect(name().value).toBe('Meridian');
+        expect(name().selectionStart).toBe(4);
+        expect(name().selectionEnd).toBe(4);
+      });
+
+      it('say nothing about a name that keeps to the rule, and stop saying it when the box is left', async () => {
+        await typed('Meridian holdings 2026');
+        expect(notes()).toEqual([]);
+
+        await typed('Meridian!');
+        expect(notes()).toHaveLength(1);
+        await typed('Meridian h');
+        expect(notes()).toEqual([]);
+
+        await typed('Meridian h?');
+        name().dispatchEvent(new Event('blur'));
+        await settle();
+        expect(notes()).toEqual([]);
+      });
+
+      it('never reach the diagram: what is stored has none', async () => {
+        name().value = 'Meridian & Sons: 2026';
+        name().dispatchEvent(new Event('change'));
+        await settle();
+        expect(model().modelData.name).toBe('Meridian  Sons 2026');
+        expect(name().value).toBe('Meridian  Sons 2026');
+      });
+
+      it('are allowed in the description, which has no such rule', async () => {
+        const description = page.querySelector<HTMLInputElement>(
+          '.canvas-bar input[aria-label="Description"]',
+        )!;
+        description.value = 'As of 2026/Q3 (draft): 80% done';
+        description.dispatchEvent(new Event('input'));
+        description.dispatchEvent(new Event('change'));
+        await settle();
+        expect(model().modelData.description).toBe('As of 2026/Q3 (draft): 80% done');
+        expect(notes()).toEqual([]);
+      });
+
+      it('explain the rule on hover as well', () => {
+        expect(name().title).toBe('Letters, digits and spaces only');
+      });
+    });
+
+    describe('in a diagram that is opened', () => {
+      /** Data whose name does not keep to the rule, as a database may hold from earlier days. */
+      const stored: Dataset = {
+        id: 'from-database',
+        label: 'Meridian SICAV: structure 2026/Q3 (draft)',
+        create: () => ({ nodes: createNodes(5), links: createLinks(5) }),
+      };
+      const datasets = DATASETS as Dataset[];
+
+      beforeEach(async () => {
+        datasets.push(stored);
+        bench.reset('from-database');
+        await settle();
+      });
+
+      afterEach(() => {
+        datasets.splice(datasets.indexOf(stored), 1);
+      });
+
+      it('are removed before the name is shown, and before it is stored', () => {
+        expect(name().value).toBe('Meridian SICAV structure 2026Q3 draft');
+        expect(model().modelData.name).toBe('Meridian SICAV structure 2026Q3 draft');
+        expect(bench.stats()).toMatchObject({ nodes: 5, historyLength: 0 });
+        // Cleaning the name is part of opening the diagram, not a change to undo.
+        expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
+      });
+
+      it('are reported in a note that names the name as it arrived', () => {
+        expect(notes()).toHaveLength(1);
+        expect(notes()[0]).toContain('The name of this diagram is not valid');
+        expect(notes()[0]).toContain('Meridian SICAV: structure 2026/Q3 (draft)');
+        expect(page.querySelector('.name-note strong')!.textContent).toBe(
+          'Meridian SICAV: structure 2026/Q3 (draft)',
+        );
+        expect(page.querySelector('.name-note')!.getAttribute('role')).toBe('alert');
+      });
+
+      it('have that note below the boxes: it is the last thing in the bar', () => {
+        const bar = page.querySelector('.canvas-bar')!;
+        expect(bar.lastElementChild!.classList.contains('name-note')).toBe(true);
+        const inputs = Array.from(bar.querySelectorAll('input'));
+        for (const input of inputs) {
+          expect(
+            input.compareDocumentPosition(bar.lastElementChild!) & Node.DOCUMENT_POSITION_FOLLOWING,
+          ).toBeTruthy();
+        }
+      });
+
+      it('keep the note until it is dismissed', async () => {
+        await bench.randomizeOne();
+        await settle();
+        expect(notes()).toHaveLength(1);
+        page.querySelector<HTMLButtonElement>('.name-note button[aria-label="Dismiss"]')!.click();
+        await settle();
+        expect(notes()).toEqual([]);
+        expect(name().value).toBe('Meridian SICAV structure 2026Q3 draft');
+      });
+
+      it('lose the note when the user gives the diagram a name', async () => {
+        name().value = 'Meridian structure';
+        name().dispatchEvent(new Event('change'));
+        await settle();
+        expect(notes()).toEqual([]);
+        expect(model().modelData.name).toBe('Meridian structure');
+      });
+
+      it('lose the note when other data is opened, and get it again with the same data', async () => {
+        bench.reset('30');
+        await settle();
+        expect(notes()).toEqual([]);
+        expect(name().value).toBe('30 generated funds');
+
+        bench.reset('from-database');
+        await settle();
+        expect(notes()).toHaveLength(1);
+      });
+    });
+
+    it('are not found in a diagram whose name is fine: no note', () => {
+      expect(notes()).toEqual([]);
+    });
+  });
+
   describe('search', () => {
     const box = () => page.querySelector<HTMLInputElement>('.search input')!;
     const count = () => page.querySelector('.search-count')!.textContent!.trim();
@@ -3074,7 +3233,7 @@ describe('DiagramPage', () => {
       click.mockRestore();
     });
 
-    it('names the exported file after the diagram, replacing what a file name cannot contain', async () => {
+    it('names the exported file after the diagram, and "diagram" when it has no name', async () => {
       const downloads: string[] = [];
       const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
         this: HTMLAnchorElement,
@@ -3093,12 +3252,14 @@ describe('DiagramPage', () => {
         await settle();
       };
 
+      // A name cannot have special characters, so the file name is the name itself.
       await rename('Meridian SICAV: structure 2026/Q3 "draft"?');
       pick('export-png');
+      // A name of nothing but special characters comes to no name at all.
       await rename('***');
       pick('export-png');
 
-      expect(downloads).toEqual(['Meridian SICAV- structure 2026-Q3 -draft.png', 'diagram.png']);
+      expect(downloads).toEqual(['Meridian SICAV structure 2026Q3 draft.png', 'diagram.png']);
       click.mockRestore();
     });
 

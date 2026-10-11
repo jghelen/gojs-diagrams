@@ -104,6 +104,16 @@ Every icon without a text label shows its name when the user hovers over it.
 - **BR-4.10a** A new diagram has no name; the user has to give it one. Until then the name box is
   empty, marked in red, and says "Diagram name (required)".
 - **BR-4.11** Changing the name or the description is one undo step each.
+- **BR-4.11a** The name of a diagram consists of letters, digits and spaces only. Letters of any
+  alphabet are letters. Special characters (punctuation, symbols, emoji) are not allowed.
+- **BR-4.11b** A special character typed or pasted into the name box is not taken over: it does
+  not appear, the cursor stays in place, and a note below the boxes says "Letters, digits and
+  spaces only". The note goes when the name is fine again or the box is left.
+- **BR-4.11c** A diagram that is opened with a name containing special characters, for instance
+  one loaded from a database, is shown and kept with those characters removed. A note below the
+  name box says that the name was not valid and shows the name as it arrived. It stays until the
+  user dismisses it, changes the name, or opens other data. This cleaning is not an undo step.
+- **BR-4.11d** The description may contain any characters.
 
 ### 4.4 Reset and new diagram
 
@@ -496,7 +506,8 @@ while the diagram has no nodes (BR-4.15).
 - **BR-12.2** The picture is sharp: it is drawn at twice the diagram's size so that small text
   remains readable.
 - **BR-12.3** The picture shows the diagram as it is, without selection outlines or dimming.
-- **BR-12.3a** The downloaded file is named after the diagram, with the ending `.png`. Characters
+- **BR-12.3a** The downloaded file is named after the diagram, with the ending `.png`. A name has no
+  special characters to begin with (BR-4.11a); should one get there all the same, characters
   that a file name cannot contain (such as `/ \ : * ? " < > |`) and other special characters are
   replaced by a dash, so that the download always works. Letters of any alphabet, digits, spaces
   and `. _ - ( )` are kept. If nothing usable is left, the file is called `diagram.png`.

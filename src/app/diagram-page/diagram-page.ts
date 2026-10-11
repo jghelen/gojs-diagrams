@@ -21,6 +21,7 @@ import {
   SLOW_LAYOUTS_FROM,
 } from '../diagram/constants';
 import { findDataset } from '../diagram/datasets';
+import { checkedDiagramName } from '../diagram/diagram-name';
 import {
   NodeModel,
   createDiagram,
@@ -151,6 +152,7 @@ export class DiagramPage {
   /** Stops the animation in which a loaded diagram's nodes appear one by one. */
   private stopReveal: () => void = () => undefined;
   private stopWatchingErrors: () => void = () => undefined;
+  private stopWatchingCanvasSize: () => void = () => undefined;
   /** True from the moment data is opened until GoJS has arranged it for the first time. */
   private loading = false;
 
@@ -164,6 +166,7 @@ export class DiagramPage {
     inject(DestroyRef).onDestroy(() => {
       this.stopReveal();
       this.stopWatchingErrors();
+      this.stopWatchingCanvasSize();
       if (this.overview) this.overview.div = null;
       if (this.diagram) this.diagram.div = null;
     });
@@ -186,6 +189,7 @@ export class DiagramPage {
       onNodeDelete: (node) => this.askToDelete([node]),
     });
     this.overview = createOverview(this.overviewHost().nativeElement, this.diagram);
+    this.watchCanvasSize();
 
     this.actions.connect(this.diagram);
     this.state.connect(this.diagram);
@@ -248,6 +252,19 @@ export class DiagramPage {
       this.linkCard.follow();
     });
     this.diagram.addDiagramListener('BackgroundSingleClicked', () => this.linkCard.close());
+  }
+
+  /**
+   * Tells GoJS whenever the canvas gets another size, whatever the reason: the
+   * statistics opened, a note appeared above it, the window was resized.
+   */
+  private watchCanvasSize(): void {
+    this.stopWatchingCanvasSize();
+    // Not there in every environment the page runs in, such as the tests.
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => this.diagram.requestUpdate());
+    observer.observe(this.host().nativeElement);
+    this.stopWatchingCanvasSize = () => observer.disconnect();
   }
 
   /** Errors inside GoJS's own mouse and keyboard handling arrive here, not in an operation. */
@@ -328,11 +345,15 @@ export class DiagramPage {
     ) {
       this.state.layoutType.set(DEFAULT_LAYOUT);
     }
+    // A loaded diagram starts out named after its data; a new one has to be given a name.
+    // A name that arrives with special characters, as one from a database may, is
+    // shown without them, and the page says which name it did not accept.
+    const opened = checkedDiagramName(datasetId === BLANK_DATASET ? '' : dataset.label);
+    this.state.refusedName.set(opened.refused);
     const settings = {
       layoutType: this.state.layoutType(),
       linkType: this.state.linkType(),
-      // A loaded diagram starts out named after its data; a new one has to be given a name.
-      name: datasetId === BLANK_DATASET ? '' : dataset.label,
+      name: opened.name,
       description: '',
       // A newly loaded diagram starts with its relationship cards put away,
       // and with nodes that show their name only.
