@@ -55,7 +55,7 @@ Then open http://localhost:4200.
 | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | Top bar                               | The **Data** dropdown on the left; on the right **Styles**, the **Actions** menu, a reload icon that resets the diagram, and a new-diagram icon |
 | Bar above the canvas                  | The diagram's **name** and **description**, and the **search** box                                                                              |
-| Tool strip (left edge of the canvas)  | Add node, undo, redo, zoom in, zoom out, zoom to fit, layout, lines, shape, auto arrange                                                        |
+| Tool strip (left edge of the canvas)  | Add node, undo, redo, zoom in, zoom out, zoom to fit, layout, lines, shape, auto arrange, expand all, collapse all                              |
 | Overview (bottom right of the canvas) | A small picture of the whole diagram; drag its gold box to move around                                                                          |
 | Canvas (left)                         | The diagram. Scroll to pan, Ctrl/Cmd + wheel (or pinch) to zoom                                                                                 |
 | Timing table (below the canvas)       | One row per operation, newest first                                                                                                             |
@@ -157,12 +157,14 @@ node, it ends in "…" and the full text appears when you hover over it.
 - **Shape**, the icon under Lines in the tool strip, sets the shape of the selected nodes. Click
   it to see one picture per shape, named on hover (Square, Rounded, Ellipse, Diamond, Capsule,
   Rounded top), and click the one you want. The icon shows the shape the selection has now; it is
-  disabled while no node is selected.
+  disabled while no node is selected. While the tree of a single selected node is highlighted,
+  the shape is given to every highlighted node, not only the selected one.
 - Every tool in the strip shows its name beside it as soon as the mouse is over it.
-- With **exactly one** node selected, its tree (the chain up to the top and everything below it)
-  is highlighted, together with the nodes it is joined to by relationships you drew yourself:
-  each of those nodes gets the gold outline and the rest of the diagram is dimmed. The highlight
-  goes away when you click empty space, select a second node, zoom, or do anything else.
+- With **exactly one** node selected, everything that belongs to it is highlighted: its tree (the
+  chain up to the top and everything below it), every relationship line of the node itself with
+  the fund at its other end, and every line that joins two of the highlighted funds. Each of
+  those nodes gets the gold outline and the rest of the diagram is dimmed. The highlight goes
+  away when you click empty space, select a second node, zoom, or do anything else.
 - **Drag** a node to move it. A node cannot be dropped on top of another node.
 - Click the title or subtitle of a node that is already selected, or press F2, to edit the text
   in place.
@@ -205,8 +207,19 @@ There are three kinds of line. All are black and end in an arrowhead.
   nothing.
   Where several lines end at the same node, their percentages are set apart (on the other side
   of the line, or further back along it) so that none covers another.
-- **Info:** click the small "i" in the middle of a line to see what it connects and its
-  ownership. The dialog can also remove that relationship.
+- **Info:** click the small "i" in the middle of a line. A card opens on the canvas beside the
+  icon, with the kind of relationship, the two funds it connects and the ownership, and a button
+  to remove that relationship. It is not a dialog: the diagram stays usable. The card goes away
+  on a second click on the icon, on its x, on Escape, on a click on empty canvas, and whenever
+  you select a node or do something else. It follows its icon when you scroll or zoom.
+- **Expand all**, near the bottom of the tool strip, shows a small card on every relationship at
+  once: its kind, the two funds and the ownership. To make room, the diagram is arranged anew
+  with the nodes further apart, so every card stands between the nodes and covers neither a
+  node nor another card. A card stands on its line where the info icon was; the icons are hidden
+  meanwhile. Where that place is taken, the card moves along its line or right beside it. Click
+  a line to select it and its card is marked in gold. **Collapse all** hides the cards and
+  arranges the nodes close together again. Both are undo steps, because they move the nodes, and
+  both discard positions you gave nodes by hand, as Auto arrange does.
 - **Add:** drag from the edge of a node to another node. Two funds that already have a
   relationship, in either direction, cannot get a second one this way. The edge does not have to be hit
   exactly: a drag that starts within a few pixels of it, inside or just outside the node, draws a

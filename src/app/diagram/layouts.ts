@@ -65,12 +65,29 @@ class HierarchyLayeredLayout extends go.LayeredDigraphLayout {
 /** Free space left between nodes, wide enough for links to be routed through it. */
 const NODE_GAP = 40;
 
+/** How much free space a layout leaves between nodes: side by side, and one above the other. */
+interface Gaps {
+  across: number;
+  down: number;
+}
+
+const NORMAL_GAPS: Gaps = { across: NODE_GAP, down: NODE_GAP };
+/**
+ * While the cards of all relationships are shown, the nodes stand this far
+ * apart, so that a card fits on a line between two nodes without covering
+ * either of them. A card is about 165 wide and 52 high.
+ */
+const CARD_GAPS: Gaps = { across: 200, down: 110 };
+
 /**
  * A force-directed result can still have overlapping nodes when the graph is as
  * densely linked as this one, so this spreads the finished layout out evenly
  * until every pair of nodes is at least NODE_GAP apart.
  */
 class SpacedForceDirectedLayout extends go.ForceDirectedLayout {
+  /** The free space this layout guarantees between any two nodes. */
+  gaps: Gaps = NORMAL_GAPS;
+
   override commitLayout(): void {
     const vertexes = this.network?.vertexes.toArray() ?? [];
     let scale = 1;
@@ -78,8 +95,8 @@ class SpacedForceDirectedLayout extends go.ForceDirectedLayout {
       const a = vertexes[i];
       for (let j = i + 1; j < vertexes.length; j++) {
         const b = vertexes[j];
-        const needX = (a.width + b.width) / 2 + NODE_GAP;
-        const needY = (a.height + b.height) / 2 + NODE_GAP;
+        const needX = (a.width + b.width) / 2 + this.gaps.across;
+        const needY = (a.height + b.height) / 2 + this.gaps.down;
         const dx = Math.abs(a.centerX - b.centerX);
         const dy = Math.abs(a.centerY - b.centerY);
         if (dx >= needX || dy >= needY) continue;
@@ -106,8 +123,10 @@ class SpacedForceDirectedLayout extends go.ForceDirectedLayout {
  * - A big tree stacks the children of every node in two columns. Drawn the
  *   classic way it would be one very wide, very flat strip.
  */
-function createTreeLayout(angle: 90 | 270, nodeCount: number): go.TreeLayout {
-  const shared = { isOngoing: false, angle, layerSpacing: NODE_GAP, nodeSpacing: NODE_GAP };
+function createTreeLayout(angle: 90 | 270, nodeCount: number, gaps: Gaps): go.TreeLayout {
+  const shared = { isOngoing: false, angle, layerSpacing: gaps.down, nodeSpacing: gaps.across };
+  // The strip beside a column of leaves, down which the line to those leaves runs.
+  const strip = gaps.across / 2;
   if (nodeCount > CLASSIC_TREE_LIMIT) {
     return new HierarchyTreeLayout({
       ...shared,
@@ -127,14 +146,14 @@ function createTreeLayout(angle: 90 | 270, nodeCount: number): go.TreeLayout {
     // downwards, up in one that grows upwards.
     alternateAngle: 0,
     alternateAlignment: angle === 90 ? go.TreeAlignment.Start : go.TreeAlignment.End,
-    alternateNodeIndent: NODE_GAP / 2,
+    alternateNodeIndent: strip,
     alternateNodeIndentPastParent: 1,
     alternateNodeSpacing: NODE_GAP / 2,
-    alternateLayerSpacing: NODE_GAP,
+    alternateLayerSpacing: gaps.down,
     alternateLayerSpacingParentOverlap: 1,
     // One line runs down (or up) the free strip beside the column, from near the
     // parent's corner, and branches into the side of every leaf.
-    alternatePortSpot: new go.Spot(0.001, angle === 90 ? 1 : 0, NODE_GAP / 2, 0),
+    alternatePortSpot: new go.Spot(0.001, angle === 90 ? 1 : 0, strip, 0),
     alternateChildPortSpot: go.Spot.Left,
   });
 }
@@ -162,34 +181,43 @@ export function resetPortSpots(diagram: go.Diagram): void {
  * layout type is switched, but not after each edit. Otherwise every transaction
  * and every undo would also pay for (and record) a complete re-layout.
  */
-export function createLayout(type: LayoutType, nodeCount: number): go.Layout {
+export function createLayout(
+  type: LayoutType,
+  nodeCount: number,
+  /** True while the cards of all relationships are shown: the nodes then stand further apart. */
+  roomForCards = false,
+): go.Layout {
+  const gaps = roomForCards ? CARD_GAPS : NORMAL_GAPS;
   switch (type) {
     case 'top-bottom':
-      return createTreeLayout(90, nodeCount);
+      return createTreeLayout(90, nodeCount, gaps);
     case 'bottom-top':
-      return createTreeLayout(270, nodeCount);
+      return createTreeLayout(270, nodeCount, gaps);
     case 'layered':
       return new HierarchyLayeredLayout({
         isOngoing: false,
         direction: 90,
-        layerSpacing: NODE_GAP,
-        columnSpacing: NODE_GAP,
+        layerSpacing: gaps.down,
+        columnSpacing: gaps.across,
         setsPortSpots: false,
       });
-    case 'force':
-      return new SpacedForceDirectedLayout({
+    case 'force': {
+      const layout = new SpacedForceDirectedLayout({
         isOngoing: false,
         defaultSpringLength: 80,
         defaultElectricalCharge: 300,
         setsPortSpots: false,
       });
+      layout.gaps = gaps;
+      return layout;
+    }
     case 'circle':
-      return new go.CircularLayout({ isOngoing: false, spacing: NODE_GAP });
+      return new go.CircularLayout({ isOngoing: false, spacing: gaps.across });
     case 'grid':
       return new go.GridLayout({
         isOngoing: false,
         wrappingColumn: 20,
-        spacing: new go.Size(NODE_GAP, NODE_GAP),
+        spacing: new go.Size(gaps.across, gaps.down),
       });
   }
 }

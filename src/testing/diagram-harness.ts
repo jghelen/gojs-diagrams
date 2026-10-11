@@ -36,6 +36,8 @@ export function createTestDiagram(
     count?: number;
     layout?: LayoutType;
     linkType?: LinkType;
+    /** Shows the cards of all relationships, with the nodes further apart to make room for them. */
+    cardsExpanded?: boolean;
   } = {},
 ): TestDiagram {
   const count = options.count ?? 30;
@@ -61,10 +63,11 @@ export function createTestDiagram(
   });
   // jsdom gives the div no size; this is how GoJS is told the size of the view without one.
   diagram.viewSize = new go.Size(1000, 700);
-  diagram.layout = createLayout(layoutType, nodes.length);
+  const cardsExpanded = options.cardsExpanded ?? false;
+  diagram.layout = createLayout(layoutType, nodes.length, cardsExpanded);
   const model = createModel(
     { nodes, links },
-    { layoutType, linkType, name: 'Test diagram', description: '' },
+    { layoutType, linkType, name: 'Test diagram', description: '', cardsExpanded },
   );
   const history = createHistory();
   history.connect(diagram);

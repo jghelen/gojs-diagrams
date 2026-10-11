@@ -9,7 +9,11 @@ import {
 import {
   addNodeInView,
   createModel,
+  allLinkCardsShown,
   highlightTree,
+  highlightedNodes,
+  picturedParts,
+  refreshLinkCards,
   revealNodesOneByOne,
   showSearchHit,
   textColorFor,
@@ -53,6 +57,7 @@ describe('createModel', () => {
       linkType: 'straight',
       name: 'My funds',
       description: 'A test',
+      cardsExpanded: false,
     } as const;
     const model = createModel({ nodes: [], links: [] }, settings);
     expect(model.modelData).toEqual(settings);
@@ -520,6 +525,301 @@ describe('relationship lines', () => {
   });
 });
 
+describe('relationship cards', () => {
+  /** A diagram with the cards of all relationships shown, arranged with room for them. */
+  const expanded = (options: Parameters<typeof createTestDiagram>[0] = {}): TestDiagram => {
+    const test = createTestDiagram({ ...options, cardsExpanded: true });
+    refreshLinkCards(test.diagram);
+    test.settle();
+    return test;
+  };
+  /** Switches the cards on or off in the model, where undo can reach it. */
+  const setExpanded = (test: TestDiagram, shown: boolean): void => {
+    test.history.record(shown ? 'expand all' : 'collapse all', () =>
+      test.model.set(test.model.modelData, 'cardsExpanded', shown),
+    );
+    test.settle();
+  };
+  const cardOf = (link: go.Link) => link.findAdornment('Card');
+  const cardsOf = (test: TestDiagram) =>
+    linksOf(test.diagram)
+      .map(cardOf)
+      .filter((card): card is go.Adornment => card !== null);
+  const textOf = (card: go.Adornment, name: string) => (card.findObject(name) as go.TextBlock).text;
+  const overlapping = (rects: go.Rect[]): number => {
+    let count = 0;
+    for (let i = 0; i < rects.length; i++) {
+      for (let j = i + 1; j < rects.length; j++) if (rects[i].intersectsRect(rects[j])) count++;
+    }
+    return count;
+  };
+  const onNodes = (test: TestDiagram): number => {
+    const nodes = nodesOf(test.diagram).map((node) => node.actualBounds);
+    return cardsOf(test).filter((card) =>
+      nodes.some((node) => node.intersectsRect(card.actualBounds)),
+    ).length;
+  };
+  const fund = (key: number): NodeData => ({
+    key,
+    title: `Fund ${key}`,
+    subtitle: 'Hedge fund',
+    shape: 'Rectangle',
+    color: '#f3f4f6',
+    comment: '',
+  });
+
+  it('are not shown until they are asked for', () => {
+    const test = createTestDiagram();
+    expect(allLinkCardsShown(test.diagram)).toBe(false);
+    expect(cardsOf(test)).toEqual([]);
+  });
+
+  it('show, for every relationship from the data, its kind, its two funds and the ownership', () => {
+    const test = expanded();
+    expect(allLinkCardsShown(test.diagram)).toBe(true);
+    for (const link of linksOf(test.diagram)) {
+      const data = link.data as LinkData;
+      const card = cardOf(link)!;
+      expect(card).not.toBeNull();
+      expect(textOf(card, 'CARD_TYPE')).toBe(
+        data.category === 'hierarchy' ? 'Hierarchy' : 'Relation',
+      );
+      expect(textOf(card, 'CARD_FROM')).toBe(`From: ${(link.fromNode!.data as NodeData).title}`);
+      expect(textOf(card, 'CARD_TO')).toBe(`To: ${(link.toNode!.data as NodeData).title}`);
+      expect(textOf(card, 'CARD_OWNERSHIP')).toBe(
+        data.ownership === undefined
+          ? 'Ownership: no data'
+          : `Ownership: ${formatOwnership(data.ownership)}`,
+      );
+    }
+  });
+
+  it('stand where the info icon is, in the middle of the line, when that place is free', () => {
+    // Two funds far apart: nothing is in the way of the card.
+    const test = expanded({
+      nodes: [fund(1), fund(2)],
+      links: [{ key: 1, from: 1, to: 2, category: 'hierarchy', ownership: 50 }],
+      layout: 'grid',
+    });
+    test.diagram.commit(() => {
+      test.diagram.findNodeForKey(2)!.location = new go.Point(900, 600);
+    }, 'move');
+    test.settle();
+    refreshLinkCards(test.diagram);
+    test.settle();
+    const link = linksOf(test.diagram)[0];
+    const card = cardOf(link)!;
+    expect(card.actualBounds.center.x).toBeCloseTo(link.midPoint.x, 0);
+    expect(card.actualBounds.center.y).toBeCloseTo(link.midPoint.y, 0);
+  });
+
+  it('stand between the nodes: no card covers a node, in any layout', () => {
+    for (const layout of [
+      'top-bottom',
+      'bottom-top',
+      'circle',
+      'layered',
+      'force',
+      'grid',
+    ] as const) {
+      const test = expanded({ layout });
+      expect(cardsOf(test)).toHaveLength(test.model.linkDataArray.length);
+      expect(onNodes(test)).toBe(0);
+    }
+  });
+
+  it('never cover one another, in any layout', () => {
+    for (const layout of [
+      'top-bottom',
+      'bottom-top',
+      'circle',
+      'layered',
+      'force',
+      'grid',
+    ] as const) {
+      const test = expanded({ layout });
+      expect(overlapping(cardsOf(test).map((card) => card.actualBounds))).toBe(0);
+    }
+  });
+
+  it('keep clear of nodes and of each other on a bigger diagram too', () => {
+    for (const layout of ['top-bottom', 'grid'] as const) {
+      const test = expanded({ count: 100, layout });
+      expect(onNodes(test)).toBe(0);
+      expect(overlapping(cardsOf(test).map((card) => card.actualBounds))).toBe(0);
+    }
+  });
+
+  it('are set apart even on lines that run exactly on top of each other', () => {
+    const stake = (key: number): LinkData => ({
+      key,
+      from: 1,
+      to: 2,
+      category: 'relation',
+      ownership: key * 10,
+    });
+    const test = expanded({
+      nodes: [fund(1), fund(2)],
+      links: [stake(1), stake(2), stake(3)],
+      layout: 'grid',
+    });
+    const cards = cardsOf(test);
+    expect(cards).toHaveLength(3);
+    expect(overlapping(cards.map((card) => card.actualBounds))).toBe(0);
+    expect(onNodes(test)).toBe(0);
+  });
+
+  it('get their room from the layout: the nodes stand further apart while cards are shown', () => {
+    const compact = createTestDiagram({ layout: 'grid' });
+    const roomy = expanded({ layout: 'grid' });
+    const area = (test: TestDiagram) =>
+      test.diagram.documentBounds.width * test.diagram.documentBounds.height;
+    expect(area(roomy)).toBeGreaterThan(area(compact) * 1.5);
+    expect(countNodeOverlaps(roomy.diagram)).toBe(0);
+  });
+
+  it('take the place of the info icons, which come back when the cards are put away', () => {
+    const test = createTestDiagram();
+    const icons = () => linksOf(test.diagram).filter((link) => link.findAdornment('Info')).length;
+    expect(icons()).toBe(test.model.linkDataArray.length);
+
+    setExpanded(test, true);
+    expect(icons()).toBe(0);
+    expect(cardsOf(test)).toHaveLength(test.model.linkDataArray.length);
+
+    setExpanded(test, false);
+    expect(icons()).toBe(test.model.linkDataArray.length);
+    expect(cardsOf(test)).toEqual([]);
+  });
+
+  it('are marked in gold when their line is selected, and not when it is not', () => {
+    const test = expanded();
+    const [first, second] = linksOf(test.diagram);
+    const frame = (link: go.Link) => cardOf(link)!.findObject('CARD_FRAME') as go.Shape;
+    expect(frame(first).stroke).toBe('#9ca3af');
+
+    test.diagram.select(first);
+    test.settle();
+    expect(frame(first).stroke).toBe('#d4a017');
+    expect(frame(first).fill).toBe('#fff8e1');
+    expect(frame(second).stroke).toBe('#9ca3af');
+
+    // Selecting another line moves the mark; clearing the selection removes it.
+    test.diagram.select(second);
+    test.settle();
+    expect(frame(first).stroke).toBe('#9ca3af');
+    expect(frame(first).fill).toBe('#ffffff');
+    expect(frame(second).stroke).toBe('#d4a017');
+    test.diagram.clearSelection();
+    test.settle();
+    expect(frame(second).stroke).toBe('#9ca3af');
+  });
+
+  it('are in front of the mark of a selected line, which passes behind them', () => {
+    const test = expanded();
+    const link = linksOf(test.diagram)[0];
+    test.diagram.select(link);
+    test.settle();
+    const layers: go.Layer[] = [];
+    test.diagram.layers.each((layer) => layers.push(layer));
+    const mark = link.findAdornment('Selection')!;
+    expect(mark).not.toBeNull();
+    expect(layers.indexOf(cardOf(link)!.layer!)).toBeGreaterThan(layers.indexOf(mark.layer!));
+  });
+
+  it('stay where they are when a line is selected', () => {
+    const test = expanded();
+    const before = cardsOf(test).map((card) => card.location.copy());
+    test.diagram.select(linksOf(test.diagram)[5]);
+    test.settle();
+    test.settle();
+    cardsOf(test).forEach((card, i) => expect(card.location.equals(before[i])).toBe(true));
+  });
+
+  it('are drawn above the nodes and let clicks through', () => {
+    const test = expanded();
+    const layers: string[] = [];
+    test.diagram.layers.each((layer) => layers.push(layer.name));
+    expect(layers.indexOf('LinkCards')).toBeGreaterThan(layers.indexOf(''));
+    // And above the layer of selection marks: a selected line passes behind the cards.
+    expect(layers.indexOf('LinkCards')).toBeGreaterThan(layers.indexOf('Adornment'));
+    for (const card of cardsOf(test)) {
+      expect(card.layer!.name).toBe('LinkCards');
+      expect(card.pickable).toBe(false);
+    }
+  });
+
+  it('are not shown for relationships the user drew, which have no info icon either', () => {
+    const test = expanded();
+    test.model.commit(
+      () => test.model.addLinkData({ key: 900, from: 4, to: 9, category: 'manual' }),
+      'draw',
+    );
+    test.settle();
+    const drawn = linksOf(test.diagram).find((link) => (link.data as LinkData).key === 900)!;
+    expect(cardOf(drawn)).toBeNull();
+  });
+
+  it('are given to a relationship that is added while they are shown', () => {
+    const test = expanded();
+    test.model.commit(
+      () => test.model.addLinkData({ key: 901, from: 4, to: 9, category: 'relation' }),
+      'add',
+    );
+    test.settle();
+    const added = linksOf(test.diagram).find((link) => (link.data as LinkData).key === 901)!;
+    expect(textOf(cardOf(added)!, 'CARD_TYPE')).toBe('Relation');
+  });
+
+  it('follow a fund that is renamed', () => {
+    const test = expanded();
+    const link = linksOf(test.diagram)[0];
+    test.model.commit((m) => m.set(link.fromNode!.data as NodeData, 'title', 'Renamed'), 'rename');
+    test.settle();
+    expect(textOf(cardOf(link)!, 'CARD_FROM')).toBe('From: Renamed');
+  });
+
+  it('are switched on and off in the model, so that undo and redo switch them too', () => {
+    const test = createTestDiagram();
+    setExpanded(test, true);
+    expect(cardsOf(test)).toHaveLength(test.model.linkDataArray.length);
+
+    test.history.undo();
+    test.settle();
+    expect(allLinkCardsShown(test.diagram)).toBe(false);
+    expect(cardsOf(test)).toEqual([]);
+
+    test.history.redo();
+    test.settle();
+    expect(cardsOf(test)).toHaveLength(test.model.linkDataArray.length);
+
+    setExpanded(test, false);
+    expect(cardsOf(test)).toEqual([]);
+  });
+
+  it('are themselves not recorded: only the switch in the model is', () => {
+    const test = createTestDiagram();
+    setExpanded(test, true);
+    const recorded: string[] = [];
+    test.model.undoManager.history
+      .last()!
+      .changes.each((change) => recorded.push(String(change.propertyName)));
+    expect(recorded).toEqual(['cardsExpanded']);
+  });
+
+  it('are dimmed with their line when a tree is highlighted, and are part of an exported picture', () => {
+    const test = expanded();
+    highlightTree(test.diagram, test.diagram.findNodeForKey(2)!);
+    test.settle();
+    for (const link of linksOf(test.diagram)) expect(cardOf(link)!.opacity).toBe(link.opacity);
+    expect(new Set(linksOf(test.diagram).map((link) => link.opacity)).size).toBe(2);
+
+    const pictured = new Set<go.Part>();
+    picturedParts(test.diagram).each((part) => pictured.add(part));
+    for (const card of cardsOf(test)) expect(pictured.has(card)).toBe(true);
+  });
+});
+
 describe('revealNodesOneByOne', () => {
   const setHidden = (hidden: boolean) =>
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
@@ -900,21 +1200,110 @@ describe('drawing a relationship', () => {
   });
 });
 
+describe('highlightedNodes', () => {
+  it('are the nodes shown at full strength by a highlight, and none when nothing is highlighted', () => {
+    const test = createTestDiagram();
+    expect(highlightedNodes(test.diagram)).toEqual([]);
+    const node = test.diagram.findNodeForKey(2)!;
+    highlightTree(test.diagram, node);
+    const found = highlightedNodes(test.diagram);
+    expect(found.length).toBeGreaterThan(1);
+    expect(found).toContain(node);
+    expect(new Set(found)).toEqual(
+      new Set(nodesOf(test.diagram).filter((part) => part.opacity === 1)),
+    );
+    highlightTree(test.diagram, null);
+    expect(highlightedNodes(test.diagram)).toEqual([]);
+  });
+});
+
 describe('highlightTree', () => {
-  it('dims everything outside the tree of the given node, and nothing when given null', () => {
+  /** The tree of a node: the chain above it and everything below it, nodes and hierarchy lines. */
+  const treeOf = (node: go.Node) => node.findTreeParts().addAll(node.findTreeParentChain());
+  /** What must be highlighted with a node, worked out here independently of the app. */
+  const expectedFor = (test: TestDiagram, node: go.Node): Set<go.Part> => {
+    const parts = new Set<go.Part>(treeOf(node).toArray());
+    // Every line of the node itself, with the node at its other end.
+    for (const link of linksOf(test.diagram)) {
+      if (link.fromNode !== node && link.toNode !== node) continue;
+      parts.add(link);
+      parts.add(link.fromNode!);
+      parts.add(link.toNode!);
+    }
+    // Every line between two highlighted nodes.
+    for (const link of linksOf(test.diagram)) {
+      if (parts.has(link.fromNode!) && parts.has(link.toNode!)) parts.add(link);
+    }
+    return parts;
+  };
+
+  it('dims everything that does not belong to the given node, and nothing when given null', () => {
     const test = createTestDiagram();
     const node = test.diagram.findNodeForKey(2)!;
     highlightTree(test.diagram, node);
 
-    const tree = node.findTreeParts().addAll(node.findTreeParentChain());
+    const expected = expectedFor(test, node);
     for (const part of [...nodesOf(test.diagram), ...linksOf(test.diagram)]) {
-      expect(part.opacity).toBe(tree.has(part) ? 1 : 0.15);
+      expect(part.opacity).toBe(expected.has(part) ? 1 : 0.15);
     }
     expect(test.diagram.findNodeForKey(1)!.opacity).toBe(1);
+    expect(nodesOf(test.diagram).some((part) => part.opacity < 1)).toBe(true);
 
     highlightTree(test.diagram, null);
     for (const part of [...nodesOf(test.diagram), ...linksOf(test.diagram)])
       expect(part.opacity).toBe(1);
+  });
+
+  it('highlights the whole tree: the funds above the node and all funds below it', () => {
+    const test = createTestDiagram();
+    const node = test.diagram.findNodeForKey(2)!;
+    highlightTree(test.diagram, node);
+    treeOf(node).each((part) => expect(part.opacity).toBe(1));
+  });
+
+  it('highlights every relationship line of the node, of any kind, with the node at its other end', () => {
+    const test = createTestDiagram();
+    for (const key of [2, 5, 8, 13]) {
+      const node = test.diagram.findNodeForKey(key)!;
+      highlightTree(test.diagram, node);
+      const kinds = new Set<string>();
+      node.findLinksConnected().each((link) => {
+        kinds.add((link.data as LinkData).category);
+        expect(link.opacity).toBe(1);
+        expect(link.getOtherNode(node)!.opacity).toBe(1);
+      });
+      // The generated data gives every fund both hierarchy lines and other relationships.
+      expect(kinds.has('hierarchy')).toBe(true);
+    }
+    const withRelations = nodesOf(test.diagram).find((candidate) => {
+      let relation = false;
+      candidate.findLinksConnected().each((link) => {
+        if ((link.data as LinkData).category === 'relation') relation = true;
+      });
+      return relation;
+    })!;
+    highlightTree(test.diagram, withRelations);
+    withRelations.findLinksConnected().each((link) => {
+      if ((link.data as LinkData).category !== 'relation') return;
+      expect(link.opacity).toBe(1);
+      expect(link.getOtherNode(withRelations)!.findAdornment('Focus')).not.toBeNull();
+    });
+  });
+
+  it('highlights every line between two highlighted nodes, also one that is not in the tree', () => {
+    const test = createTestDiagram();
+    let checked = 0;
+    for (const node of nodesOf(test.diagram)) {
+      highlightTree(test.diagram, node);
+      for (const link of linksOf(test.diagram)) {
+        const bothShown = link.fromNode!.opacity === 1 && link.toNode!.opacity === 1;
+        expect(link.opacity).toBe(bothShown ? 1 : 0.15);
+        // A relationship between two funds of the same tree, as in "Cedar Property 13 to Harbor Income 2".
+        const cross = (link.data as LinkData).category === 'relation';
+        if (cross && bothShown && link.fromNode !== node && link.toNode !== node) checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 
   it('dims the info icon of a dimmed line with it', () => {
@@ -925,17 +1314,17 @@ describe('highlightTree', () => {
     }
   });
 
-  it('outlines every node of the tree in gold, and no other', () => {
+  it('outlines every highlighted node in gold, and no other', () => {
     const test = createTestDiagram();
     const node = test.diagram.findNodeForKey(2)!;
     highlightTree(test.diagram, node);
     test.settle();
 
-    const tree = node.findTreeParts().addAll(node.findTreeParentChain());
+    const expected = expectedFor(test, node);
     let outlined = 0;
     for (const part of nodesOf(test.diagram)) {
       const outline = part.findAdornment('Focus');
-      expect(outline !== null).toBe(tree.has(part));
+      expect(outline !== null).toBe(expected.has(part));
       if (!outline) continue;
       outlined++;
       expect((outline.elt(0) as go.Shape).stroke).toBe('#d4a017');
@@ -951,9 +1340,10 @@ describe('highlightTree', () => {
   it('includes the nodes joined to the clicked node by a relationship the user drew', () => {
     const test = createTestDiagram();
     const node = test.diagram.findNodeForKey(2)!;
-    const tree = node.findTreeParts().addAll(node.findTreeParentChain());
-    // A node outside the tree of node 2, joined to it by a drawn link.
-    const outsider = nodesOf(test.diagram).find((candidate) => !tree.has(candidate))!;
+    highlightTree(test.diagram, node);
+    // A node that is not highlighted with node 2 yet, then joined to it by a drawn link.
+    const outsider = nodesOf(test.diagram).find((candidate) => candidate.opacity < 1)!;
+    highlightTree(test.diagram, null);
     test.diagram.startTransaction('Linking');
     const drawn = test.diagram.toolManager.linkingTool.insertLink(
       outsider,
@@ -969,10 +1359,8 @@ describe('highlightTree', () => {
     expect(outsider.opacity).toBe(1);
     expect(outsider.findAdornment('Focus')).not.toBeNull();
     expect(drawn.opacity).toBe(1);
-
-    // Ordinary cross relationships do not pull their nodes into the highlight.
-    const stillDimmed = nodesOf(test.diagram).filter((part) => part.opacity < 1);
-    expect(stillDimmed.length).toBeGreaterThan(0);
+    // The rest of the diagram is still dimmed.
+    expect(nodesOf(test.diagram).some((part) => part.opacity < 1)).toBe(true);
   });
 
   it('is display only: it adds nothing to the undo history', () => {

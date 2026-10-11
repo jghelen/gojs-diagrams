@@ -20,6 +20,7 @@ import {
   createOverview,
   deleteIconCentre,
   highlightTree,
+  highlightedNodes,
   picturedParts,
   revealNodesOneByOne,
   showSearchHit,
@@ -100,9 +101,21 @@ interface LinkInfo {
   to: NodeData | null;
   /** The ownership percentage as text, or null when there is no data. */
   ownership: string | null;
-  /** The link's data object as stored in the model. */
-  json: string;
+  /** Where the card with this information stands, in pixels from the top left of the canvas. */
+  left: number;
+  top: number;
 }
+
+/**
+ * The card that shows a relationship's data next to its info icon. Its width is
+ * set in the style sheet to the same number; the height is what the card comes
+ * to with its four lines, and is only used to keep the card inside the canvas.
+ */
+const LINK_CARD_WIDTH = 270;
+const LINK_CARD_HEIGHT = 178;
+/** Room between the info icon and its card, and between the card and the edge of the canvas. */
+const LINK_CARD_GAP = 14;
+const LINK_CARD_MARGIN = 8;
 
 /** What the styles dialog will apply; null means "leave as it is". */
 interface StyleDraft {
@@ -169,6 +182,8 @@ function writeFlag(key: string, value: boolean): void {
   changeDetection: ChangeDetectionStrategy.OnPush,
   // One history per diagram, so the service lives and dies with this component.
   providers: [HistoryService],
+  // Escape puts the card of a relationship away, wherever the keyboard focus is.
+  host: { '(document:keydown.escape)': 'closeLinkInfo()' },
 })
 export class PerfDiagram {
   protected readonly angularVersion = VERSION.full;
@@ -212,15 +227,28 @@ export class PerfDiagram {
   /** Whether the tool strip shows its column of shape icons, for the selected nodes. */
   protected readonly shapeMenuOpen = signal(false);
   /** The picture of the shape that all selected nodes have; null when they differ or none is selected. */
+  /**
+   * The nodes the Shape tool works on: the selected ones, or, while the tree of a
+   * single selected node is highlighted, every highlighted node. `shape` is the
+   * shape they all have, or null where they differ. Null when there are none.
+   */
+  protected readonly shapeScope = signal<{
+    count: number;
+    shape: string | null;
+    highlighted: boolean;
+  } | null>(null);
   protected readonly selectedShapeTile = computed(() => {
-    const shape = this.selected()?.shape;
+    const shape = this.shapeScope()?.shape;
     return SHAPE_TILES.find((tile) => tile.figure === shape) ?? null;
   });
   /** The hover text of the shape tool: what the selection has, or what to do first. */
   protected readonly shapeTip = computed(() => {
-    const sel = this.selected();
-    if (!sel) return 'Shape: select nodes first';
-    return `Shape: ${this.selectedShapeTile()?.label ?? 'mixed'}`;
+    const scope = this.shapeScope();
+    if (!scope) return 'Shape: select nodes first';
+    const shape = this.selectedShapeTile()?.label ?? 'mixed';
+    return scope.highlighted
+      ? `Shape of the ${scope.count} highlighted nodes: ${shape}`
+      : `Shape: ${shape}`;
   });
   protected readonly bulkRuns = signal(50);
   /**
@@ -304,10 +332,11 @@ export class PerfDiagram {
   protected readonly colorTarget = signal<NodeData | null>(null);
   /** The relationship shown in the info dialog. */
   protected readonly linkInfo = signal<LinkInfo | null>(null);
+  /** Whether every relationship shows its card in the diagram ("expand all"). */
+  protected readonly cardsExpanded = signal(false);
 
   private readonly host = viewChild.required<ElementRef<HTMLDivElement>>('diagramHost');
   private readonly overviewHost = viewChild.required<ElementRef<HTMLDivElement>>('overviewHost');
-  private readonly linkDialog = viewChild.required<ElementRef<HTMLDialogElement>>('linkDialog');
   /** The operation whose changes are listed in the changes dialog. */
   protected readonly changesShown = signal<LogEntry | null>(null);
   protected readonly maxChangeRows = MAX_CHANGE_ROWS;
@@ -385,15 +414,19 @@ export class PerfDiagram {
       });
     });
     this.diagram.addDiagramListener('ChangedSelection', () => {
-      this.syncSelection();
       this.highlightSelectedTree();
+      this.syncSelection();
+      // Selecting something, like a click on empty canvas, puts a relationship's card away.
+      if (this.diagram.selection.count > 0) this.closeLinkInfo();
       // Selecting something else takes the attention away from the search result.
       if (this.diagram.selection.count > 0) this.leaveSearchHit();
     });
     // Zooming by wheel or pinch counts as an action that ends the highlight.
     this.diagram.addDiagramListener('ViewportBoundsChanged', (e) => {
       if (e.subject.scale !== this.diagram.scale) this.clearHighlight();
+      this.followLinkInfo();
     });
+    this.diagram.addDiagramListener('BackgroundSingleClicked', () => this.closeLinkInfo());
 
     // Errors inside GoJS's own mouse and keyboard handling arrive here, not in runOperation.
     const onError = (): void => {
@@ -785,17 +818,97 @@ export class PerfDiagram {
     return this.removeLinks(() => this.linkDataOfSelectedNodes());
   }
 
-  /** Opens the info dialog for one relationship. */
+  /**
+   * Shows the card with a relationship's data next to its info icon. A second
+   * click on the same icon puts the card away again.
+   */
   private showLinkInfo(link: LinkData): void {
+    if (this.linkInfo()?.link === link) return this.closeLinkInfo();
+    const place = this.linkCardPlace(link);
+    if (!place) return;
     this.linkInfo.set({
       link,
       from: this.model.findNodeDataForKey(link.from),
       to: this.model.findNodeDataForKey(link.to),
       ownership: link.ownership === undefined ? null : formatOwnership(link.ownership),
-      // GoJS keeps its own bookkeeping on data objects under "__" names.
-      json: JSON.stringify(link, (name, value) => (name.startsWith('__') ? undefined : value), 2),
+      ...place,
     });
-    this.linkDialog().nativeElement.showModal();
+  }
+
+  /**
+   * Where the card of this relationship goes: beside its info icon, to the right
+   * where there is room and to the left otherwise, and never outside the canvas.
+   * Null when the relationship is no longer in the diagram.
+   */
+  private linkCardPlace(link: LinkData): { left: number; top: number } | null {
+    const line = this.diagram.findLinkForData(link);
+    if (!line) return null;
+    const icon = this.diagram.transformDocToView(line.midPoint);
+    const canvasWidth = this.diagram.viewportBounds.width * this.diagram.scale;
+    const canvasHeight = this.diagram.viewportBounds.height * this.diagram.scale;
+    const within = (value: number, size: number, room: number) =>
+      Math.max(LINK_CARD_MARGIN, Math.min(value, room - size - LINK_CARD_MARGIN));
+
+    const fitsOnTheRight =
+      icon.x + LINK_CARD_GAP + LINK_CARD_WIDTH <= canvasWidth - LINK_CARD_MARGIN;
+    const left = fitsOnTheRight ? icon.x + LINK_CARD_GAP : icon.x - LINK_CARD_GAP - LINK_CARD_WIDTH;
+    return {
+      left: Math.round(within(left, LINK_CARD_WIDTH, canvasWidth)),
+      top: Math.round(within(icon.y - LINK_CARD_HEIGHT / 2, LINK_CARD_HEIGHT, canvasHeight)),
+    };
+  }
+
+  /** Keeps an open card with its info icon after the diagram was scrolled, zoomed or changed. */
+  private followLinkInfo(): void {
+    const info = this.linkInfo();
+    if (!info) return;
+    const place = this.model.containsLinkData(info.link) ? this.linkCardPlace(info.link) : null;
+    if (!place) return this.closeLinkInfo();
+    if (place.left !== info.left || place.top !== info.top)
+      this.linkInfo.set({ ...info, ...place });
+  }
+
+  protected closeLinkInfo(): void {
+    this.linkInfo.set(null);
+  }
+
+  /**
+   * Shows the card of every relationship, on its line. The nodes are arranged
+   * anew, further apart, so that the cards fit between them and cover none.
+   */
+  protected expandCards(): Promise<void> {
+    return this.showCards(true);
+  }
+
+  /** Hides the cards of all relationships and arranges the nodes close together again. */
+  protected collapseCards(): Promise<void> {
+    return this.showCards(false);
+  }
+
+  /**
+   * One transaction, and so one undo step: the nodes move, and an undo has to
+   * bring back their places and the cards (or their absence) together.
+   */
+  private showCards(shown: boolean): Promise<void> {
+    return this.measure(() => ({
+      ...this.newTransactions(
+        shown ? 'Expand all' : 'Collapse all',
+        once(() => shown !== this.model.modelData.cardsExpanded),
+        () => {
+          this.history.record(shown ? 'expand all' : 'collapse all', () => {
+            const d = this.diagram;
+            d.model.set(d.model.modelData, 'cardsExpanded', shown);
+            // The same layout, with or without room for cards between the nodes.
+            const layout = createLayout(this.model.modelData.layoutType, d.nodes.count, shown);
+            resetPortSpots(d);
+            d.layout = layout;
+            layout.isValidLayout = false;
+          });
+          this.zoomToFitSoon();
+        },
+      ),
+      showBusyFirst: true,
+    }));
   }
 
   /** Opens the list of what an operation in the statistics changed. */
@@ -808,11 +921,6 @@ export class PerfDiagram {
     this.changesDialog().nativeElement.close();
   }
 
-  protected closeLinkInfo(): void {
-    this.linkDialog().nativeElement.close();
-  }
-
-  /** Removes the relationship shown in the info dialog. */
   protected removeInfoLink(): Promise<void> {
     const link = this.linkInfo()?.link;
     this.closeLinkInfo();
@@ -845,7 +953,8 @@ export class PerfDiagram {
             const d = this.diagram;
             d.model.set(d.model.modelData, 'layoutType', type);
             // GoJS records this assignment too, so undo/redo also swaps the layout object back.
-            const layout = createLayout(type, d.nodes.count);
+            // While the cards of all relationships are shown, the nodes keep their room.
+            const layout = createLayout(type, d.nodes.count, this.model.modelData.cardsExpanded);
             resetPortSpots(d);
             d.layout = layout;
             // Layouts are not "ongoing", so ask for this one run explicitly.
@@ -890,7 +999,27 @@ export class PerfDiagram {
   /** Gives the selected nodes the shape picked from the tool strip's column of icons, which then closes. */
   protected pickShape(shape: string): Promise<void> {
     this.shapeMenuOpen.set(false);
-    return this.editSelected('shape', shape);
+    // Taken now: carrying out the change ends the highlight that says which nodes are meant.
+    const nodes = this.shapeTargets();
+    return this.setField(() => nodes, 'shape', shape);
+  }
+
+  /** The nodes the Shape tool changes: all highlighted ones, or else the selected ones. */
+  private shapeTargets(): NodeData[] {
+    if (!this.highlighted) return this.selectedNodes();
+    return highlightedNodes(this.diagram).map((node) => node.data as NodeData);
+  }
+
+  /** Works out anew what the Shape tool would change and what shape those nodes have. */
+  private syncShapeScope(): void {
+    const nodes = this.shapeTargets();
+    if (nodes.length === 0) {
+      this.shapeScope.set(null);
+      this.shapeMenuOpen.set(false);
+      return;
+    }
+    const shared = nodes.every((node) => node.shape === nodes[0].shape) ? nodes[0].shape : null;
+    this.shapeScope.set({ count: nodes.length, shape: shared, highlighted: this.highlighted });
   }
 
   /**
@@ -1024,6 +1153,8 @@ export class PerfDiagram {
     if (!this.highlighted) return;
     this.highlighted = false;
     highlightTree(this.diagram, null);
+    // The Shape tool is back to the selected nodes alone.
+    this.syncShapeScope();
   }
 
   /** Looks for the nodes whose name contains what was typed; no result is stepped to yet. */
@@ -1156,6 +1287,7 @@ export class PerfDiagram {
     this.diagram.currentTool.doCancel();
     this.history.rollBackUnfinished();
     this.failure.set(null);
+    this.closeLinkInfo();
     const dataset = findDataset(datasetId);
     const data = dataset.create();
     // A big diagram's lines are not routed around its nodes, and orthogonal lines
@@ -1169,6 +1301,8 @@ export class PerfDiagram {
       // A loaded diagram starts out named after its data; the user can rename it.
       name: datasetId === BLANK_DATASET ? 'Untitled diagram' : dataset.label,
       description: '',
+      // A newly loaded diagram starts with its relationship cards put away.
+      cardsExpanded: false,
     };
     this.busy.set(true);
     // A new model gets new parts, none of them dimmed.
@@ -1183,7 +1317,8 @@ export class PerfDiagram {
 
   /** Makes the controls follow the model's settings, which a change, an undo or a redo alters. */
   private syncSettings(): void {
-    const { layoutType, linkType, name, description } = this.model.modelData;
+    const { layoutType, linkType, name, description, cardsExpanded } = this.model.modelData;
+    this.cardsExpanded.set(cardsExpanded);
     this.diagramName.set(name);
     this.diagramDescription.set(description);
     this.linkType.set(linkType);
@@ -1215,6 +1350,7 @@ export class PerfDiagram {
     if (!this.history.rollBackUnfinished()) return;
     this.failure.set(null);
     this.clearHighlight();
+    this.closeLinkInfo();
     const { name, hasNext, step, showBusyFirst } = plan();
     this.busy.set(true);
     try {
@@ -1280,6 +1416,8 @@ export class PerfDiagram {
     // The limit follows the node count, so a number typed for a bigger diagram may now be too high.
     if (this.bulkRuns() > this.maxBulkRuns()) this.bulkRuns.set(this.maxBulkRuns());
     this.stateCheck.set(this.history.describeState());
+    // A relationship that GoJS removed or moved by itself (the Delete key, a drag).
+    this.followLinkInfo();
     this.syncSettings();
     this.syncSelection();
   }
@@ -1315,8 +1453,7 @@ export class PerfDiagram {
     this.selectedLinks.set(this.selectedLinkData().length);
     this.linksOfSelectedNodes.set(this.linkDataOfSelectedNodes().length);
     const nodes = this.selectedNodes();
-    // Shapes are picked for the selected nodes; without any, the column of shapes has nothing to do.
-    if (nodes.length === 0) this.shapeMenuOpen.set(false);
+    this.syncShapeScope();
     const shared = <F extends EditableField>(field: F): NodeData[F] | null =>
       nodes.every((data) => data[field] === nodes[0][field]) ? nodes[0][field] : null;
     this.selected.set(

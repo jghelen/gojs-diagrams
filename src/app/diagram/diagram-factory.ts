@@ -25,6 +25,12 @@ export interface ModelData {
   /** What the user calls the diagram, and what they say about it. */
   name: string;
   description: string;
+  /**
+   * Whether every relationship shows its card ("expand all"). It is part of the
+   * model because the nodes stand further apart while it is on: undoing the
+   * expansion has to bring back both the old positions and the hidden cards.
+   */
+  cardsExpanded: boolean;
 }
 
 export type NodeModel = go.GraphLinksModel<NodeData, LinkData, ModelData>;
@@ -529,6 +535,222 @@ const OWNERSHIP_LABEL_TEMPLATE = createOwnershipLabel();
  * their link: they are hidden and removed together with it and never enter the
  * undo history.
  */
+/** Category of the small card with a relationship's data that "expand all" shows beside every info icon. */
+const CARD_ADORNMENT = 'Card';
+/** The cards are drawn above the nodes and above selection marks, so that nothing hides what a card says. */
+const CARD_LAYER = 'LinkCards';
+const CARD_TYPE = 'CARD_TYPE';
+const CARD_FROM = 'CARD_FROM';
+const CARD_TO = 'CARD_TO';
+const CARD_OWNERSHIP = 'CARD_OWNERSHIP';
+const CARD_FRAME = 'CARD_FRAME';
+const CARD_FILL = '#ffffff';
+const CARD_BORDER = '#9ca3af';
+/** The card of a line that is selected: a gold border on a faint gold ground. */
+const CARD_FILL_SELECTED = '#fff8e1';
+/** How far a card is moved along its line at a time when its place is taken. */
+const CARD_STEP = 24;
+/** How many such steps are tried in each direction before the card has to overlap something. */
+const CARD_STEPS = 80;
+/** How far from its info icon a card may be put when its whole line is hemmed in by nodes. */
+const CARD_SEARCH_RADIUS = 480;
+/** Room left between a card and whatever it is kept clear of. */
+const CARD_CLEARANCE = 3;
+/** Everything that a relationship line carries with it: its icon, its percentage and its card. */
+const LINK_ADORNMENTS = [INFO_ADORNMENT, OWNERSHIP_ADORNMENT, CARD_ADORNMENT];
+
+/**
+ * The card of one relationship: what kind it is, the two funds it joins and the
+ * ownership. It is part of the drawing, so it grows and shrinks with the zoom and
+ * stays in proportion to the nodes, however many cards are shown.
+ */
+function createLinkCard(): go.Adornment {
+  const line = (name: string, font: string, stroke: string) =>
+    new go.TextBlock({ ...ONE_LINE, name, font, stroke, maxSize: new go.Size(150, NaN) });
+  return new go.Adornment(go.PanelTypes.Auto, {
+    layerName: CARD_LAYER,
+    // A card stands on its line, where the info icon is.
+    locationSpot: go.Spot.Center,
+    // Clicks go through a card to whatever lies under it.
+    pickable: false,
+  }).add(
+    new go.Shape({
+      name: CARD_FRAME,
+      figure: go.Figures.RoundedRectangle,
+      parameter1: 4,
+      fill: CARD_FILL,
+      stroke: CARD_BORDER,
+      // The same width whether highlighted or not, so that a click never moves a card.
+      strokeWidth: 1.5,
+    }),
+    new go.Panel(go.PanelTypes.Vertical, {
+      margin: new go.Margin(4, 6),
+      defaultAlignment: go.Spot.Left,
+    }).add(
+      line(CARD_TYPE, 'bold 9px system-ui, sans-serif', '#111827'),
+      line(CARD_FROM, '9px system-ui, sans-serif', '#374151'),
+      line(CARD_TO, '9px system-ui, sans-serif', '#374151'),
+      line(CARD_OWNERSHIP, 'bold 9px system-ui, sans-serif', OWNERSHIP_COLOR),
+    ),
+  );
+}
+
+const LINK_CARD_TEMPLATE = createLinkCard();
+
+/** The diagrams in which cards are currently drawn, to know when there are some to take away. */
+const cardsDrawnIn = new WeakSet<go.Diagram>();
+
+/** Whether the cards of all relationships are shown in this diagram: the model says so. */
+export function allLinkCardsShown(diagram: go.Diagram): boolean {
+  return (diagram.model.modelData as Partial<ModelData>).cardsExpanded === true;
+}
+
+/**
+ * Makes the cards agree with what the model says: every relationship that has
+ * an info icon gets its card, or all cards are taken away. The diagram calls
+ * this itself whenever `cardsExpanded` changes, also by an undo or a redo.
+ */
+export function refreshLinkCards(diagram: go.Diagram): void {
+  if (allLinkCardsShown(diagram)) cardsDrawnIn.add(diagram);
+  else cardsDrawnIn.delete(diagram);
+  diagram.links.each((link) => link.updateAdornments());
+  placeLinkCards(diagram);
+}
+
+/**
+ * Rectangles that can be asked quickly whether a new one would overlap any of
+ * them. They are sorted into the squares of a coarse grid, so a question only
+ * looks at the few rectangles nearby, also in a diagram with thousands of them.
+ */
+class RectIndex {
+  private readonly cells = new Map<string, go.Rect[]>();
+  private static readonly CELL = 240;
+
+  private keysOf(rect: go.Rect): string[] {
+    const size = RectIndex.CELL;
+    const keys: string[] = [];
+    for (let x = Math.floor(rect.left / size); x <= Math.floor(rect.right / size); x++) {
+      for (let y = Math.floor(rect.top / size); y <= Math.floor(rect.bottom / size); y++) {
+        keys.push(`${x}:${y}`);
+      }
+    }
+    return keys;
+  }
+
+  add(rect: go.Rect): void {
+    for (const key of this.keysOf(rect)) {
+      const cell = this.cells.get(key);
+      if (cell) cell.push(rect);
+      else this.cells.set(key, [rect]);
+    }
+  }
+
+  overlaps(rect: go.Rect): boolean {
+    return this.keysOf(rect).some((key) =>
+      (this.cells.get(key) ?? []).some((other) => other.intersectsRect(rect)),
+    );
+  }
+}
+
+/**
+ * Every place within CARD_SEARCH_RADIUS of a point, on a fine grid, nearest
+ * first. The gaps between nodes are only a little wider than a card, so a
+ * coarser search could step right over the one place that fits.
+ */
+const NEARBY_OFFSETS: readonly (readonly [number, number])[] = (() => {
+  const step = CARD_STEP / 2;
+  const offsets: [number, number][] = [];
+  for (let dx = -CARD_SEARCH_RADIUS; dx <= CARD_SEARCH_RADIUS; dx += step) {
+    for (let dy = -CARD_SEARCH_RADIUS; dy <= CARD_SEARCH_RADIUS; dy += step) {
+      if (Math.hypot(dx, dy) <= CARD_SEARCH_RADIUS) offsets.push([dx, dy]);
+    }
+  }
+  return offsets.sort((a, b) => Math.hypot(a[0], a[1]) - Math.hypot(b[0], b[1]));
+})();
+
+/** The diagrams whose cards are waiting to be placed again. */
+const cardPlacementPending = new WeakSet<go.Diagram>();
+
+/** Places the cards once, shortly, however many lines ask for it in the same moment. */
+function scheduleCardPlacement(diagram: go.Diagram): void {
+  if (cardPlacementPending.has(diagram)) return;
+  cardPlacementPending.add(diagram);
+  queueMicrotask(() => {
+    cardPlacementPending.delete(diagram);
+    if (diagram.div) placeLinkCards(diagram);
+  });
+}
+
+/**
+ * Puts every relationship card on its line. A card belongs where the info icon
+ * is, in the middle of the line. Where that would cover a node or another card,
+ * the card is moved along its line, a step at a time in either direction, and
+ * tried on the line and right beside it, until a place is free. If the whole
+ * line offers none, the card goes to the nearest free place around its icon. It
+ * never covers a node as long as there is such a place within reach, and never
+ * another card: two cards on top of each other could not be read at all.
+ *
+ * The lines take their turn in the order of their keys, so the outcome does not
+ * depend on the order in which GoJS happened to draw them.
+ */
+export function placeLinkCards(diagram: go.Diagram): void {
+  if (!allLinkCardsShown(diagram)) return;
+  const nodes = new RectIndex();
+  diagram.nodes.each((node) => nodes.add(node.actualBounds));
+  const cards = new RectIndex();
+
+  const lines: RelationshipLink[] = [];
+  diagram.links.each((link) => {
+    if (link instanceof RelationshipLink && link.pointsCount >= 2) lines.push(link);
+  });
+  lines.sort((a, b) => Number(a.key) - Number(b.key));
+
+  for (const line of lines) {
+    const card = line.findAdornment(CARD_ADORNMENT);
+    if (!card) continue;
+    card.ensureBounds();
+    const { width, height } = card.actualBounds;
+    const boxAt = (centre: go.Point) =>
+      new go.Rect(centre.x - width / 2, centre.y - height / 2, width, height);
+    const roomy = (box: go.Rect) => box.copy().inflate(CARD_CLEARANCE, CARD_CLEARANCE);
+
+    // The middle of the line first, then ever further from it, to and fro. At each
+    // point the card is tried on the line and then right beside it, on either side:
+    // a line often runs close along a node, where only one side of it is free.
+    const beside = [
+      [0, 0],
+      [0, -(height / 2 + CARD_CLEARANCE)],
+      [0, height / 2 + CARD_CLEARANCE],
+      [-(width / 2 + CARD_CLEARANCE), 0],
+      [width / 2 + CARD_CLEARANCE, 0],
+    ];
+    const places: go.Point[] = [];
+    for (let step = 0; step <= CARD_STEPS; step++) {
+      for (const direction of step === 0 ? [1] : [1, -1]) {
+        const point = line.pointAlongRoute(direction * step * CARD_STEP);
+        if (!point) continue;
+        for (const [dx, dy] of beside) places.push(new go.Point(point.x + dx, point.y + dy));
+      }
+    }
+    // Should the whole line be hemmed in: the free place nearest to its info icon,
+    // looked for in widening circles around it.
+    const middle = line.midPoint;
+    const free = (point: go.Point) => !cards.overlaps(roomy(boxAt(point)));
+    const clear = (point: go.Point) => free(point) && !nodes.overlaps(roomy(boxAt(point)));
+    const nearestClear = (): go.Point | undefined => {
+      for (const [dx, dy] of NEARBY_OFFSETS) {
+        const point = new go.Point(middle.x + dx, middle.y + dy);
+        if (clear(point)) return point;
+      }
+      return undefined;
+    };
+    const centre = places.find(clear) ?? nearestClear() ?? places.find(free) ?? places[0] ?? middle;
+
+    card.location = centre;
+    cards.add(boxAt(centre));
+  }
+}
+
 class RelationshipLink extends go.Link {
   private get linkData(): LinkData | null {
     return this.data as LinkData | null;
@@ -589,9 +811,15 @@ class RelationshipLink extends go.Link {
     this.closeGaps();
     // Links drawn by the user have no icon.
     if (this.linkData?.category !== ('manual' satisfies LinkKind)) {
-      const icon = this.adornment(INFO_ADORNMENT, INFO_ICON_TEMPLATE);
-      icon.location = this.midPoint;
-      icon.opacity = this.opacity;
+      if (this.diagram && allLinkCardsShown(this.diagram)) {
+        // The card says everything the icon would open, so the icon makes way for it.
+        this.removeAdornment(INFO_ADORNMENT);
+      } else {
+        const icon = this.adornment(INFO_ADORNMENT, INFO_ICON_TEMPLATE);
+        icon.location = this.midPoint;
+        icon.opacity = this.opacity;
+      }
+      this.updateCard();
     }
     if (this.linkData?.ownership !== undefined) {
       const label = this.adornment(OWNERSHIP_ADORNMENT, OWNERSHIP_LABEL_TEMPLATE);
@@ -604,6 +832,69 @@ class RelationshipLink extends go.Link {
       if (this.toNode) placeOwnershipLabels(this.toNode);
       else label.location = this.ownershipLabelPoint(label.actualBounds, 0);
     }
+  }
+
+  /**
+   * Shows, fills in and places the small card with this relationship's data, or
+   * takes it away, depending on whether all cards of the diagram are shown.
+   */
+  private updateCard(): void {
+    const data = this.linkData;
+    if (!data || !this.diagram || !allLinkCardsShown(this.diagram)) {
+      this.removeAdornment(CARD_ADORNMENT);
+      return;
+    }
+    const card = this.adornment(CARD_ADORNMENT, LINK_CARD_TEMPLATE);
+    const write = (name: string, text: string) => {
+      const block = card.findObject(name);
+      if (block instanceof go.TextBlock) block.text = text;
+    };
+    const title = (node: go.Node | null) => (node?.data as NodeData | null)?.title ?? 'Unknown';
+    write(CARD_TYPE, data.category === 'hierarchy' ? 'Hierarchy' : 'Relation');
+    write(CARD_FROM, `From: ${title(this.fromNode)}`);
+    write(CARD_TO, `To: ${title(this.toNode)}`);
+    write(
+      CARD_OWNERSHIP,
+      data.ownership === undefined
+        ? 'Ownership: no data'
+        : `Ownership: ${formatOwnership(data.ownership)}`,
+    );
+    card.opacity = this.opacity;
+    // A click on a line selects it; its card is marked with it.
+    const frame = card.findObject(CARD_FRAME);
+    if (frame instanceof go.Shape) {
+      frame.stroke = this.isSelected ? SELECTION_GOLD : CARD_BORDER;
+      frame.fill = this.isSelected ? CARD_FILL_SELECTED : CARD_FILL;
+    }
+    // Where it goes depends on the other cards, so all of them are placed together.
+    scheduleCardPlacement(this.diagram);
+  }
+
+  /**
+   * The point that lies `distance` further along this line than its middle,
+   * measured along the route; a negative distance goes back towards the start.
+   * Null when the line is not that long.
+   */
+  pointAlongRoute(distance: number): go.Point | null {
+    const points: go.Point[] = [];
+    for (let i = 0; i < this.pointsCount; i++) points.push(this.getPoint(i));
+    const lengths = points
+      .slice(1)
+      .map((point, i) => Math.sqrt(point.distanceSquaredPoint(points[i])));
+    const total = lengths.reduce((sum, length) => sum + length, 0);
+    let remaining = total / 2 + distance;
+    if (remaining < 0 || remaining > total) return null;
+    for (let i = 0; i < lengths.length; i++) {
+      if (remaining <= lengths[i] || i === lengths.length - 1) {
+        const share = lengths[i] === 0 ? 0 : Math.min(1, remaining / lengths[i]);
+        return new go.Point(
+          points[i].x + (points[i + 1].x - points[i].x) * share,
+          points[i].y + (points[i + 1].y - points[i].y) * share,
+        );
+      }
+      remaining -= lengths[i];
+    }
+    return null;
   }
 
   /** This link's adornment of that category, made from the template on first use. */
@@ -848,6 +1139,14 @@ export function createDiagram(div: HTMLDivElement, clicks: IconClicks): go.Diagr
     new go.Layer({ name: INFO_LAYER, isTemporary: true }),
     diagram.findLayer('')!,
   );
+  // The cards that "expand all" shows go above everything else in the diagram:
+  // above the nodes, and above the layer in which GoJS marks what is selected.
+  // A selected line is drawn there as a thick coloured line along its whole
+  // route; it has to pass behind the cards, also behind its own, not across them.
+  diagram.addLayerAfter(
+    new go.Layer({ name: CARD_LAYER, isTemporary: true }),
+    diagram.findLayer('Adornment')!,
+  );
   // A link dragged from the rim of one node to another node becomes a 'manual' link.
   diagram.toolManager.linkingTool.archetypeLinkData = { category: 'manual' satisfies LinkKind };
   handleClicks(diagram, clicks);
@@ -855,8 +1154,19 @@ export function createDiagram(div: HTMLDivElement, clicks: IconClicks): go.Diagr
   diagram.addDiagramListener('SelectionMoved', (e) => rerouteLinksAcross(e.subject));
   // Lines are drawn up to the outline of a node, so when a node changes shape
   // its lines have to be measured again.
+  // An undo or a redo puts values back without announcing each of them. So after
+  // one, the cards are brought in line with the model again: it may have switched
+  // them on or off, or changed a title that they show.
   diagram.addModelChangedListener((e) => {
-    if (e.change !== go.ChangeType.Property || e.propertyName !== 'shape' || !e.object) return;
+    if (e.propertyName !== 'FinishedUndo' && e.propertyName !== 'FinishedRedo') return;
+    if (allLinkCardsShown(diagram) || cardsDrawnIn.has(diagram)) refreshLinkCards(diagram);
+  });
+  // And a card names the two funds of its line, so it follows a new title too.
+  diagram.addModelChangedListener((e) => {
+    if (e.change !== go.ChangeType.Property || !e.object) return;
+    // The cards of all relationships are switched on and off in the model.
+    if (e.propertyName === 'cardsExpanded') return refreshLinkCards(diagram);
+    if (e.propertyName !== 'shape' && e.propertyName !== 'title') return;
     diagram
       .findNodeForData(e.object)
       ?.findLinksConnected()
@@ -935,7 +1245,7 @@ export function picturedParts(diagram: go.Diagram): go.List<go.Part> {
   diagram.nodes.each((node) => parts.add(node));
   diagram.links.each((link) => {
     parts.add(link);
-    for (const category of [INFO_ADORNMENT, OWNERSHIP_ADORNMENT]) {
+    for (const category of LINK_ADORNMENTS) {
       const adornment = link.findAdornment(category);
       if (adornment) parts.add(adornment);
     }
@@ -967,26 +1277,52 @@ export function showSearchHit(diagram: go.Diagram, node: go.Node | null): void {
 }
 
 /**
- * Shows `node`, its ancestors up to the root, all of its descendants, and the
- * nodes it is joined to by a relationship the user drew, at full strength, each
- * with a gold outline, and dims the rest of the diagram; with null, nothing is
- * dimmed or outlined.
+ * Everything that is highlighted with a node: the nodes and the lines.
+ *
+ * 1. Its tree: the chain of funds above it up to the top, and every fund below it,
+ *    with the hierarchy lines between them.
+ * 2. Every relationship line of the node itself, whatever its kind (hierarchy,
+ *    other relationship, drawn by hand), with the fund at its other end.
+ * 3. Every line that joins two funds that are highlighted by 1 and 2. A line
+ *    between two highlighted nodes that stayed dim would look as if it were missing.
+ */
+function highlightOf(node: go.Node): go.Set<go.Part> {
+  const parts = node.findTreeParts().addAll(node.findTreeParentChain());
+  node.findLinksConnected().each((link) => {
+    parts.add(link);
+    const other = link.getOtherNode(node);
+    if (other) parts.add(other);
+  });
+  node.diagram?.links.each((link) => {
+    if (link.fromNode && link.toNode && parts.has(link.fromNode) && parts.has(link.toNode)) {
+      parts.add(link);
+    }
+  });
+  return parts;
+}
+
+/** The nodes that carry the gold outline of a highlighted tree. */
+export function highlightedNodes(diagram: go.Diagram): go.Node[] {
+  const nodes: go.Node[] = [];
+  diagram.nodes.each((node) => {
+    if (node.findAdornment(FOCUS_ADORNMENT)) nodes.push(node);
+  });
+  return nodes;
+}
+
+/**
+ * Shows `node` and everything that belongs to it (see highlightOf) at full
+ * strength, each node with a gold outline, and dims the rest of the diagram;
+ * with null, nothing is dimmed or outlined.
  * This is display only and never becomes part of the undo history.
  */
 export function highlightTree(diagram: go.Diagram, node: go.Node | null): void {
-  const tree = node && node.findTreeParts().addAll(node.findTreeParentChain());
-  // The relationships the user drew from or to this node count as well, with the nodes at their other end.
-  node?.findLinksConnected().each((link) => {
-    if ((link.data as LinkData | null)?.category !== ('manual' satisfies LinkKind)) return;
-    tree?.add(link);
-    const other = link.getOtherNode(node);
-    if (other) tree?.add(other);
-  });
+  const tree = node && highlightOf(node);
   diagram.commit((d) => {
     const show = (part: go.Part) => {
       part.opacity = !tree || tree.has(part) ? 1 : DIMMED_OPACITY;
       // A link's icon and percentage are parts of their own and have to be dimmed with it.
-      for (const category of [INFO_ADORNMENT, OWNERSHIP_ADORNMENT]) {
+      for (const category of LINK_ADORNMENTS) {
         const adornment = part.findAdornment(category);
         if (adornment) adornment.opacity = part.opacity;
       }
@@ -1048,7 +1384,7 @@ export function revealNodesOneByOne(diagram: go.Diagram, done: () => void): () =
 
   const show = (part: go.Part, visible: boolean) => {
     part.opacity = visible ? 1 : 0;
-    for (const category of [INFO_ADORNMENT, OWNERSHIP_ADORNMENT]) {
+    for (const category of LINK_ADORNMENTS) {
       const adornment = part.findAdornment(category);
       if (adornment) adornment.opacity = part.opacity;
     }

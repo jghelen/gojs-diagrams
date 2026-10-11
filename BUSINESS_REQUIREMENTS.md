@@ -44,16 +44,16 @@ the business: **does undo/redo stay fast and reliable on large structures** (up 
 
 ## 3. Screen overview
 
-| Area                          | Content                                                                                                  |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Header, left                  | **Data** dropdown: which diagram to open                                                                 |
-| Header, right                 | **Styles**, **Actions** menu, **Reset diagram** (reload icon), **New diagram**                           |
-| Bar above the canvas          | Diagram **name**, **description**, and **search**                                                        |
-| Left navigation on the canvas | Add node, Undo, Redo, Zoom in, Zoom out, Zoom to fit, Layout, Lines, Shape, Auto arrange (in that order) |
-| Canvas                        | The diagram                                                                                              |
-| Overview, bottom right        | A small picture of the whole diagram for moving around                                                   |
-| Below the canvas              | Timing table (see [14](#14-performance-measurement))                                                     |
-| Side panel, right             | History, bulk edits, selected relationships, selected nodes                                              |
+| Area                          | Content                                                                                                                            |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Header, left                  | **Data** dropdown: which diagram to open                                                                                           |
+| Header, right                 | **Styles**, **Actions** menu, **Reset diagram** (reload icon), **New diagram**                                                     |
+| Bar above the canvas          | Diagram **name**, **description**, and **search**                                                                                  |
+| Left navigation on the canvas | Add node, Undo, Redo, Zoom in, Zoom out, Zoom to fit, Layout, Lines, Shape, Auto arrange, Expand all, Collapse all (in that order) |
+| Canvas                        | The diagram                                                                                                                        |
+| Overview, bottom right        | A small picture of the whole diagram for moving around                                                                             |
+| Below the canvas              | Timing table (see [14](#14-performance-measurement))                                                                               |
+| Side panel, right             | History, bulk edits, selected relationships, selected nodes                                                                        |
 
 Every icon without a text label shows its name when the user hovers over it.
 
@@ -155,6 +155,9 @@ Every icon without a text label shows its name when the user hovers over it.
   navigation, not from the side panel. It opens a column of shape pictures, each named on hover;
   picking one changes all selected nodes as one undo step. The item shows the shape the selection
   has now and is disabled while no node is selected.
+- **BR-5.18b** While the tree of a single selected node is highlighted, the Shape item changes
+  every highlighted node, including the nodes joined by a hand-drawn relationship, as one undo
+  step. Its hover text then says how many nodes that is.
 - **BR-5.19** Where the selected nodes differ on a field, the panel shows "Mixed".
 - **BR-5.20** Title and subtitle can also be edited directly on a selected node.
 
@@ -208,9 +211,34 @@ Every icon without a text label shows its name when the user hovers over it.
 
 - **BR-6.8** Every relationship from the data has a small "i" icon in the middle of the line. It
   is drawn on top of the line.
-- **BR-6.9** Clicking it opens a dialog with the kind of relationship, the two funds it connects,
-  and the ownership ("No data" where unknown).
-- **BR-6.10** The relationship can be removed from that dialog.
+- **BR-6.9** Clicking it shows a card on the canvas, beside the icon, with the kind of
+  relationship, the two funds it connects, and the ownership ("No data" where unknown). It is
+  not a modal dialog: the rest of the screen stays usable.
+- **BR-6.9a** The card always stays inside the canvas, and follows its icon when the diagram is
+  scrolled or zoomed. Clicking the icon of another relationship moves the card there.
+- **BR-6.9b** The card goes away on a second click on the same icon, on its x, on Escape, on a
+  click on empty canvas, when a node is selected, when any action is carried out, and when other
+  data is loaded.
+- **BR-6.10** The relationship can be removed from that card.
+
+### 6.3a All relationship cards at once
+
+- **BR-6.10a** **Expand all** (left navigation, near the bottom) shows a card on every
+  relationship that has an info icon: the kind of relationship, the two funds and the ownership.
+  **Collapse all** hides them again.
+- **BR-6.10b** A card stands on its line, in the place of the info icon. While the cards are
+  shown, the info icons are not.
+- **BR-6.10c** Cards stand **between** the nodes. No card covers a node, and no card covers
+  another card. To make that possible, expanding arranges the diagram anew with the nodes
+  further apart; collapsing arranges it close together again.
+- **BR-6.10d** Where the place of the icon is taken, the card is moved along its line, or right
+  beside it, to the nearest free place.
+- **BR-6.10e** Expand all and Collapse all are one undo step each. Undoing an expansion brings
+  back the old positions of the nodes and hides the cards.
+- **BR-6.10f** When a line is selected by a click, its card is marked in gold.
+- **BR-6.10g** The cards grow and shrink with the zoom, like the nodes. They stay shown while the
+  diagram is edited, and when the layout is switched or arranged again. Opening other data
+  starts collapsed.
 
 ### 6.4 Drawing a relationship
 
@@ -243,10 +271,14 @@ Every icon without a text label shows its name when the user hovers over it.
   outline and node.
 - **BR-7.4** Clicking one of the icons on a node performs that icon's action and does not change
   the selection.
-- **BR-7.5** When **exactly one** node is selected, its tree is highlighted: every node of the
-  tree gets the gold outline, and the rest of the diagram is dimmed.
-- **BR-7.6** Nodes joined to the selected node by a manual relationship belong to the highlight
-  as well.
+- **BR-7.5** When **exactly one** node is selected, everything that belongs to it is highlighted
+  and the rest of the diagram is dimmed. Every highlighted node gets the gold outline.
+- **BR-7.6** What belongs to the selected node:
+  1. its tree: the funds above it up to the top and all funds below it, with the lines between
+     them;
+  2. every relationship line of the node itself, of any kind (hierarchy, other relationship,
+     drawn by hand), with the fund at its other end;
+  3. every line that joins two highlighted funds, also when that line is not part of the tree.
 - **BR-7.7** The highlight ends when the user clicks empty canvas, selects a second node, or does
   anything else (zoom, auto arrange, undo, an edit).
 - **BR-7.8** Highlighting is display only. It is never an undo step.

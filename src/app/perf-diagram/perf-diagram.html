@@ -132,6 +132,37 @@
     </div>
     <div class="diagram-area">
       <div #diagramHost class="diagram"></div>
+      @if (linkInfo(); as info) {
+        <div
+          class="link-card"
+          role="dialog"
+          [attr.aria-label]="'Relationship ' + info.link.key"
+          [style.left.px]="info.left"
+          [style.top.px]="info.top"
+        >
+          <div class="link-card-head">
+            <h2>Relationship {{ info.link.key }}</h2>
+            <button type="button" aria-label="Close" data-tip="Close" (click)="closeLinkInfo()">
+              ×
+            </button>
+          </div>
+          <dl>
+            <dt>Type</dt>
+            <dd>
+              {{ info.link.category === 'hierarchy' ? 'Hierarchy (parent to child)' : 'Relation' }}
+            </dd>
+            <dt>From</dt>
+            <dd>{{ info.from?.title ?? 'Unknown' }} (node {{ info.link.from }})</dd>
+            <dt>To</dt>
+            <dd>{{ info.to?.title ?? 'Unknown' }} (node {{ info.link.to }})</dd>
+            <dt>Ownership</dt>
+            <dd>{{ info.ownership ?? 'No data' }}</dd>
+          </dl>
+          <button type="button" class="wide" [disabled]="busy()" (click)="removeInfoLink()">
+            Remove relationship
+          </button>
+        </div>
+      }
       @if (failure(); as message) {
         <div class="failure" role="alert">
           <span>{{ message }}</span>
@@ -285,7 +316,7 @@
             aria-label="Shape"
             [attr.data-tip]="shapeTip()"
             [attr.aria-expanded]="shapeMenuOpen()"
-            [disabled]="busy() || isEmpty() || !selected()"
+            [disabled]="busy() || isEmpty() || !shapeScope()"
             (click)="toggleMenu('shape')"
           >
             @if (selectedShapeTile(); as tile) {
@@ -298,7 +329,7 @@
               </svg>
             }
           </button>
-          @if (shapeMenuOpen() && selected(); as sel) {
+          @if (shapeMenuOpen() && shapeScope(); as scope) {
             <div class="nav-flyout" role="menu" aria-label="Shapes">
               @for (tile of shapeTiles; track tile.figure) {
                 <button
@@ -306,8 +337,8 @@
                   role="menuitemradio"
                   [attr.data-tip]="tile.label"
                   [attr.aria-label]="tile.label"
-                  [attr.aria-checked]="tile.figure === sel.shape"
-                  [class.current]="tile.figure === sel.shape"
+                  [attr.aria-checked]="tile.figure === scope.shape"
+                  [class.current]="tile.figure === scope.shape"
                   (click)="pickShape(tile.figure)"
                 >
                   <svg class="shape-icon" viewBox="0 0 44 26" aria-hidden="true">
@@ -329,6 +360,28 @@
             <path
               d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8zM18.5 15.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z"
             />
+          </svg>
+        </button>
+        <button
+          type="button"
+          data-tip="Expand all: show the card of every relationship"
+          aria-label="Expand all"
+          [disabled]="busy() || isEmpty() || cardsExpanded()"
+          (click)="expandCards()"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8 9l4-4 4 4M8 15l4 4 4-4M12 5v14" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          data-tip="Collapse all: hide the relationship cards"
+          aria-label="Collapse all"
+          [disabled]="busy() || isEmpty() || !cardsExpanded()"
+          (click)="collapseCards()"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8 4l4 4 4-4M8 20l4-4 4 4M12 8v8" />
           </svg>
         </button>
       </nav>
@@ -546,29 +599,6 @@
     </section>
   </aside>
 </main>
-
-<dialog #linkDialog class="modal" (close)="linkDialog.open || linkInfo.set(null)">
-  @if (linkInfo(); as info) {
-    <h2>Relationship {{ info.link.key }}</h2>
-    <dl>
-      <dt>Type</dt>
-      <dd>{{ info.link.category === 'hierarchy' ? 'Hierarchy (parent to child)' : 'Relation' }}</dd>
-      <dt>From</dt>
-      <dd>{{ info.from?.title ?? 'Unknown' }} (node {{ info.link.from }})</dd>
-      <dt>To</dt>
-      <dd>{{ info.to?.title ?? 'Unknown' }} (node {{ info.link.to }})</dd>
-      <dt>Ownership</dt>
-      <dd>{{ info.ownership ?? 'No data' }}</dd>
-    </dl>
-    <pre>{{ info.json }}</pre>
-    <div class="actions">
-      <button type="button" [disabled]="busy()" (click)="removeInfoLink()">
-        Remove relationship
-      </button>
-      <button type="button" autofocus (click)="closeLinkInfo()">Close</button>
-    </div>
-  }
-</dialog>
 
 <dialog #changesDialog class="modal changes" (close)="changesDialog.open || changesShown.set(null)">
   @if (changesShown(); as entry) {

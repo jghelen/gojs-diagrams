@@ -38,7 +38,13 @@ describe('HistoryService', () => {
       rename(1, 'Changed');
       const model = createModel(
         { nodes: createNodes(5), links: createLinks(5) },
-        { layoutType: 'grid', linkType: 'straight', name: 'Other', description: '' },
+        {
+          layoutType: 'grid',
+          linkType: 'straight',
+          name: 'Other',
+          description: '',
+          cardsExpanded: false,
+        },
       );
       history.load(model);
       test.settle();

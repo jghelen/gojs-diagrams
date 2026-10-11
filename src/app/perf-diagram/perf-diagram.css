@@ -96,6 +96,44 @@ h1 {
   background: #fff;
 }
 
+/* The data of a relationship, shown on the canvas beside the info icon that was clicked. */
+.link-card {
+  position: absolute;
+  z-index: 4;
+  box-sizing: border-box;
+  /* The same number as LINK_CARD_WIDTH in the component, which places the card. */
+  width: 270px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.16);
+}
+
+.link-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.link-card-head h2 {
+  margin: 0;
+}
+
+.link-card-head button {
+  padding: 0 6px;
+  border-color: transparent;
+  background: transparent;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.link-card dl {
+  grid-template-columns: auto 1fr;
+  margin-bottom: 10px;
+}
+
 /* Says that an action failed and was undone; sits over the top of the canvas. */
 .failure {
   position: absolute;
@@ -136,7 +174,7 @@ h1 {
   z-index: 2;
   display: grid;
   grid-auto-flow: column;
-  grid-template-rows: repeat(10, 32px);
+  grid-template-rows: repeat(12, 32px);
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--border);
@@ -145,20 +183,26 @@ h1 {
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
 }
 
-/* One column of ten tools needs 452px of canvas; lower canvases get more columns. */
-@container canvas (max-height: 451px) {
+/* One column of twelve tools needs 524px of canvas; lower canvases get more columns. */
+@container canvas (max-height: 523px) {
   .canvas-nav {
-    grid-template-rows: repeat(5, 32px);
+    grid-template-rows: repeat(6, 32px);
   }
 }
 
-@container canvas (max-height: 271px) {
+@container canvas (max-height: 307px) {
   .canvas-nav {
     grid-template-rows: repeat(4, 32px);
   }
 }
 
 @container canvas (max-height: 235px) {
+  .canvas-nav {
+    grid-template-rows: repeat(3, 32px);
+  }
+}
+
+@container canvas (max-height: 199px) {
   .canvas-nav {
     grid-template-rows: repeat(2, 32px);
   }

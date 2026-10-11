@@ -62,6 +62,8 @@ interface Bench {
   canApplyStyle(): boolean;
   nodePreview(): { fill: string; subtitle: string };
   applyStyles(): Promise<void>;
+  expandCards(): Promise<void>;
+  collapseCards(): Promise<void>;
   askToResetStyles(): void;
   cancelResetStyles(): void;
   confirmResetStyles(): Promise<void>;
@@ -497,23 +499,160 @@ describe('PerfDiagram', () => {
       expect(diagram.findNodeForKey(5)!.findLinksConnected().count).toBe(0);
     });
 
-    it('show their ownership in the info dialog, or that there is no data', async () => {
-      const known = model().linkDataArray.find((link) => link.ownership !== undefined)!;
-      const unknown = model().linkDataArray.find((link) => link.ownership === undefined)!;
+    describe('info card', () => {
+      const card = () => page.querySelector<HTMLElement>('.diagram-area .link-card');
+      const field = (name: string): string => {
+        const terms = Array.from(card()!.querySelectorAll('dt'));
+        return terms
+          .find((term) => term.textContent === name)!
+          .nextElementSibling!.textContent!.trim();
+      };
+      const open = async (link: LinkData) => {
+        bench.showLinkInfo(link);
+        await settle();
+      };
+      /** Where the info icon of that relationship is on the canvas, in pixels. */
+      const iconAt = (link: LinkData) =>
+        diagram.transformDocToView(diagram.findLinkForData(link)!.midPoint);
 
-      bench.showLinkInfo(known);
-      expect(bench.linkInfo()?.ownership).toMatch(/^\d{1,3}\.\d{2}%$/);
-      bench.showLinkInfo(unknown);
-      await settle();
-      expect(bench.linkInfo()?.ownership).toBeNull();
-      expect(dialog('Relationship').textContent).toContain('No data');
-    });
+      it('shows the data of the relationship on the canvas, without opening a dialog', async () => {
+        const link = model().linkDataArray.find((candidate) => candidate.category === 'hierarchy')!;
+        expect(card()).toBeNull();
+        await open(link);
 
-    it('can be removed from the info dialog', async () => {
-      const link = anyLink();
-      bench.showLinkInfo(link);
-      await bench.removeInfoLink();
-      expect(model().containsLinkData(link)).toBe(false);
+        expect(card()).not.toBeNull();
+        expect(card()!.querySelector('h2')!.textContent).toBe(`Relationship ${link.key}`);
+        expect(field('Type')).toBe('Hierarchy (parent to child)');
+        expect(field('From')).toBe(`${nodeData(link.from).title} (node ${link.from})`);
+        expect(field('To')).toBe(`${nodeData(link.to).title} (node ${link.to})`);
+        for (const element of Array.from(page.querySelectorAll('dialog'))) {
+          expect(element.hasAttribute('open')).toBe(false);
+        }
+      });
+
+      it('shows the ownership, or that there is no data', async () => {
+        await open(model().linkDataArray.find((link) => link.ownership !== undefined)!);
+        expect(field('Ownership')).toMatch(/^\d{1,3}\.\d{2}%$/);
+        await open(model().linkDataArray.find((link) => link.ownership === undefined)!);
+        expect(field('Ownership')).toBe('No data');
+      });
+
+      it('stands beside the info icon that was clicked, inside the canvas', async () => {
+        for (const link of model().linkDataArray) {
+          await open(link);
+          const icon = iconAt(link);
+          const left = parseFloat(card()!.style.left);
+          const top = parseFloat(card()!.style.top);
+          // Inside the canvas, which is 1000 by 700 here; the card is 270 wide.
+          expect(left).toBeGreaterThanOrEqual(8);
+          expect(left + 270).toBeLessThanOrEqual(1000 - 8);
+          expect(top).toBeGreaterThanOrEqual(8);
+          expect(top + 178).toBeLessThanOrEqual(700 - 8);
+          // Beside the icon, not on top of it, wherever the canvas leaves room for that.
+          const onTheRight = Math.abs(left - (icon.x + 14)) <= 1;
+          const onTheLeft = Math.abs(left + 270 - (icon.x - 14)) <= 1;
+          const atTheEdge = left === 8 || left + 270 === 1000 - 8;
+          expect(onTheRight || onTheLeft || atTheEdge).toBe(true);
+        }
+      });
+
+      it('moves to another relationship when its icon is clicked', async () => {
+        const [first, second] = model().linkDataArray;
+        await open(first);
+        await open(second);
+        expect(page.querySelectorAll('.link-card')).toHaveLength(1);
+        expect(card()!.querySelector('h2')!.textContent).toBe(`Relationship ${second.key}`);
+      });
+
+      it('goes away on a second click on the same icon, on its x and on Escape', async () => {
+        const link = anyLink();
+        await open(link);
+        await open(link);
+        expect(card()).toBeNull();
+
+        await open(link);
+        card()!.querySelector<HTMLButtonElement>('button[aria-label="Close"]')!.click();
+        await settle();
+        expect(card()).toBeNull();
+
+        await open(link);
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        await settle();
+        expect(card()).toBeNull();
+      });
+
+      it('goes away on a click on empty canvas and when a node is selected', async () => {
+        const link = anyLink();
+        await open(link);
+        diagram.raiseDiagramEvent('BackgroundSingleClicked');
+        await settle();
+        expect(card()).toBeNull();
+
+        await open(link);
+        await select(3);
+        expect(card()).toBeNull();
+      });
+
+      it('goes away when an action runs and when other data is loaded', async () => {
+        const link = anyLink();
+        await open(link);
+        await bench.randomizeOne();
+        await settle();
+        expect(card()).toBeNull();
+
+        await open(model().linkDataArray[0]);
+        bench.reset('fund-structure');
+        await settle();
+        expect(card()).toBeNull();
+      });
+
+      it('follows its icon when the diagram is scrolled', async () => {
+        // At life size the diagram is bigger than the canvas, so it can be scrolled.
+        diagram.scale = 1;
+        await settle();
+        // A relationship in the middle of the diagram, brought to the middle of the canvas.
+        const middle = diagram.documentBounds.center;
+        const link = [...model().linkDataArray].sort((a, b) => {
+          const distance = (candidate: LinkData) =>
+            diagram.findLinkForData(candidate)!.midPoint.distanceSquaredPoint(middle);
+          return distance(a) - distance(b);
+        })[0];
+        const icon = diagram.findLinkForData(link)!.midPoint;
+        diagram.centerRect(new go.Rect(icon.x, icon.y, 1, 1));
+        await settle();
+        await open(link);
+        const before = { left: parseFloat(card()!.style.left), top: parseFloat(card()!.style.top) };
+        const from = diagram.position.copy();
+        diagram.position = new go.Point(from.x + 60, from.y + 40);
+        await settle();
+        const moved = { x: diagram.position.x - from.x, y: diagram.position.y - from.y };
+        expect(moved.x).toBeGreaterThan(0);
+        expect(parseFloat(card()!.style.left)).toBeCloseTo(before.left - moved.x, 0);
+        expect(parseFloat(card()!.style.top)).toBeCloseTo(before.top - moved.y, 0);
+      });
+
+      it('removes the relationship from its button, as one undo step, and closes', async () => {
+        const link = anyLink();
+        await open(link);
+        const remove = Array.from(card()!.querySelectorAll('button')).find((button) =>
+          button.textContent!.includes('Remove relationship'),
+        )!;
+        remove.click();
+        await settle();
+        await bench.undoAll();
+        await bench.redoAll();
+        expect(model().containsLinkData(link)).toBe(false);
+        expect(bench.stats()).toMatchObject({ historyLength: 1 });
+        expect(card()).toBeNull();
+      });
+
+      it('goes away when its relationship is deleted in another way', async () => {
+        const link = anyLink();
+        await open(link);
+        diagram.commit(() => model().removeLinkData(link), 'delete');
+        await settle();
+        expect(card()).toBeNull();
+      });
     });
   });
 
@@ -743,7 +882,7 @@ describe('PerfDiagram', () => {
     const tool = (label: string) =>
       page.querySelector<HTMLButtonElement>(`nav.canvas-nav button[aria-label="${label}"]`)!;
 
-    it('offers add node, undo, redo, the three zooms, layout, lines, shape and auto arrange, in that order', () => {
+    it('offers its twelve tools in a fixed order, with expand all and collapse all at the bottom', () => {
       const labels = Array.from(page.querySelectorAll('nav.canvas-nav button')).map((button) =>
         button.getAttribute('aria-label'),
       );
@@ -758,6 +897,8 @@ describe('PerfDiagram', () => {
         'Lines',
         'Shape',
         'Auto arrange',
+        'Expand all',
+        'Collapse all',
       ]);
     });
 
@@ -776,22 +917,183 @@ describe('PerfDiagram', () => {
         'Lines: Orthogonal, rounded',
         'Shape: select nodes first',
         'Auto arrange: run the current layout again',
+        'Expand all: show the card of every relationship',
+        'Collapse all: hide the relationship cards',
       ]);
+    });
+
+    describe('expand all and collapse all', () => {
+      const cards = () => {
+        const found: go.Adornment[] = [];
+        diagram.links.each((link) => {
+          const card = link.findAdornment('Card');
+          if (card) found.push(card);
+        });
+        return found;
+      };
+      const positions = () => model().nodeDataArray.map((node) => node.loc);
+      const press = async (label: 'Expand all' | 'Collapse all') => {
+        await (label === 'Expand all' ? bench.expandCards() : bench.collapseCards());
+        await settle();
+        // The cards are placed once all lines are routed; one more round draws them there.
+        await settle();
+      };
+
+      it('are started from their buttons', async () => {
+        tool('Expand all').click();
+        await settle();
+        // The click queues the operation; an empty undo and redo behind it tell when it is done.
+        await bench.undoAll();
+        await bench.redoAll();
+        await settle();
+        expect(cards()).toHaveLength(model().linkDataArray.length);
+
+        tool('Collapse all').click();
+        await settle();
+        await bench.undo();
+        await bench.redo();
+        await settle();
+        expect(cards()).toHaveLength(0);
+      });
+
+      it('show the card of every relationship, and hide them all again', async () => {
+        expect(cards()).toHaveLength(0);
+        expect(tool('Expand all').disabled).toBe(false);
+        expect(tool('Collapse all').disabled).toBe(true);
+
+        await press('Expand all');
+        expect(cards()).toHaveLength(model().linkDataArray.length);
+        expect(model().modelData.cardsExpanded).toBe(true);
+        expect(tool('Expand all').disabled).toBe(true);
+        expect(tool('Collapse all').disabled).toBe(false);
+
+        await press('Collapse all');
+        expect(cards()).toHaveLength(0);
+        expect(model().modelData.cardsExpanded).toBe(false);
+        expect(tool('Expand all').disabled).toBe(false);
+        expect(tool('Collapse all').disabled).toBe(true);
+      });
+
+      it('move the nodes apart so that every card stands between them, on none of them', async () => {
+        const compact = diagram.documentBounds.copy();
+        await press('Expand all');
+        expect(diagram.documentBounds.width).toBeGreaterThan(compact.width * 1.5);
+
+        const nodes: go.Rect[] = [];
+        diagram.nodes.each((node) => nodes.push(node.actualBounds));
+        const shown = cards().map((card) => card.actualBounds);
+        for (const card of shown) {
+          expect(nodes.some((node) => node.intersectsRect(card))).toBe(false);
+        }
+        for (let i = 0; i < shown.length; i++) {
+          for (let j = i + 1; j < shown.length; j++) {
+            expect(shown[i].intersectsRect(shown[j])).toBe(false);
+          }
+        }
+      });
+
+      it('are one undo step each: undo brings back the old places and puts the cards away', async () => {
+        const before = positions();
+        await press('Expand all');
+        expect(bench.stats()).toMatchObject({ historyLength: 1 });
+        expect(bench.log().at(-1)!.op).toBe('Expand all');
+        expect(positions()).not.toEqual(before);
+
+        await bench.undo();
+        await settle();
+        expect(positions()).toEqual(before);
+        expect(cards()).toHaveLength(0);
+        expect(tool('Expand all').disabled).toBe(false);
+        expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
+
+        await bench.redo();
+        await settle();
+        expect(cards()).toHaveLength(model().linkDataArray.length);
+        expect(tool('Collapse all').disabled).toBe(false);
+      });
+
+      it('put the nodes close together again on collapse', async () => {
+        const compact = diagram.documentBounds.copy();
+        await press('Expand all');
+        await press('Collapse all');
+        // The same compact arrangement, give or take a label at the edge.
+        expect(Math.abs(diagram.documentBounds.width - compact.width)).toBeLessThan(40);
+        expect(Math.abs(diagram.documentBounds.height - compact.height)).toBeLessThan(40);
+      });
+
+      it('keep the room and the cards when the layout is switched or arranged again', async () => {
+        await press('Expand all');
+        await bench.changeLayout('grid');
+        await bench.autoArrange();
+        await settle();
+        // The cards are placed once all lines are routed; one more round draws them there.
+        await settle();
+        expect(cards()).toHaveLength(model().linkDataArray.length);
+        const nodes: go.Rect[] = [];
+        diagram.nodes.each((node) => nodes.push(node.actualBounds));
+        for (const card of cards()) {
+          expect(nodes.some((node) => node.intersectsRect(card.actualBounds))).toBe(false);
+        }
+      });
+
+      it('put away the card that a click on an info icon opened', async () => {
+        bench.showLinkInfo(model().linkDataArray[0]);
+        await settle();
+        expect(page.querySelector('.link-card')).not.toBeNull();
+        await press('Expand all');
+        expect(page.querySelector('.link-card')).toBeNull();
+      });
+
+      it('start collapsed again when other data is loaded', async () => {
+        await press('Expand all');
+        bench.reset('fund-structure');
+        await settle();
+        expect(cards()).toHaveLength(0);
+        expect(model().modelData.cardsExpanded).toBe(false);
+        expect(tool('Expand all').disabled).toBe(false);
+        expect(tool('Collapse all').disabled).toBe(true);
+      });
+
+      it('are disabled on an empty diagram', async () => {
+        bench.reset('blank');
+        await settle();
+        expect(tool('Expand all').disabled).toBe(true);
+        expect(tool('Collapse all').disabled).toBe(true);
+      });
     });
 
     describe('shape', () => {
       const choices = () =>
         Array.from(page.querySelectorAll<HTMLButtonElement>('.nav-flyout button'));
+      const pickShape = async (label: string) => {
+        tool('Shape').click();
+        await settle();
+        choices()
+          .find((choice) => choice.dataset['tip'] === label)!
+          .click();
+        await settle();
+        await bench.undoAll();
+        await bench.redoAll();
+      };
+      /** The keys of the nodes that carry the gold outline of a highlighted tree. */
+      const highlightedKeys = () => {
+        const keys: number[] = [];
+        diagram.nodes.each((node) => {
+          if (node.findAdornment('Focus')) keys.push(node.key as number);
+        });
+        return keys.sort((a, b) => a - b);
+      };
 
       it('needs a selection', async () => {
         expect(tool('Shape').disabled).toBe(true);
-        await select(3);
+        expect(tool('Shape').dataset['tip']).toBe('Shape: select nodes first');
+        await select(3, 5);
         expect(tool('Shape').disabled).toBe(false);
         expect(tool('Shape').dataset['tip']).toBe('Shape: Square');
       });
 
       it('opens a column of shape pictures that are named on hover', async () => {
-        await select(3);
+        await select(3, 5);
         tool('Shape').click();
         await settle();
         expect(page.querySelector('.nav-flyout')!.getAttribute('aria-label')).toBe('Shapes');
@@ -813,14 +1115,7 @@ describe('PerfDiagram', () => {
 
       it('gives every selected node the picked shape, as one undo step, and closes', async () => {
         await select(3, 5, 8);
-        tool('Shape').click();
-        await settle();
-        choices()
-          .find((choice) => choice.dataset['tip'] === 'Diamond')!
-          .click();
-        await settle();
-        await bench.undoAll();
-        await bench.redoAll();
+        await pickShape('Diamond');
 
         for (const key of [3, 5, 8]) expect(nodeData(key).shape).toBe('Diamond');
         expect(nodeData(4).shape).toBe(DEFAULT_SHAPE);
@@ -831,14 +1126,63 @@ describe('PerfDiagram', () => {
       });
 
       it('says "mixed" when the selected nodes differ, and shows its picture when they agree', async () => {
-        await select(3);
-        await bench.editSelected('shape', 'Ellipse');
         await select(3, 4);
+        await bench.editSelected('shape', 'Ellipse');
+        await select(3, 5);
         expect(tool('Shape').dataset['tip']).toBe('Shape: mixed');
         expect(tool('Shape').querySelector('svg.shape-icon')).toBeNull();
-        await select(3);
+        await select(3, 4);
         expect(tool('Shape').dataset['tip']).toBe('Shape: Ellipse');
         expect(tool('Shape').querySelector('svg.shape-icon')).not.toBeNull();
+      });
+
+      it('works on all highlighted nodes when one node is selected and its tree is highlighted', async () => {
+        await select(2);
+        const tree = highlightedKeys();
+        expect(tree.length).toBeGreaterThan(1);
+        expect(tree).toContain(2);
+        expect(tool('Shape').dataset['tip']).toBe(
+          `Shape of the ${tree.length} highlighted nodes: Square`,
+        );
+
+        await pickShape('Capsule');
+        for (const node of model().nodeDataArray) {
+          expect(node.shape).toBe(tree.includes(node.key) ? 'Capsule' : DEFAULT_SHAPE);
+        }
+        expect(bench.stats()).toMatchObject({ historyLength: 1 });
+        expect(bench.log().at(-1)!.op).toBe(`Set shape on ${tree.length} nodes`);
+
+        await bench.undo();
+        for (const node of model().nodeDataArray) expect(node.shape).toBe(DEFAULT_SHAPE);
+      });
+
+      it('includes the nodes joined to the selected one by a relationship the user drew', async () => {
+        const outsider = model().nodeDataArray.find((node) => {
+          diagram.select(diagram.findNodeForKey(2)!);
+          return !highlightedKeys().includes(node.key);
+        })!;
+        diagram.clearSelection();
+        diagram.commit(
+          () => model().addLinkData({ key: 950, from: 2, to: outsider.key, category: 'manual' }),
+          'draw',
+        );
+        await settle();
+        await select(2);
+        expect(highlightedKeys()).toContain(outsider.key);
+        await pickShape('Diamond');
+        expect(outsider.shape).toBe('Diamond');
+      });
+
+      it('goes back to the selected node alone once the highlight has ended', async () => {
+        await select(2);
+        expect(tool('Shape').dataset['tip']).toContain('highlighted nodes');
+        // Zoom to fit ends the highlight; the node stays selected.
+        bench.zoomToFit();
+        await settle();
+        expect(tool('Shape').dataset['tip']).toBe('Shape: Square');
+        await pickShape('Ellipse');
+        expect(nodeData(2).shape).toBe('Ellipse');
+        expect(model().nodeDataArray.filter((node) => node.shape === 'Ellipse')).toHaveLength(1);
       });
 
       it('closes its column when the selection is cleared', async () => {
