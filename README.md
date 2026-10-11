@@ -576,25 +576,39 @@ four things, and fails if any of them does:
 | Build      | `npm run build`             | Anything that does not compile, and a bundle over its size budget                            |
 | Unit tests | `npm test -- --watch=false` | Behaviour that changed                                                                       |
 
-**A pull request can only be merged once its checks have passed**: not while they are running,
-and not after they failed. A workflow cannot disable the merge button itself, so it uses the one
-thing GitHub never merges, a draft:
+**Making GitHub refuse a merge until the checks have passed.** The workflow only reports; the
+"Merge pull request" button is governed by a setting of the repository, which has to be switched
+on once:
 
-1. As soon as the workflow starts, the job **Hold merging while the checks run** turns the pull
-   request into a draft and gives it the label `merge-blocked`.
-2. The checks run.
-3. If they passed, the job **Allow merging once the checks have passed** makes the pull request
-   ready again and removes the label. If they failed, it stays a draft, until a later commit
-   passes them.
+1. On GitHub: **Settings → Branches → Add branch protection rule** (or "Add classic branch
+   protection rule").
+2. Branch name pattern: `main`.
+3. Tick **Require status checks to pass before merging**, and in the search box below it pick
+   `Format, lint, build, test`.
+4. Tick **Do not allow bypassing the above settings**. Without it the rule does not apply to the
+   owner of the repository, who would still see an enabled button.
+5. **Create**.
 
-A pull request you made a draft yourself has no such label; it is checked, but stays a draft
-whatever the outcome. Between opening a pull request and the start of the workflow, a few
-seconds, the button is still enabled.
+From then on the button is disabled while the checks run and after they failed, and becomes
+available when they pass. The price: nothing can be pushed straight to `main` any more, because a
+direct push has not passed the check. Every change goes through a pull request.
 
-This is a stand-in for the setting GitHub has for the purpose: Settings → Branches → a protection
-rule for `main` with "Require status checks to pass before merging" and the check
-`Format, lint, build, test`. With that rule the merge button is disabled directly, from the first
-moment, and the two jobs are no longer needed.
+The same from a terminal, with the GitHub CLI logged in as the owner:
+
+```bash
+gh api --method PUT repos/jghelen/gojs-diagrams/branches/main/protection --input - <<'JSON'
+{
+  "required_status_checks": { "strict": false, "checks": [{ "context": "Format, lint, build, test" }] },
+  "enforce_admins": true,
+  "required_pull_request_reviews": null,
+  "restrictions": null
+}
+JSON
+```
+
+A workflow cannot do this by itself. Turning a failing pull request into a draft, which GitHub
+does not merge, was tried here and failed: the label was set, but the step that makes the draft
+ended with an error, so the pull request stayed mergeable.
 
 Run all four locally, the same way, before pushing:
 
