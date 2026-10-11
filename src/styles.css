@@ -179,3 +179,19 @@ button.icon-button svg {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+/*
+ * Printing. A browser prints the address of the page, the date and time, the
+ * title and the page number in the margin of every sheet. A sheet without a
+ * margin has no room for them, so they are left out. What is printed gives
+ * itself the margin back: see .print-only in diagram-page.css.
+ */
+@page {
+  margin: 0;
+}
+
+@media print {
+  body {
+    margin: 0;
+  }
+}

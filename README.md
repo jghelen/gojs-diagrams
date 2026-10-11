@@ -117,7 +117,9 @@ nodes, because there is nothing to export or print then.
   cannot hold, such as `/ : ? "`, and other symbols are replaced by a dash, and a name with
   nothing usable in it becomes `diagram.png`. The picture is drawn at twice the size of the diagram so that small text stays
   sharp, and without the gold outlines and dimming of a selection.
-- **Print** opens the browser's print dialog with a picture of the whole diagram.
+- **Print** opens the browser's print dialog with a picture of the whole diagram, on one sheet.
+  The sheet shows the picture only: not the address of the page, the date and time, or a page
+  number, which browsers otherwise print in the margin.
 - **Save** and **Save As** are shown but not available yet.
 
 When the diagram has no nodes, the tool strip disables zooming, layout and auto arrange. Add node,

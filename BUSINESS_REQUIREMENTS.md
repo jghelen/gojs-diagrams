@@ -501,6 +501,9 @@ while the diagram has no nodes (BR-4.15).
   replaced by a dash, so that the download always works. Letters of any alphabet, digits, spaces
   and `. _ - ( )` are kept. If nothing usable is left, the file is called `diagram.png`.
 - **BR-12.4** **Print** opens the browser's print dialog with a picture of the whole diagram.
+- **BR-12.4a** The printed sheet shows the picture only, whole and on a single sheet. The address
+  of the page, the date and time, the title and the page number, which a browser adds in the margin
+  of a printout, are not printed.
 - **BR-12.5** **Save** and **Save As** are listed but disabled.
 
 ## 13. Confirmations and buttons
