@@ -1,6 +1,7 @@
 :host {
   display: grid;
-  grid-template-rows: auto 1fr;
+  /* The header, everything else, the footer. */
+  grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100vh;
 }
 

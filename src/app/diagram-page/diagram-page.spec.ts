@@ -1863,6 +1863,53 @@ describe('DiagramPage', () => {
   });
 
   describe('header', () => {
+    it('no longer carries the versions; they are small print in the footer', () => {
+      expect(page.querySelector('header')!.textContent).not.toContain('GoJS');
+      const footer = page.querySelector('footer.page-footer')!;
+      expect(footer.textContent!.trim()).toMatch(/^Angular \d+\.\d+\.\d+ · GoJS \d+\.\d+\.\d+$/);
+      // The footer comes after everything else on the page.
+      expect(page.querySelector('main')!.compareDocumentPosition(footer)).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    });
+
+    describe('number of legal entities', () => {
+      const count = () => page.querySelector<HTMLElement>('header .node-count')!;
+
+      it('stands right after the Data dropdown, as "LE: 30"', () => {
+        expect(count().textContent!.trim()).toBe('LE: 30');
+        // The hover text says what the short label stands for.
+        expect(count().title).toBe('Number of legal entities on the diagram');
+        expect(count().previousElementSibling!.querySelector('select')).not.toBeNull();
+        expect(count().previousElementSibling!.textContent).toContain('Data');
+      });
+
+      it('follows the data that is opened', async () => {
+        bench.reset('fund-structure');
+        await settle();
+        expect(count().textContent!.trim()).toBe('LE: 24');
+        bench.reset('blank');
+        await settle();
+        expect(count().textContent!.trim()).toBe('LE: 0');
+      });
+
+      it('follows nodes that are added and deleted, and their undo', async () => {
+        await bench.addNode();
+        await settle();
+        expect(count().textContent!.trim()).toBe('LE: 31');
+
+        bench.askToDelete([nodeData(3), nodeData(4)]);
+        await bench.confirmDelete();
+        await settle();
+        expect(count().textContent!.trim()).toBe('LE: 29');
+
+        await bench.undo();
+        await bench.undo();
+        await settle();
+        expect(count().textContent!.trim()).toBe('LE: 30');
+      });
+    });
+
     it('ends, at the right, with Styles, Actions, reset, new diagram and the developer tools switch', async () => {
       const controls = Array.from(page.querySelectorAll<HTMLElement>('header .bar-end > *')).map(
         (control) => control.getAttribute('aria-label') ?? control.textContent?.trim(),

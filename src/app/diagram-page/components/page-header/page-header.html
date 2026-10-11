@@ -1,6 +1,5 @@
 <header class="bar">
   <h1>Fund structure diagrams</h1>
-  <span class="versions">Angular {{ angularVersion }} · GoJS {{ gojsVersion }}</span>
   <label>
     Data
     <select [disabled]="busy()" (change)="loadDataset.emit($any($event.target).value)">
@@ -11,6 +10,10 @@
       }
     </select>
   </label>
+  <!-- LE: legal entities, the nodes of the diagram. -->
+  <span class="node-count" title="Number of legal entities on the diagram"
+    >LE: {{ nodeCount() }}</span
+  >
   <div class="bar-end">
     <button
       type="button"

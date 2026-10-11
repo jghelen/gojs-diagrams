@@ -46,12 +46,13 @@ the business: **does undo/redo stay fast and reliable on large structures** (up 
 
 | Area                          | Content                                                                                                                            |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Header, left                  | **Data** dropdown: which diagram to open                                                                                           |
+| Header, left                  | **Data** dropdown: which diagram to open; next to it **LE: n**, the number of legal entities                                       |
 | Header, right                 | **Styles**, **Actions** menu, **Reset diagram** (reload icon), **New diagram**, **Developer tools** switch                         |
 | Bar above the canvas          | Diagram **name**, **description**, and **search**                                                                                  |
 | Left navigation on the canvas | Add node, Undo, Redo, Zoom in, Zoom out, Zoom to fit, Layout, Lines, Shape, Auto arrange, Expand all, Collapse all (in that order) |
 | Canvas                        | The diagram                                                                                                                        |
 | Overview, bottom right        | A small picture of the whole diagram for moving around                                                                             |
+| Footer                        | In small print: the versions of Angular and GoJS the application is built with                                                     |
 | Side panel, right             | Selected relationships, selected nodes; with the developer tools also History and bulk edits                                       |
 | Below the canvas              | With the developer tools only: timing table (see [14](#14-performance-measurement))                                                |
 
@@ -62,6 +63,9 @@ Every icon without a text label shows its name when the user hovers over it.
 ### 4.1 Opening a diagram
 
 - **BR-4.1** The application opens with the diagram of 30 generated funds.
+- **BR-4.1a** Next to the Data dropdown the header shows **LE:** and the number of legal entities
+  (nodes) in the diagram, in dark blue and bold. It follows every change: other data, added and
+  deleted nodes, undo and redo.
 - **BR-4.2** The **Data** dropdown offers: a sample fund structure (24 funds: a fund of funds and
   what it holds, four levels deep), generated diagrams of 30, 100, 200, 500, 1000 and 2000 funds,
   and an empty diagram.

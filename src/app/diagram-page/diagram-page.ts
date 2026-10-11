@@ -36,6 +36,7 @@ import { openInNewTab } from './browser';
 import { BenchmarkStatistics } from './components/benchmark-statistics/benchmark-statistics';
 import { DiagramInfoBar } from './components/diagram-info-bar/diagram-info-bar';
 import { NodeDialogs } from './components/node-dialogs/node-dialogs';
+import { PageFooter } from './components/page-footer/page-footer';
 import { PageHeader } from './components/page-header/page-header';
 import { RelationshipCard } from './components/relationship-card/relationship-card';
 import { SidePanel } from './components/side-panel/side-panel';
@@ -66,6 +67,7 @@ const LOAD_PATIENCE_MS = 100;
  * - `SidePanel`: history numbers, random edits and the selection, on the right.
  * - `NodeDialogs`: color, comment and delete confirmation of a node.
  * - `StylesDialog`: styles by legal entity field.
+ * - `PageFooter`: the versions the app is built with, in small print at the bottom.
  *
  * The parts do not talk to each other. They share the services that the page
  * provides, one set per diagram:
@@ -87,6 +89,7 @@ const LOAD_PATIENCE_MS = 100;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     PageHeader,
+    PageFooter,
     DiagramInfoBar,
     ToolStrip,
     RelationshipCard,

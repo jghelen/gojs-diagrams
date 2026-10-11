@@ -1,5 +1,4 @@
-import { ChangeDetectionStrategy, Component, VERSION, inject, input, output } from '@angular/core';
-import * as go from 'gojs/release/go';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { BLANK_DATASET } from '../../../diagram/constants';
 import { DATASETS } from '../../../diagram/datasets';
 import { DeveloperTools } from '../../developer-tools';
@@ -33,8 +32,9 @@ export class PageHeader {
   protected readonly busy = inject(OperationRunner).busy;
   /** True when the diagram has no nodes: there is nothing to style, export or print then. */
   protected readonly isEmpty = inject(DiagramState).isEmpty;
-  protected readonly angularVersion = VERSION.full;
-  protected readonly gojsVersion = go.Diagram.version;
+  private readonly stats = inject(DiagramState).stats;
+  /** How many legal entities (nodes) the diagram has; shown next to the Data dropdown. */
+  protected readonly nodeCount = computed(() => this.stats()?.nodes ?? 0);
   protected readonly datasets = DATASETS;
   /** The dataset with nothing in it: what "New diagram" loads. */
   protected readonly blankDataset = BLANK_DATASET;
