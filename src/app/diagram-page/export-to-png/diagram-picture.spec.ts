@@ -1,5 +1,5 @@
 import * as go from 'gojs/release/go';
-import { createTestDiagram, linksOf, nodesOf } from '../../testing/diagram-harness';
+import { createTestDiagram, linksOf, nodesOf } from '../../../testing/diagram-harness';
 import { diagramPicture, downloadDiagramPng } from './diagram-picture';
 
 describe('pictures of the diagram', () => {

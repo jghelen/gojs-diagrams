@@ -473,6 +473,10 @@ diagram has no nodes (BR-4.15).
   snapshot"). The same check is made after redoing everything.
 - **BR-11.4a** That check compares everything down to the last digit, including where every node
   stands. A node is put back to exactly the place it had, not to one that merely looks the same.
+- **BR-11.4b** While the diagram has changes that could be undone, closing or reloading the browser
+  tab, or leaving the page, must be confirmed: the browser asks whether to leave and lose the
+  changes. No question is asked for a diagram as it was opened, or once every change is undone.
+  The question is the browser's own dialog; its text cannot be set by the application.
 - **BR-11.5** Things that only change what is shown are not undo steps: selection, highlight,
   search, zoom, scrolling, the loading animation.
 - **BR-11.5a** Undoing the first action after a diagram was opened must leave the diagram fully

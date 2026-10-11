@@ -2779,6 +2779,64 @@ describe('DiagramPage', () => {
     });
   });
 
+  describe('closing the tab', () => {
+    /** Whether the browser would ask "Leave site?" if the tab were closed or reloaded now. */
+    const asksBeforeLeaving = (): boolean => {
+      const leaving = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(leaving);
+      return leaving.defaultPrevented;
+    };
+
+    it('needs no question for a diagram as it was opened', () => {
+      expect(asksBeforeLeaving()).toBe(false);
+    });
+
+    it('asks once the diagram has a change that would be lost', async () => {
+      await bench.randomizeOne();
+      expect(asksBeforeLeaving()).toBe(true);
+    });
+
+    it('asks after any kind of change: a move by hand, a new node, another name', async () => {
+      diagram.commit(() => {
+        const node = diagram.findNodeForKey(4)!;
+        node.location = node.location.copy().offset(40, 40);
+      }, 'Move');
+      await settle();
+      expect(asksBeforeLeaving()).toBe(true);
+    });
+
+    it('no longer asks when every change was undone, and asks again after a redo', async () => {
+      await bench.randomizeOne();
+      await bench.addNode();
+      await bench.undoAll();
+      expect(asksBeforeLeaving()).toBe(false);
+      await bench.redo();
+      expect(asksBeforeLeaving()).toBe(true);
+    });
+
+    it('does not ask about things that are not changes: a selection, a search, a zoom', async () => {
+      await select(3);
+      bench.zoomIn();
+      page.querySelector<HTMLInputElement>('.search input')!.value = 'fund';
+      page.querySelector<HTMLInputElement>('.search input')!.dispatchEvent(new Event('input'));
+      await settle();
+      expect(asksBeforeLeaving()).toBe(false);
+    });
+
+    it('does not ask right after other data was opened or the diagram was reset', async () => {
+      await bench.randomizeOne();
+      bench.reset('fund-structure');
+      await settle();
+      expect(asksBeforeLeaving()).toBe(false);
+    });
+
+    it('stops asking when the page is gone', async () => {
+      await bench.randomizeOne();
+      fixture.destroy();
+      expect(asksBeforeLeaving()).toBe(false);
+    });
+  });
+
   describe('side panel', () => {
     /** The page as someone sees it who never asked for the developer tools. */
     let plain: ComponentFixture<DiagramPage>;

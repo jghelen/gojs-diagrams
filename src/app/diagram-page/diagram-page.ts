@@ -45,7 +45,7 @@ import { StylesDialog } from './components/style-dialog/styles-dialog';
 import { ToolStrip } from './components/tool-strip/tool-strip';
 import { DeveloperTools } from './developer-tools';
 import { DiagramActions } from './diagram-actions';
-import { diagramPicture, downloadDiagramPng } from './diagram-picture';
+import { diagramPicture, downloadDiagramPng } from './export-to-png/diagram-picture';
 import { DiagramState } from './diagram-state/diagram-state';
 import { FundStyles } from './fund-styles';
 import { LinkInfoCard } from './link-info-card/link-info-card';
@@ -88,6 +88,8 @@ const LOAD_PATIENCE_MS = 100;
   templateUrl: './diagram-page.html',
   styleUrl: './diagram-page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // Closing or reloading the tab would lose the changes: see confirmLeaving.
+  host: { '(window:beforeunload)': 'confirmLeaving($event)' },
   imports: [
     PageHeader,
     PageFooter,
@@ -400,6 +402,25 @@ export class DiagramPage {
       title: nodes.length === 1 ? nodes[0].title : null,
       attached: attached.length,
     });
+  }
+
+  // ----- Leaving the page -----
+
+  /**
+   * Asks before the tab is closed or reloaded, or left for another address,
+   * while the diagram has changes: nothing is saved anywhere, so they would be
+   * lost. A diagram as it was opened, or with every change undone, is let go
+   * without a question.
+   *
+   * The question itself is the browser's own ("Leave site? Changes you made may
+   * not be saved"). A page is not allowed to show a dialog of its own at that
+   * moment, or to change the words; all it can do is ask for the question.
+   */
+  protected confirmLeaving(event: BeforeUnloadEvent): void {
+    if (!this.history.canUndo) return;
+    event.preventDefault();
+    // What browsers looked at before they honoured preventDefault here.
+    event.returnValue = true;
   }
 
   // ----- Styles, export and print -----
