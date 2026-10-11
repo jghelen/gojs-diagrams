@@ -203,6 +203,9 @@ function createTreeLayout(angle: 90 | 270, nodeCount: number, gaps: Gaps): go.Tr
   });
 }
 
+/** How many nodes the grid layout puts in a row. */
+const GRID_COLUMNS = 20;
+
 /**
  * Every layout has isOngoing off: it runs when a model is loaded and when the
  * layout type is switched, but not after each edit. Otherwise every transaction
@@ -246,7 +249,11 @@ export function createLayout(
     case 'grid':
       return new go.GridLayout({
         isOngoing: false,
-        wrappingColumn: 20,
+        // Always 20 nodes to a row. Left to itself the grid would also wrap at the
+        // width of the window, and arrange everything anew whenever that width
+        // changes, by a zoom for instance: nodes would move without an undo step.
+        wrappingColumn: GRID_COLUMNS,
+        wrappingWidth: Infinity,
         spacing: new go.Size(gaps.across, gaps.down),
       });
   }

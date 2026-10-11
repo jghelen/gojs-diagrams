@@ -73,13 +73,17 @@ export class SidePanel {
   }
 
   protected randomizeAll(): Promise<void> {
-    return this.actions.randomize('Randomize all nodes', 1, (nodes) => nodes);
+    // Every field of every node, and another layout: the biggest single change there is.
+    return this.actions.randomize('Randomize all nodes', 1, (nodes) => nodes, { layout: true });
   }
 
   protected runBulk(): Promise<void> {
     const runs = this.validBulkRuns(this.bulkRuns());
     this.bulkRuns.set(runs);
-    return this.actions.randomize(`${runs} × randomize all nodes`, runs, (nodes) => nodes);
+    // No new layout per run here: many layouts in a row would take far too long.
+    return this.actions.randomize(`${runs} × randomize all nodes`, runs, (nodes) => nodes, {
+      move: true,
+    });
   }
 
   /** Takes over what was typed into the bulk-runs box, corrected to a usable number. */

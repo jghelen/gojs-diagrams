@@ -314,11 +314,75 @@ describe('DiagramPage', () => {
     });
   });
 
+  describe('random edits', () => {
+    const places = () => {
+      const found = new Map<number, string>();
+      diagram.nodes.each((node) => found.set(node.key as number, node.location.toString()));
+      return found;
+    };
+    const moved = (before: Map<number, string>) =>
+      [...places()].filter(([key, place]) => before.get(key) !== place).length;
+
+    it('Randomize all changes every node and switches to another layout, as one undo step', async () => {
+      const before = places();
+      await bench.randomizeAll();
+      await settle();
+      expect(bench.layoutType()).not.toBe('top-bottom');
+      expect(model().modelData.layoutType).toBe(bench.layoutType());
+      // Every node has a new place, except perhaps the one a layout happens to leave where it was.
+      expect(moved(before)).toBeGreaterThanOrEqual(28);
+      expect(bench.stats()?.historyLength).toBe(1);
+      // The tool strip shows the layout that was picked.
+      const layoutTool = page.querySelector<HTMLButtonElement>('button[aria-label="Layout"]')!;
+      expect(layoutTool.dataset['tip']).not.toBe('Layout: Top to bottom');
+
+      await bench.undo();
+      await settle();
+      expect(bench.layoutType()).toBe('top-bottom');
+      expect(moved(before)).toBe(0);
+      expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
+      expect(layoutTool.dataset['tip']).toBe('Layout: Top to bottom');
+    });
+
+    it('the bulk edit moves the nodes a little instead, and keeps the layout', async () => {
+      const start = new Map<number, go.Point>();
+      diagram.nodes.each((node) => start.set(node.key as number, node.location.copy()));
+      bench.bulkRuns.set(10);
+      await bench.runBulk();
+      await settle();
+      diagram.nodes.each((node) => {
+        const from = start.get(node.key as number)!;
+        expect(Math.abs(node.location.x - from.x)).toBeLessThanOrEqual(15);
+        expect(Math.abs(node.location.y - from.y)).toBeLessThanOrEqual(15);
+      });
+      expect(bench.layoutType()).toBe('top-bottom');
+      await bench.undoAll();
+      await settle();
+      expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
+    });
+
+    it('Randomize 1 node changes one node, moves none and keeps the layout', async () => {
+      const before = places();
+      await bench.randomizeOne();
+      await settle();
+      expect(moved(before)).toBe(0);
+      expect(bench.layoutType()).toBe('top-bottom');
+    });
+
+    it('says in the panel what the two do beyond the four fields', () => {
+      const hint = page.querySelector('.side .hint')!.textContent!.replace(/\s+/g, ' ');
+      expect(hint).toContain('switches to another layout');
+      expect(hint).toContain('moves it a little');
+    });
+  });
+
   describe('undo and redo', () => {
     it('undoes everything back to the initial state and redoes it to the latest', async () => {
       await bench.randomizeAll();
       await bench.randomizeOne();
-      await bench.changeLayout('circle');
+      // Randomize all picked a layout of its own; this is another one, whichever that was.
+      const last = bench.layoutType() === 'circle' ? 'grid' : 'circle';
+      await bench.changeLayout(last);
       expect(bench.stats()).toMatchObject({ historyLength: 3, historyIndex: 2 });
 
       await bench.undoAll();
@@ -327,7 +391,7 @@ describe('DiagramPage', () => {
 
       await bench.redoAll();
       expect(bench.stateCheck()).toEqual({ label: LATEST, ok: true });
-      expect(bench.layoutType()).toBe('circle');
+      expect(bench.layoutType()).toBe(last);
     });
 
     it('steps one transaction at a time and says where it is', async () => {
@@ -2249,12 +2313,13 @@ describe('DiagramPage', () => {
       const groups = Array.from(changes().querySelectorAll('.change-groups li')).map((item) =>
         item.textContent!.replace(/\s+/g, ' ').trim(),
       );
-      expect(groups.slice(0, 4).sort()).toEqual([
-        'Data color × 30',
-        'Data legal entity type × 30',
-        'Data shape × 30',
-        'Data title × 30',
-      ]);
+      // The four fields of every node, the layout, and the place the layout gave every node.
+      const data = groups.filter((group) => group.startsWith('Data '));
+      for (const field of ['color', 'legal entity type', 'shape', 'title']) {
+        expect(data).toContain(`Data ${field} × 30`);
+      }
+      expect(data).toContain('Data layout × 1');
+      expect(data.some((group) => /^Data position × (2[89]|30)$/.test(group))).toBe(true);
       expect(changes().textContent).toContain(`first 200 of ${bench.log()[0].changes} changes`);
     });
 

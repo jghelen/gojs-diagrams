@@ -82,6 +82,32 @@ describe('createLayout', () => {
   );
 });
 
+describe('grid layout', () => {
+  it('puts 20 nodes in a row, however wide the view is', () => {
+    const { diagram } = createTestDiagram({ count: 100, layout: 'grid', linkType: 'straight' });
+    const columns = new Set(nodesOf(diagram).map((node) => Math.round(node.location.x)));
+    const rows = new Set(nodesOf(diagram).map((node) => Math.round(node.location.y)));
+    expect(columns.size).toBe(20);
+    expect(rows.size).toBe(5);
+    expect((diagram.layout as go.GridLayout).isViewportSized).toBe(false);
+  });
+
+  it('leaves the nodes where they are when the view is zoomed or resized', () => {
+    const test = createTestDiagram({ count: 100, layout: 'grid', linkType: 'straight' });
+    const places = () => nodesOf(test.diagram).map((node) => node.location.toString());
+    const before = places();
+    test.diagram.scale = 0.2;
+    test.settle();
+    test.diagram.viewSize = new go.Size(400, 300);
+    test.settle();
+    test.diagram.zoomToFit();
+    test.settle();
+    expect(places()).toEqual(before);
+    // Nothing moved, so nothing was recorded either.
+    expect(test.history.length).toBe(0);
+  });
+});
+
 describe.each(ALL_LAYOUTS)('%s layout on a diagram', (type) => {
   it('gives every node a position and overlaps none', () => {
     const { diagram } = createTestDiagram({ layout: type });

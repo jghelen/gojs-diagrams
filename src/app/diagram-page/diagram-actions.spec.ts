@@ -1,4 +1,14 @@
-import { TestDiagram, createTestDiagram, nodesOf } from '../../testing/diagram-harness';
+import * as go from 'gojs/release/go';
+import {
+  TestDiagram,
+  countLinksOverNodes,
+  countNodeOverlaps,
+  createTestDiagram,
+  linksOf,
+  nodesOf,
+} from '../../testing/diagram-harness';
+import { NODE_NUDGE, QUICK_LAYOUTS } from '../diagram/constants';
+import { LAYOUTS } from '../diagram/layouts';
 import { allLinkCardsShown } from '../diagram/diagram-factory';
 import { DiagramActions } from './diagram-actions';
 import { OperationRunner } from './operation-runner';
@@ -51,6 +61,178 @@ describe('DiagramActions', () => {
       expect(test.history.length).toBe(3);
       expect(lastOp()).toMatchObject({ op: '3 × randomize all nodes', steps: 3 });
       expect(test.model.nodeDataArray.map((data) => data.title)).not.toEqual(before);
+    });
+
+    describe('randomizing with a move', () => {
+      const places = () =>
+        new Map(nodesOf(test.diagram).map((part) => [part.key as number, part.location.copy()]));
+      const furthest = (from: Map<number, go.Point>) =>
+        Math.max(
+          ...nodesOf(test.diagram).map((part) => {
+            const start = from.get(part.key as number)!;
+            return Math.max(
+              Math.abs(part.location.x - start.x),
+              Math.abs(part.location.y - start.y),
+            );
+          }),
+        );
+
+      it('leaves the nodes where they are unless asked to move them', async () => {
+        const before = places();
+        await actions.randomize('Randomize all nodes', 1, (all) => all);
+        test.settle();
+        expect(furthest(before)).toBe(0);
+      });
+
+      it('moves every node a little, as part of the same undo step', async () => {
+        const before = places();
+        await actions.randomize('Randomize all nodes', 1, (all) => all, { move: true });
+        test.settle();
+        for (const part of nodesOf(test.diagram)) {
+          expect(part.location.equalsApprox(before.get(part.key as number)!)).toBe(false);
+        }
+        expect(furthest(before)).toBeLessThanOrEqual(NODE_NUDGE);
+        expect(test.history.length).toBe(1);
+        // The data says where the node is, like after a drag.
+        expect(
+          go.Point.parse(node(1).loc!).equalsApprox(test.diagram.findNodeForKey(1)!.location),
+        ).toBe(true);
+      });
+
+      it('never moves a node further than that from where it first stood, however often', async () => {
+        const before = places();
+        await actions.randomize('40 × randomize all nodes', 40, (all) => all, { move: true });
+        test.settle();
+        expect(test.history.length).toBe(40);
+        expect(furthest(before)).toBeLessThanOrEqual(NODE_NUDGE);
+        expect(countNodeOverlaps(test.diagram)).toBe(0);
+      });
+
+      it('moves only the picked nodes', async () => {
+        const before = places();
+        await actions.randomize('Randomize 1 node', 1, (all) => [all[4]], { move: true });
+        test.settle();
+        const moved = nodesOf(test.diagram).filter(
+          (part) => !part.location.equalsApprox(before.get(part.key as number)!),
+        );
+        expect(moved.map((part) => part.key)).toEqual([test.model.nodeDataArray[4].key]);
+      });
+
+      it('is put back exactly by undo, and done again exactly by redo', async () => {
+        const before = places();
+        await actions.randomize('Randomize all nodes', 1, (all) => all, { move: true });
+        test.settle();
+        const after = places();
+
+        await actions.undo();
+        test.settle();
+        expect(furthest(before)).toBe(0);
+        expect(test.history.describeState().ok).toBe(true);
+
+        await actions.redo();
+        test.settle();
+        expect(furthest(after)).toBe(0);
+      });
+
+      it('starts from the new place of a node that was put elsewhere in the meantime', async () => {
+        await actions.randomize('Randomize all nodes', 1, (all) => all, { move: true });
+        const part = test.diagram.findNodeForKey(3)!;
+        test.diagram.commit(() => {
+          part.location = new go.Point(part.location.x + 500, part.location.y + 300);
+        }, 'drag');
+        test.settle();
+        const dropped = part.location.copy();
+
+        await actions.randomize('5 × randomize all nodes', 5, (all) => all, { move: true });
+        test.settle();
+        expect(Math.abs(part.location.x - dropped.x)).toBeLessThanOrEqual(NODE_NUDGE);
+        expect(Math.abs(part.location.y - dropped.y)).toBeLessThanOrEqual(NODE_NUDGE);
+      });
+
+      it('switches to another layout instead when asked to, in the same undo step', async () => {
+        const before = places();
+        expect(test.model.modelData.layoutType).toBe('top-bottom');
+        await actions.randomize('Randomize all nodes', 1, (all) => all, { layout: true });
+        test.settle();
+        const picked = test.model.modelData.layoutType;
+        expect(picked).not.toBe('top-bottom');
+        expect(LAYOUTS.map((layout) => layout.type)).toContain(picked);
+        // Every node has a new place, and not just a little way off.
+        expect(furthest(before)).toBeGreaterThan(NODE_NUDGE);
+        expect(countNodeOverlaps(test.diagram)).toBe(0);
+        expect(test.history.length).toBe(1);
+        expect(lastOp()).toMatchObject({ op: 'Randomize all nodes', steps: 1 });
+
+        await actions.undo();
+        test.settle();
+        expect(test.model.modelData.layoutType).toBe('top-bottom');
+        expect(furthest(before)).toBe(0);
+        expect(test.history.describeState().ok).toBe(true);
+      });
+
+      it('picks a different layout every time', async () => {
+        const seen: string[] = [test.model.modelData.layoutType];
+        for (let i = 0; i < 6; i++) {
+          await actions.randomize('Randomize all nodes', 1, (all) => all, { layout: true });
+          seen.push(test.model.modelData.layoutType);
+        }
+        for (let i = 1; i < seen.length; i++) expect(seen[i]).not.toBe(seen[i - 1]);
+      });
+
+      it('lets the layout decide where the nodes go when asked for both', async () => {
+        await actions.randomize('Randomize all nodes', 1, (all) => all, {
+          layout: true,
+          move: true,
+        });
+        test.settle();
+        expect(test.model.modelData.layoutType).not.toBe('top-bottom');
+        expect(countNodeOverlaps(test.diagram)).toBe(0);
+      });
+
+      it('picks only among the quick layouts on a big diagram', async () => {
+        const big = createTestDiagram({ count: 500, linkType: 'straight' });
+        const bigRunner = big.injector.get(OperationRunner);
+        bigRunner.connect(big.diagram, { beforeEach: () => undefined, afterEach: () => undefined });
+        bigRunner.busy.set(false);
+        const bigActions = big.injector.get(DiagramActions);
+        bigActions.connect(big.diagram);
+        for (let i = 0; i < 6; i++) {
+          await bigActions.randomize('Randomize all nodes', 1, (all) => all, { layout: true });
+          expect(QUICK_LAYOUTS).toContain(big.model.modelData.layoutType);
+        }
+      }, 60_000);
+
+      it('leaves the layout of an empty diagram alone', async () => {
+        const empty = createTestDiagram({ nodes: [], links: [] });
+        const emptyRunner = empty.injector.get(OperationRunner);
+        emptyRunner.connect(empty.diagram, {
+          beforeEach: () => undefined,
+          afterEach: () => undefined,
+        });
+        emptyRunner.busy.set(false);
+        const emptyActions = empty.injector.get(DiagramActions);
+        emptyActions.connect(empty.diagram);
+        await emptyActions.randomize('Randomize all nodes', 1, (all) => all, { layout: true });
+        expect(empty.model.modelData.layoutType).toBe('top-bottom');
+      });
+
+      it('takes the lines along: they still meet their nodes and cross none', async () => {
+        await actions.randomize('Randomize all nodes', 1, (all) => all, { move: true });
+        test.settle();
+        for (const link of linksOf(test.diagram)) {
+          const ends = [
+            [link.getPoint(0), link.fromNode!.actualBounds],
+            [link.getPoint(link.pointsCount - 1), link.toNode!.actualBounds],
+          ] as const;
+          for (const [point, bounds] of ends) {
+            const onSide = [bounds.top, bounds.bottom].some((y) => Math.abs(y - point.y) < 1);
+            expect(onSide).toBe(true);
+            expect(point.x).toBeGreaterThan(bounds.left);
+            expect(point.x).toBeLessThan(bounds.right);
+          }
+        }
+        expect(countLinksOverNodes(test.diagram)).toBeLessThanOrEqual(1);
+      });
     });
 
     it('adds a node with a key that nothing uses, not even a relationship of a deleted node', async () => {

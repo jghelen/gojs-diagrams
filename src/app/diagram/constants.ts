@@ -120,6 +120,13 @@ export const NODE_GAP = 60;
  */
 export const LINE_SPACING = 6;
 
+/**
+ * How far the bulk edit ("N × randomize all") moves a node at most, to the left or right and up or
+ * down, from where it stood before the first such move. Little enough that two
+ * neighbours never touch and the gap between two rows stays wide enough for lines.
+ */
+export const NODE_NUDGE = 15;
+
 /** The color of a line while the mouse is on it, so that one line can be followed among many. */
 export const HOVER_COLOR = '#d4a017';
 
@@ -131,6 +138,14 @@ export const HOVER_COLOR = '#d4a017';
  * minutes beyond that, during which the page does not respond.
  */
 export const AVOID_NODES_BELOW = 500;
+
+/**
+ * The layouts that stay quick however big the diagram is. From SLOW_LAYOUTS_FROM
+ * nodes on, "Randomize all" picks its next layout among these only: the others
+ * (circle, layered, force-directed) then take many seconds each.
+ */
+export const QUICK_LAYOUTS: readonly LayoutType[] = ['top-bottom', 'bottom-top', 'grid'];
+export const SLOW_LAYOUTS_FROM = 500;
 
 /** Up to this many nodes, a tree is drawn in the classic organisation-chart style. */
 export const CLASSIC_TREE_LIMIT = 60;

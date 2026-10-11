@@ -51,8 +51,10 @@
         <button type="button" [disabled]="busy()" (click)="runBulk()">× randomize all</button>
       </div>
       <p class="hint">
-        Each run is one transaction that changes all four fields on every node. Runs: 1 to
-        {{ maxBulkRuns() }}; other entries are corrected.
+        <strong>Randomize all</strong> changes all four fields on every node and switches to another
+        layout, as one transaction. Each run of the bulk edit is one transaction that changes all
+        four fields on every node and moves it a little. Runs: 1 to {{ maxBulkRuns() }}; other
+        entries are corrected.
       </p>
     </section>
   }

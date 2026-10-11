@@ -4,6 +4,9 @@ import {
   DEFAULT_COLOR,
   DEFAULT_SHAPE,
   LEGAL_ENTITY_TYPES,
+  NODE_NUDGE,
+  QUICK_LAYOUTS,
+  SLOW_LAYOUTS_FROM,
   STYLE_FIELDS,
   StyleFieldId,
 } from '../diagram/constants';
@@ -101,10 +104,24 @@ export class DiagramActions {
   /**
    * Gives nodes new random values for all their fields, `runs` times over, each
    * run as one transaction. `pick` chooses the nodes among all of the diagram.
+   *
+   * A run can do more in the same transaction, so that more kinds of change are
+   * part of what is measured and undone:
+   * - `layout`: switch the diagram to another layout, picked at random, which
+   *   puts every node in a new place;
+   * - `move`: move each of the picked nodes a little, and their lines with them.
+   *   A new layout places all nodes anyway, so with both, only the layout counts.
    */
-  randomize(name: string, runs: number, pick: (all: NodeData[]) => NodeData[]): Promise<void> {
+  randomize(
+    name: string,
+    runs: number,
+    pick: (all: NodeData[]) => NodeData[],
+    also: { layout?: boolean; move?: boolean } = {},
+  ): Promise<void> {
     return this.runner.run(() => {
       const nodes = pick(this.model.nodeDataArray);
+      // An empty diagram has nothing to arrange.
+      const newLayout = also.layout === true && this.model.nodeDataArray.length > 0;
       let remaining = runs;
       return {
         name,
@@ -115,12 +132,63 @@ export class DiagramActions {
             for (const data of nodes) {
               const patch = randomPatch(data);
               for (const field of EDITABLE_FIELDS) this.model.set(data, field, patch[field]);
+              if (also.move && !newLayout) {
+                this.model.set(data, 'loc', go.Point.stringify(this.nudged(data)));
+              }
+            }
+            if (newLayout) {
+              const type = this.anotherLayout();
+              this.model.set(this.model.modelData, 'layoutType', type);
+              this.arrangeWith(type, this.model.modelData.cardsExpanded);
             }
           });
         },
-        showBusyFirst: runs > 1,
+        showBusyFirst: runs > 1 || newLayout,
       };
     });
+  }
+
+  /**
+   * A layout other than the current one, picked at random. On a big diagram
+   * only among the layouts that are quick there: an operation must not block
+   * the page for half a minute.
+   */
+  private anotherLayout(): LayoutType {
+    const big = this.model.nodeDataArray.length >= SLOW_LAYOUTS_FROM;
+    const current = this.model.modelData.layoutType;
+    const others = LAYOUTS.map((layout) => layout.type).filter(
+      (type) => type !== current && (!big || QUICK_LAYOUTS.includes(type)),
+    );
+    return others[Math.floor(Math.random() * others.length)];
+  }
+
+  /** Where each node stood before it was first moved a little; see `nudged`. */
+  private readonly homes = new WeakMap<NodeData, go.Point>();
+
+  /**
+   * A place for the node close to where it stands: at most NODE_NUDGE away from
+   * its home, to either side and up or down, and never where it is now.
+   *
+   * The home is where the node stood before the first such move. Without it,
+   * many moves in a row would add up and the nodes would wander into each other.
+   * A node that was put elsewhere in the meantime, by hand or by a layout, has
+   * its home there from then on.
+   */
+  private nudged(data: NodeData): go.Point {
+    const now = data.loc
+      ? go.Point.parse(data.loc)
+      : (this.diagram.findNodeForData(data)?.location.copy() ?? new go.Point());
+    let home = this.homes.get(data);
+    const near = (a: number, b: number) => Math.abs(a - b) <= NODE_NUDGE + 0.5;
+    if (!home || !near(home.x, now.x) || !near(home.y, now.y)) {
+      home = now.copy();
+      this.homes.set(data, home);
+    }
+    const shift = () => Math.round((Math.random() * 2 - 1) * NODE_NUDGE);
+    const place = new go.Point(home.x + shift(), home.y + shift());
+    // A move that leads nowhere would not be a change, and would not be recorded.
+    if (place.equalsApprox(now)) place.x += place.x < home.x + NODE_NUDGE ? 1 : -1;
+    return place;
   }
 
   /** Adds one new node in the middle of the view. */
