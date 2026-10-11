@@ -1,0 +1,42 @@
+:root {
+  --border: #e5e7eb;
+  --surface: #f9fafb;
+  --muted: #6b7280;
+  font-family: system-ui, sans-serif;
+  color: #111827;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+input[type='color'] {
+  padding: 2px;
+  height: 30px;
+  width: 100%;
+}

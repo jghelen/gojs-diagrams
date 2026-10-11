@@ -1,0 +1,58 @@
+import * as go from 'gojs/release/go';
+
+export type LinkType = 'avoid' | 'orthogonal' | 'straight' | 'curved';
+
+interface LinkStyle {
+  type: LinkType;
+  label: string;
+  routing: go.Routing;
+  curve: go.Curve;
+  /** Radius of the bends of an orthogonal route. */
+  corner: number;
+}
+
+/**
+ * The two orthogonal types are routed around the nodes. A straight or curved
+ * line has no bends to go around anything with, so those two cross whatever
+ * lies between their ends, and their labels say so.
+ */
+export const LINK_TYPES: readonly LinkStyle[] = [
+  {
+    type: 'avoid',
+    label: 'Orthogonal, rounded',
+    routing: go.Routing.AvoidsNodes,
+    curve: go.Curve.None,
+    corner: 6,
+  },
+  {
+    type: 'orthogonal',
+    label: 'Orthogonal, square',
+    routing: go.Routing.AvoidsNodes,
+    curve: go.Curve.None,
+    corner: 0,
+  },
+  {
+    type: 'straight',
+    label: 'Straight (crosses nodes)',
+    routing: go.Routing.Normal,
+    curve: go.Curve.None,
+    corner: 0,
+  },
+  {
+    type: 'curved',
+    label: 'Curved (crosses nodes)',
+    routing: go.Routing.Normal,
+    curve: go.Curve.Bezier,
+    corner: 0,
+  },
+];
+
+export const DEFAULT_LINK_TYPE: LinkType = 'avoid';
+
+export function linkStyle(type: LinkType): LinkStyle {
+  return LINK_TYPES.find((style) => style.type === type) ?? LINK_TYPES[0];
+}
+
+export function avoidsNodes(type: LinkType): boolean {
+  return linkStyle(type).routing === go.Routing.AvoidsNodes;
+}
