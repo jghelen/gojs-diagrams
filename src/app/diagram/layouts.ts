@@ -3,13 +3,40 @@ import { LinkKind } from './node-data';
 
 export type LayoutType = 'top-bottom' | 'bottom-top' | 'circle' | 'layered' | 'force' | 'grid';
 
-export const LAYOUTS: readonly { type: LayoutType; label: string }[] = [
-  { type: 'top-bottom', label: 'Top to bottom' },
-  { type: 'bottom-top', label: 'Bottom to top' },
-  { type: 'circle', label: 'Circle' },
-  { type: 'layered', label: 'Layered digraph' },
-  { type: 'force', label: 'Force-directed' },
-  { type: 'grid', label: 'Grid' },
+export interface LayoutChoice {
+  type: LayoutType;
+  label: string;
+  /** SVG path of a small line drawing of the layout, in a 24 x 24 box. */
+  icon: string;
+}
+
+export const LAYOUTS: readonly LayoutChoice[] = [
+  {
+    type: 'top-bottom',
+    label: 'Top to bottom',
+    icon: 'M9 3h6v4H9zM3 17h6v4H3zM15 17h6v4h-6zM12 7v5M6 17v-5h12v5',
+  },
+  {
+    type: 'bottom-top',
+    label: 'Bottom to top',
+    icon: 'M9 17h6v4H9zM3 3h6v4H3zM15 3h6v4h-6zM12 17v-5M6 7v5h12V7',
+  },
+  {
+    type: 'circle',
+    label: 'Circle',
+    icon: 'M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0-16M10.5 2.5h3v3h-3zM10.5 18.5h3v3h-3zM2.5 10.5h3v3h-3zM18.5 10.5h3v3h-3z',
+  },
+  {
+    type: 'layered',
+    label: 'Layered digraph',
+    icon: 'M9 2h6v4H9zM3 10h6v4H3zM15 10h6v4h-6zM9 18h6v4H9zM12 6l-6 4M12 6l6 4M6 14l6 4M18 14l-6 4',
+  },
+  {
+    type: 'force',
+    label: 'Force-directed',
+    icon: 'M2.5 5a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0M15.5 8a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0M7.5 19a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0M7.4 5.6l8.2 1.8M5.8 7.4l3.4 9.3M16.6 10.1l-5 7',
+  },
+  { type: 'grid', label: 'Grid', icon: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z' },
 ];
 
 export const DEFAULT_LAYOUT: LayoutType = 'top-bottom';
@@ -117,14 +144,20 @@ function createTreeLayout(angle: 90 | 270, nodeCount: number): go.TreeLayout {
 }
 
 /**
- * Lets the lines of every node attach wherever suits their route again. The
- * tree and layered layouts pin them to particular sides, which must not carry
+ * Lets every line attach wherever suits its route again. The tree layouts pin
+ * the hierarchy lines to particular sides of their nodes, which must not carry
  * over into the next layout. Call this inside the transaction that runs it.
  */
 export function resetPortSpots(diagram: go.Diagram): void {
   diagram.nodes.each((node) => {
     node.port.fromSpot = go.Spot.None;
     node.port.toSpot = go.Spot.None;
+  });
+  diagram.links.each((link) => {
+    // Cross links never follow a layout's sides; see their template.
+    if (!link.isTreeLink) return;
+    link.fromSpot = go.Spot.Default;
+    link.toSpot = go.Spot.Default;
   });
 }
 

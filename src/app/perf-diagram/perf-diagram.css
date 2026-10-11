@@ -6,8 +6,9 @@
 
 .bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
   padding: 10px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
@@ -35,13 +36,96 @@ h1 {
 
 .canvas {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) 200px;
+  grid-template-rows: auto minmax(0, 1fr) 200px;
+  min-height: 0;
+}
+
+/* The bar above the canvas with the diagram's name and description. */
+.canvas-bar {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.diagram-name {
+  flex: 0 1 240px;
+  min-width: 120px;
+  font-weight: 600;
+}
+
+.diagram-description {
+  flex: 1 1 0;
+  min-width: 120px;
+}
+
+/* The search box with its count and its previous and next buttons. */
+.canvas-bar {
+  flex-wrap: wrap;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.search input {
+  width: 160px;
+}
+
+.search-count {
+  min-width: 88px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diagram-area {
+  position: relative;
   min-height: 0;
 }
 
 .diagram {
-  min-height: 0;
+  position: absolute;
+  inset: 0;
   background: #fff;
+}
+
+/* The tools on the left edge of the canvas, starting below the GoJS notice in the corner. */
+.canvas-nav {
+  position: absolute;
+  left: 10px;
+  top: 76px;
+  z-index: 2;
+  display: grid;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+}
+
+.canvas-nav button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-color: transparent;
+}
+
+.canvas-nav svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .log {
@@ -241,6 +325,356 @@ button.danger {
   color: #b91c1c;
 }
 
-button.add {
-  margin-top: 10px;
+button.delete {
+  margin-top: 6px;
+}
+
+/* The button that carries out what a dialog asks about. */
+button.confirm {
+  border-color: #15803d;
+  background: #15803d;
+  color: #fff;
+}
+
+button.confirm:hover:not(:disabled) {
+  background: #166534;
+}
+
+/* Confirming a deletion is dark red instead. */
+button.confirm.destructive {
+  border-color: #991b1b;
+  background: #991b1b;
+}
+
+button.confirm.destructive:hover:not(:disabled) {
+  background: #7f1d1d;
+}
+
+button.confirm:disabled {
+  border-color: #d1d5db;
+  background: #e5e7eb;
+  color: #6b7280;
+  opacity: 1;
+}
+
+.modal.styles {
+  width: min(680px, calc(100vw - 32px));
+}
+
+.style-grid {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.types {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 340px;
+  overflow: auto;
+}
+
+.modal label.pick-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: inherit;
+  cursor: pointer;
+}
+
+label.pick-all input {
+  margin: 0;
+  padding: 0;
+}
+
+button.type {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 4px;
+  text-align: left;
+}
+
+/* A fund type that Apply will change. */
+button.type.current {
+  border-color: #166534;
+  box-shadow: 0 0 0 1px #166534;
+  background: #dcfce7;
+}
+
+svg.preview {
+  stroke: #555555;
+  stroke-width: 1.5;
+}
+
+/* Nodes of this type differ in color or shape. */
+svg.preview.mixed {
+  stroke-dasharray: 3 2;
+}
+
+.count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Right-hand side: a hint, then Color, Shape and Preview as three equal sections. */
+.style-editor {
+  display: grid;
+  gap: 16px;
+}
+
+.style-editor .hint {
+  margin: 0;
+  min-height: 2.6em;
+}
+
+.style-section h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.style-section .swatches {
+  gap: 8px;
+}
+
+.style-section .swatch,
+.style-section .swatches input[type='color'] {
+  width: 28px;
+  height: 28px;
+}
+
+.shape-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+button.shape-tile {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 10px 4px 8px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+button.shape-tile svg {
+  fill: #f3f4f6;
+  stroke: #555555;
+  stroke-width: 1.5;
+}
+
+button.shape-tile.current {
+  border-color: #166534;
+  box-shadow: 0 0 0 1px #166534;
+  background: #dcfce7;
+}
+
+/* Everything picked in the styles dialog is marked in the same dark green. */
+.modal.styles .swatch.current {
+  outline-color: #166534;
+}
+
+.modal.styles input[type='checkbox'] {
+  accent-color: #166534;
+}
+
+/* The node as it will look, in the middle of a framed area. */
+.preview-frame {
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  border: 1px dashed #d1d5db;
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+/* The size of a node in the diagram. */
+.node-preview {
+  position: relative;
+  width: 172px;
+  height: 96px;
+}
+
+.node-preview > svg.node-preview-arrows {
+  inset: auto;
+  top: 33px;
+  width: 13px;
+  height: 30px;
+  fill: #ffffff;
+  stroke-width: 1;
+  z-index: 1;
+}
+
+.node-preview > svg.node-preview-handle {
+  inset: auto;
+  top: 41.5px;
+  width: 13px;
+  height: 13px;
+  stroke-width: 1.5;
+  z-index: 1;
+}
+
+.node-preview > svg.node-preview-delete {
+  inset: auto;
+  width: 13px;
+  height: 13px;
+  stroke-width: 1;
+  z-index: 1;
+}
+
+.node-preview > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  stroke: #555555;
+  stroke-width: 1.5;
+}
+
+.node-preview-text {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+  font-size: 10px;
+}
+
+.node-preview-text strong {
+  font-size: 12px;
+}
+
+.node-preview-icons {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 2px;
+}
+
+.modal.styles .actions {
+  margin-top: 20px;
+}
+
+button.reset {
+  margin-right: auto;
+}
+
+/* The thin rule between a node's text and its icons. */
+.node-preview-text hr {
+  width: 72px;
+  height: 0;
+  margin: 2px 0 0;
+  border: 0;
+  border-top: 1px solid currentColor;
+  opacity: 0.35;
+}
+
+/* An icon in front of a button's text. */
+.button-icon {
+  margin-right: 4px;
+  vertical-align: -3px;
+}
+
+/* The picture of the diagram that is printed instead of the app. */
+.print-only {
+  display: none;
+}
+
+@media print {
+  :host {
+    display: block;
+    height: auto;
+  }
+
+  .bar,
+  .layout,
+  dialog {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block;
+    max-width: 100%;
+  }
+}
+
+/* The column of layout icons that opens beside the tool strip. */
+.nav-flyout-anchor {
+  position: relative;
+}
+
+.nav-flyout {
+  position: absolute;
+  left: calc(100% + 10px);
+  /* A column of icons, centred on the layout button. */
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+}
+
+.canvas-nav .nav-flyout svg {
+  stroke-width: 1.6;
+}
+
+.canvas-nav button.current {
+  border-color: #166534;
+  background: #dcfce7;
+}
+
+/* A button that shows only an icon; its name is in the hover text. */
+button.icon-button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 30px;
+  padding: 0;
+}
+
+button.icon-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Styles, Actions and reset stay together at the right end of the top bar, also when it wraps. */
+.bar-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* The small picture of the whole diagram, in the bottom right corner of the canvas. */
+.overview {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 2;
+  width: 200px;
+  height: 130px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+  overflow: hidden;
 }

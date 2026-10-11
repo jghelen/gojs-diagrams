@@ -9,6 +9,8 @@ interface LinkStyle {
   curve: go.Curve;
   /** Radius of the bends of an orthogonal route. */
   corner: number;
+  /** SVG path of a small line drawing of the type, in a 24 x 24 box. */
+  icon: string;
 }
 
 /**
@@ -23,6 +25,7 @@ export const LINK_TYPES: readonly LinkStyle[] = [
     routing: go.Routing.AvoidsNodes,
     curve: go.Curve.None,
     corner: 6,
+    icon: 'M3 6h8a5 5 0 0 1 5 5v2a5 5 0 0 0 5 5',
   },
   {
     type: 'orthogonal',
@@ -30,6 +33,7 @@ export const LINK_TYPES: readonly LinkStyle[] = [
     routing: go.Routing.AvoidsNodes,
     curve: go.Curve.None,
     corner: 0,
+    icon: 'M3 6h10v12h8',
   },
   {
     type: 'straight',
@@ -37,6 +41,7 @@ export const LINK_TYPES: readonly LinkStyle[] = [
     routing: go.Routing.Normal,
     curve: go.Curve.None,
     corner: 0,
+    icon: 'M3 19L21 5',
   },
   {
     type: 'curved',
@@ -44,6 +49,7 @@ export const LINK_TYPES: readonly LinkStyle[] = [
     routing: go.Routing.Normal,
     curve: go.Curve.Bezier,
     corner: 0,
+    icon: 'M3 19C12 19 12 5 21 5',
   },
 ];
 

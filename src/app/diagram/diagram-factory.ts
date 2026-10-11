@@ -3,18 +3,21 @@
 import * as go from 'gojs/release/go';
 import { LayoutType } from './layouts';
 import { LinkType, linkStyle } from './link-types';
-import { LinkData, LinkKind, NodeData } from './node-data';
+import { LinkData, LinkKind, NodeData, formatOwnership } from './node-data';
 
 /** Model-wide settings. Kept in the model so that switching them is undone with everything else. */
 export interface ModelData {
   layoutType: LayoutType;
   linkType: LinkType;
+  /** What the user calls the diagram, and what they say about it. */
+  name: string;
+  description: string;
 }
 
 export type NodeModel = go.GraphLinksModel<NodeData, LinkData, ModelData>;
 
 /** Picks a readable text colour for the given "#rrggbb" fill. */
-function textColorFor(fill: string): string {
+export function textColorFor(fill: string): string {
   const rgb = parseInt(fill.slice(1), 16);
   const luminance = 0.299 * (rgb >> 16) + 0.587 * ((rgb >> 8) & 0xff) + 0.114 * (rgb & 0xff);
   return luminance < 140 ? '#f9fafb' : '#111827';
@@ -43,6 +46,8 @@ function avoidNodeOverlap(part: go.Part, _newLoc: go.Point, snappedLoc: go.Point
 
 // Every node has this size whatever its shape and text, so editing a node never
 // makes it grow into its neighbours.
+/** Every node has a dark gray border. */
+const NODE_BORDER = '#555555';
 const NODE_WIDTH = 172;
 const NODE_HEIGHT = 96;
 /** Width of the band along the edge of a node from which a new link can be dragged. */
@@ -50,23 +55,37 @@ const LINK_RIM = 9;
 
 // The content is a centred stack: title, subtitle, then the icon row. These are
 // the distances from the node's centre line to the far edge of the two text rows.
-const TITLE_REACH = 22;
-const SUBTITLE_REACH = 8;
+const TITLE_REACH = 25;
+const SUBTITLE_REACH = 11;
 const TEXT_PADDING = 8;
 
-/** Width of a node-sized figure at `dy` above or below its centre line. */
-function figureWidthAt(figure: go.FigureName, dy: number): number {
-  const a = NODE_WIDTH / 2;
-  const b = NODE_HEIGHT / 2;
+/**
+ * How far a figure reaches from its centre along one axis, at the distance
+ * `offset` from the centre along the other axis. `reach` and `otherReach` are
+ * half the figure's size along those two axes. For a capsule the first axis has
+ * to be the horizontal one for the rounded ends to be taken into account.
+ */
+function figureExtent(
+  figure: go.FigureName,
+  reach: number,
+  otherReach: number,
+  offset: number,
+): number {
+  const t = Math.min(1, Math.abs(offset) / otherReach);
   switch (figure) {
     case go.Figures.Diamond:
-      return 2 * a * (1 - dy / b);
+      return reach * (1 - t);
     case go.Figures.Ellipse:
-      return 2 * a * Math.sqrt(1 - (dy / b) ** 2);
-    case go.Figures.Capsule:
-      return 2 * (a - b + Math.sqrt(b * b - dy * dy));
+      return reach * Math.sqrt(1 - t * t);
+    case go.Figures.Capsule: {
+      // Two half circles of radius `r` joined by straight edges.
+      const r = Math.min(reach, otherReach);
+      if (reach >= otherReach) return reach - r + Math.sqrt(r * r - (t * otherReach) ** 2);
+      const beyond = Math.abs(offset) - (otherReach - r);
+      return beyond <= 0 ? reach : Math.sqrt(Math.max(0, r * r - beyond * beyond));
+    }
     default:
-      return NODE_WIDTH;
+      return reach;
   }
 }
 
@@ -76,7 +95,14 @@ function figureWidthAt(figure: go.FigureName, dy: number): number {
  * a rectangle. Longer text is cut off with an ellipsis.
  */
 function textLimit(reach: number): (figure: go.FigureName) => go.Size {
-  return (figure) => new go.Size(figureWidthAt(figure, reach) - TEXT_PADDING, NaN);
+  return (figure) =>
+    new go.Size(
+      Math.min(
+        2 * figureExtent(figure, NODE_WIDTH / 2, NODE_HEIGHT / 2, reach) - TEXT_PADDING,
+        NODE_WIDTH - 2 * ARROW_COLUMN,
+      ),
+      NaN,
+    );
 }
 
 const ONE_LINE = { maxLines: 1, overflow: go.TextOverflow.Ellipsis };
@@ -84,6 +110,12 @@ const ONE_LINE = { maxLines: 1, overflow: go.TextOverflow.Ellipsis };
 const COLOR_ICON = 'COLOR';
 const COMMENT_ICON = 'COMMENT';
 const BATCH_ICON = 'BATCH';
+const DELETE_ICON = 'DELETE';
+const SELECTION_GOLD = '#d4a017';
+const ARROWS = 'ARROWS';
+const LINK_HANDLE = 'LINK_HANDLE';
+/** Room kept free of text on either side of a node, for the two arrows on its left. */
+const ARROW_COLUMN = 20;
 
 /** A hover hint for an icon. */
 function hint(text: string): go.Adornment {
@@ -184,12 +216,149 @@ function fullTextHint(field: 'title' | 'subtitle'): go.Adornment {
     );
 }
 
+/**
+ * Binding conversion from a node's shape to the place of its delete icon: just
+ * inside the top right of the outline. For a rectangle that is the corner of the
+ * bounds; a diamond, an ellipse and a capsule do not reach that corner, so there
+ * the icon sits further in, on the upper right of the shape itself.
+ */
+function deleteIconSpot(figure: go.FigureName): go.Spot {
+  switch (figure) {
+    case go.Figures.Diamond:
+      return new go.Spot(0.62, 0.17);
+    case go.Figures.Ellipse:
+      return new go.Spot(0.76, 0.17);
+    case go.Figures.Capsule:
+      return new go.Spot(0.85, 0.17);
+    default:
+      return new go.Spot(1, 0, -10, 10);
+  }
+}
+
+/**
+ * Binding conversion from a node's shape to the place of its two arrows: at the
+ * left, half way up. A diamond comes to a point there, so its arrows sit further in.
+ */
+function arrowsSpot(figure: go.FigureName): go.Spot {
+  return new go.Spot(0, 0.5, figure === go.Figures.Diamond ? 30 : 14, 0);
+}
+
+/** The two arrows on the left of a node, one pointing up and one pointing down. */
+function createArrows(): go.Panel {
+  const arrow = (geometryString: string) =>
+    new go.Shape({ geometryString, fill: '#ffffff', stroke: '#374151', strokeWidth: 1 });
+  return new go.Panel(go.PanelTypes.Vertical, { name: ARROWS })
+    .bind('alignment', 'shape', arrowsSpot)
+    .add(
+      arrow('F M6 1 L11 7 H8 V11 H4 V7 H1z'),
+      arrow('F M6 11 L1 5 H4 V1 H8 V5 H11z').set({ margin: new go.Margin(4, 0, 0, 0) }),
+    );
+}
+
+/** The centre of the delete icon, in pixels from the top left corner of a node of that shape. */
+export function deleteIconCentre(figure: go.FigureName): { x: number; y: number } {
+  const spot = deleteIconSpot(figure);
+  return { x: spot.x * NODE_WIDTH + spot.offsetX, y: spot.y * NODE_HEIGHT + spot.offsetY };
+}
+
+/**
+ * Binding conversion from a node's shape to the place of its link handle: at the
+ * right, half way up. A diamond comes to a point there, so its handle sits further in.
+ */
+function linkHandleSpot(figure: go.FigureName): go.Spot {
+  return new go.Spot(1, 0.5, figure === go.Figures.Diamond ? -24 : -12, 0);
+}
+
+/**
+ * The dot on the right of a node from which a new relationship is dragged to
+ * another node. Dragging from the very edge of a node works too, but that edge
+ * is only a few pixels wide once the diagram is zoomed out.
+ */
+function createLinkHandle(): go.Panel {
+  return new go.Panel(go.PanelTypes.Spot, {
+    name: LINK_HANDLE,
+    cursor: 'crosshair',
+    toolTip: hint('Drag to another node to add a relationship'),
+  })
+    .bind('alignment', 'shape', linkHandleSpot)
+    .add(
+      // A larger invisible disc, so the handle can still be caught when it is drawn small.
+      new go.Shape({
+        figure: go.Figures.Circle,
+        desiredSize: new go.Size(20, 20),
+        fill: 'transparent',
+        stroke: null,
+      }),
+      new go.Shape({
+        figure: go.Figures.Circle,
+        desiredSize: new go.Size(10, 10),
+        fill: '#ffffff',
+        stroke: '#374151',
+        strokeWidth: 1.5,
+      }),
+    );
+}
+
+/** Lets a drag that starts on a node's link handle draw a relationship from that node. */
+function linkFromHandle(diagram: go.Diagram): void {
+  const tool = diagram.toolManager.linkingTool;
+  const findLinkablePort = tool.findLinkablePort;
+  tool.findLinkablePort = function (this: go.LinkingTool): go.GraphObject | null {
+    const hit = this.diagram.findObjectAt(this.diagram.firstInput.documentPoint);
+    if (hit?.part instanceof go.Node && findNamed(hit, LINK_HANDLE)) return hit.part.port;
+    return findLinkablePort.call(this);
+  };
+}
+
+/** The x at the top right of a node. Clicks on it are handled in handleClicks. */
+function createDeleteIcon(): go.Panel {
+  return new go.Panel(go.PanelTypes.Auto, {
+    name: DELETE_ICON,
+    cursor: 'pointer',
+    toolTip: hint('Delete node'),
+  })
+    .bind('alignment', 'shape', deleteIconSpot)
+    .add(
+      new go.Shape({
+        figure: go.Figures.Circle,
+        desiredSize: new go.Size(13, 13),
+        fill: '#ffffff',
+        stroke: '#9ca3af',
+        strokeWidth: 1,
+      }),
+      new go.Shape({
+        figure: go.Figures.XLine,
+        desiredSize: new go.Size(5, 5),
+        stroke: '#6b7280',
+        strokeWidth: 1.5,
+      }),
+    );
+}
+
+/**
+ * How a node is marked, both when it is selected and when it belongs to the
+ * highlighted tree: a gold outline in the node's own shape, not a rectangle.
+ */
+function createGoldOutline(strokeWidth = 4): go.Adornment {
+  return new go.Adornment(go.PanelTypes.Auto).add(
+    new go.Shape({ fill: null, stroke: SELECTION_GOLD, strokeWidth }).bind('figure', 'shape'),
+    new go.Placeholder(),
+  );
+}
+
+/** Category under which the gold outline of a highlighted node is registered as an adornment of it. */
+const FOCUS_ADORNMENT = 'Focus';
+const FOCUS_OUTLINE_TEMPLATE = createGoldOutline();
+
+/** Category of the outline around the node that a search has stepped to; thicker than the others. */
+const SEARCH_ADORNMENT = 'Search';
+const SEARCH_OUTLINE_TEMPLATE = createGoldOutline(7);
+
 function createNodeTemplate(): go.Node {
   return new go.Node(go.PanelTypes.Spot, {
     locationSpot: go.Spot.Center,
     dragComputation: avoidNodeOverlap,
-    // Only relationships can be removed; the node set stays fixed.
-    deletable: false,
+    selectionAdornmentTemplate: createGoldOutline(),
   })
     .bindTwoWay('location', 'loc', go.Point.parse, go.Point.stringify)
     .add(
@@ -197,11 +366,15 @@ function createNodeTemplate(): go.Node {
       // starts there draws a link, while a drag from anywhere else moves the node.
       new go.Shape({
         desiredSize: new go.Size(NODE_WIDTH, NODE_HEIGHT),
-        stroke: '#374151',
+        stroke: NODE_BORDER,
         strokeWidth: 1.5,
         portId: '',
         fromLinkable: true,
         toLinkable: true,
+        // Two funds can be related in more than one way, so a second line between
+        // the same two nodes may be drawn.
+        fromLinkableDuplicates: true,
+        toLinkableDuplicates: true,
         cursor: 'crosshair',
       })
         .bind('figure', 'shape')
@@ -230,20 +403,41 @@ function createNodeTemplate(): go.Node {
           .bindTwoWay('text', 'subtitle')
           .bind('maxSize', 'shape', textLimit(SUBTITLE_REACH))
           .bind('stroke', 'color', textColorFor),
+        // A thin rule between the text and the icons.
+        new go.Shape({
+          figure: go.Figures.LineH,
+          desiredSize: new go.Size(72, 1),
+          strokeWidth: 1,
+          opacity: 0.35,
+          margin: new go.Margin(3, 0, 0, 0),
+        }).bind('stroke', 'color', textColorFor),
         new go.Panel(go.PanelTypes.Horizontal, { margin: new go.Margin(3, 0, 0, 0) }).add(
           createColorIcon(),
           createCommentIcon().set({ margin: new go.Margin(0, 0, 0, 7) }),
           createBatchIcon().set({ margin: new go.Margin(0, 0, 0, 7) }),
         ),
       ),
+      createDeleteIcon(),
+      createArrows(),
+      createLinkHandle(),
     );
 }
 
 const INFO_ICON = 'INFO';
+/** Category under which a link's info icon is registered as an adornment of it. */
+const INFO_ADORNMENT = 'Info';
+/** Layer of the info icons: above every line, below the nodes. */
+const INFO_LAYER = 'LinkInfo';
 
 /** The small "i" in the middle of a link. Clicks on it are handled in handleClicks. */
-function createInfoIcon(): go.Panel {
-  return new go.Panel(go.PanelTypes.Auto, { name: INFO_ICON, cursor: 'pointer' }).add(
+function createInfoIcon(): go.Adornment {
+  return new go.Adornment(go.PanelTypes.Auto, {
+    name: INFO_ICON,
+    layerName: INFO_LAYER,
+    locationSpot: go.Spot.Center,
+    cursor: 'pointer',
+    toolTip: hint('Relationship details'),
+  }).add(
     new go.Shape({
       figure: go.Figures.Circle,
       desiredSize: new go.Size(14, 14),
@@ -253,6 +447,152 @@ function createInfoIcon(): go.Panel {
     }),
     new go.TextBlock('i', { font: 'bold 10px Georgia, serif', stroke: '#2563eb' }),
   );
+}
+
+const INFO_ICON_TEMPLATE = createInfoIcon();
+
+/** Category under which a link's ownership percentage is registered as an adornment of it. */
+const OWNERSHIP_ADORNMENT = 'Ownership';
+const OWNERSHIP_TEXT = 'OWNERSHIP';
+/** Name of the arrowhead shape in every link template. */
+const ARROWHEAD = 'ARROW';
+/** Free space between the percentage and the node the line ends at, and the line itself. */
+const OWNERSHIP_GAP_TO_NODE = 6;
+const OWNERSHIP_GAP_TO_LINE = 3;
+
+/** The percentage at the end of a line: how much of the fund it points at is owned. */
+function createOwnershipLabel(): go.Adornment {
+  return new go.Adornment(go.PanelTypes.Auto, {
+    layerName: INFO_LAYER,
+    locationSpot: go.Spot.Center,
+    pickable: false,
+  }).add(
+    new go.Shape({ fill: 'rgba(255, 255, 255, 0.85)', stroke: null }),
+    new go.TextBlock({
+      name: OWNERSHIP_TEXT,
+      margin: new go.Margin(0, 2),
+      font: 'bold 10px system-ui, sans-serif',
+      stroke: '#166534',
+    }),
+  );
+}
+
+const OWNERSHIP_LABEL_TEMPLATE = createOwnershipLabel();
+
+/**
+ * A relationship line, with an info icon at the middle of its route and, where
+ * it is known, the ownership percentage near its end.
+ *
+ * Icon and percentage are not elements of the link. Lines often share a stretch
+ * of their route, and a part is drawn as a whole, so anything inside the link
+ * would end up underneath the lines of the links drawn after it. As adornments
+ * they live in a layer of their own, above all lines, and GoJS keeps them with
+ * their link: they are hidden and removed together with it and never enter the
+ * undo history.
+ */
+class RelationshipLink extends go.Link {
+  private get linkData(): LinkData | null {
+    return this.data as LinkData | null;
+  }
+
+  /**
+   * Makes both ends of the line touch the outline of their node. GoJS ends an
+   * orthogonal line on the node's bounding rectangle, which leaves a gap in front
+   * of a diamond, an ellipse or a capsule. The route itself is left alone, since
+   * GoJS's routers rewrite it; instead the drawn line is lengthened by the size of
+   * the gap at each end, and the arrowhead is pushed forward by the same amount.
+   */
+  private closeGaps(): void {
+    const diagram = this.diagram;
+    if (!diagram) return;
+    const last = this.pointsCount - 1;
+    const ortho = this.isOrthogonal;
+    const fromGap = ortho ? this.gapToOutline(this.getPoint(0), this.fromNode, this.fromPort) : 0;
+    const toGap = ortho ? this.gapToOutline(this.getPoint(last), this.toNode, this.toPort) : 0;
+    const arrow = this.findObject(ARROWHEAD);
+    // A link starts out with NaN, which means "let GoJS decide", so compare with care.
+    const same = (current: number, wanted: number) => Math.abs((current || 0) - wanted) <= 0.1;
+    if (same(this.fromShortLength, -fromGap) && same(this.toShortLength, -toGap)) return;
+
+    // Display only: these follow from the route and the shapes, and are not undo steps.
+    const skips = diagram.skipsUndoManager;
+    diagram.skipsUndoManager = true;
+    this.fromShortLength = -fromGap;
+    this.toShortLength = -toGap;
+    if (arrow) arrow.segmentOffset = new go.Point(toGap, 0);
+    diagram.skipsUndoManager = skips;
+  }
+
+  /**
+   * How far it is from this end point, on the bounding rectangle of the node, to
+   * the outline of the node's shape, measured in the direction the line travels.
+   */
+  private gapToOutline(point: go.Point, node: go.Node | null, port: go.GraphObject | null): number {
+    const figure = (node?.data as NodeData | null)?.shape;
+    if (!figure || !port) return 0;
+    const bounds = port.getDocumentBounds();
+    const a = bounds.width / 2;
+    const b = bounds.height / 2;
+    const onSide = (distance: number) => Math.abs(distance) < 1;
+    if (onSide(point.y - bounds.top) || onSide(point.y - bounds.bottom)) {
+      // Arriving from above or below.
+      return b - figureExtent(figure, b, a, point.x - bounds.centerX);
+    }
+    if (onSide(point.x - bounds.left) || onSide(point.x - bounds.right)) {
+      return a - figureExtent(figure, a, b, point.y - bounds.centerY);
+    }
+    return 0;
+  }
+
+  /** Called by GoJS whenever the link is drawn anew, for instance after its route changed. */
+  override updateAdornments(): void {
+    super.updateAdornments();
+    if (this.pointsCount < 2) return;
+    this.closeGaps();
+    // Links drawn by the user have no icon.
+    if (this.linkData?.category !== ('manual' satisfies LinkKind)) {
+      const icon = this.adornment(INFO_ADORNMENT, INFO_ICON_TEMPLATE);
+      icon.location = this.midPoint;
+      icon.opacity = this.opacity;
+    }
+    if (this.linkData?.ownership !== undefined) {
+      const label = this.adornment(OWNERSHIP_ADORNMENT, OWNERSHIP_LABEL_TEMPLATE);
+      const text = label.findObject(OWNERSHIP_TEXT);
+      if (text instanceof go.TextBlock) text.text = formatOwnership(this.linkData.ownership);
+      label.ensureBounds();
+      label.location = this.ownershipLabelPoint(label.actualBounds);
+      label.opacity = this.opacity;
+    }
+  }
+
+  /** This link's adornment of that category, made from the template on first use. */
+  private adornment(category: string, template: go.Adornment): go.Adornment {
+    let adornment = this.findAdornment(category);
+    if (!adornment) {
+      adornment = template.copy();
+      adornment.adornedObject = this.path;
+      this.addAdornment(category, adornment);
+    }
+    return adornment;
+  }
+
+  /**
+   * Where the centre of the percentage goes: beside the last stretch of the line,
+   * and far enough back from its end that the whole label stays clear of the node.
+   */
+  private ownershipLabelPoint(label: go.Rect): go.Point {
+    const end = this.getPoint(this.pointsCount - 1);
+    const before = this.getPoint(this.pointsCount - 2);
+    const length = Math.hypot(end.x - before.x, end.y - before.y) || 1;
+    const ux = (end.x - before.x) / length;
+    const uy = (end.y - before.y) / length;
+    // Half of the label's size along the line and across it.
+    const along = (Math.abs(ux) * label.width + Math.abs(uy) * label.height) / 2;
+    const across = (Math.abs(uy) * label.width + Math.abs(ux) * label.height) / 2;
+    const back = along + OWNERSHIP_GAP_TO_NODE;
+    const aside = across + OWNERSHIP_GAP_TO_LINE;
+    return new go.Point(end.x - ux * back - uy * aside, end.y - uy * back + ux * aside);
+  }
 }
 
 /** `object` or the nearest panel around it that is called `name`, if any. */
@@ -267,12 +607,13 @@ export interface IconClicks {
   onNodeColor: (node: NodeData) => void;
   onNodeComment: (node: NodeData) => void;
   onNodeBatch: (node: NodeData) => void;
+  onNodeDelete: (node: NodeData) => void;
 }
 
 /** A link whose line type follows `modelData.linkType`. */
 function createLink(...parts: go.GraphObject[]): go.Link {
   // Drawn behind the nodes. Links can be selected and removed, but not reconnected.
-  return new go.Link({ layerName: go.LayerNames.Background })
+  return new RelationshipLink({ layerName: go.LayerNames.Background })
     .bindModel('routing', 'linkType', (type: LinkType) => linkStyle(type).routing)
     .bindModel('curve', 'linkType', (type: LinkType) => linkStyle(type).curve)
     .bindModel('corner', 'linkType', (type: LinkType) => linkStyle(type).corner)
@@ -282,6 +623,11 @@ function createLink(...parts: go.GraphObject[]): go.Link {
       ...parts,
     );
 }
+
+/** Every relationship line is black; the kinds differ in thickness and dashing only. */
+const LINE_COLOR = '#000000';
+/** Name of the visible line in every link template (there is a wide invisible one for clicking too). */
+const LINE = 'LINE';
 
 // Only hierarchy links make up a node's tree (see highlightTree), and only they
 // follow the sides that a tree layout assigns: a cross link attaches wherever
@@ -293,28 +639,27 @@ function createLinkTemplates(): go.Map<string, go.Link> {
     {
       key: 'hierarchy' satisfies LinkKind,
       value: createLink(
-        new go.Shape({ isPanelMain: true, stroke: '#374151', strokeWidth: 1.5 }),
+        new go.Shape({ name: LINE, isPanelMain: true, stroke: LINE_COLOR, strokeWidth: 1.5 }),
         new go.Shape({
+          name: ARROWHEAD,
           toArrow: go.Arrowheads.Standard,
-          fill: '#374151',
+          fill: LINE_COLOR,
           stroke: null,
           scale: 0.8,
         }),
-        // A link label without a segment index sits at the middle of the route.
-        createInfoIcon(),
       ),
     },
     {
       key: 'relation' satisfies LinkKind,
       value: createLink(
-        new go.Shape({ isPanelMain: true, stroke: '#9ca3af', strokeWidth: 1 }),
+        new go.Shape({ name: LINE, isPanelMain: true, stroke: LINE_COLOR, strokeWidth: 1 }),
         new go.Shape({
+          name: ARROWHEAD,
           toArrow: go.Arrowheads.Standard,
-          fill: '#9ca3af',
+          fill: LINE_COLOR,
           stroke: null,
           scale: 0.8,
         }),
-        createInfoIcon(),
       ).set(NOT_IN_TREE),
     },
     {
@@ -322,14 +667,16 @@ function createLinkTemplates(): go.Map<string, go.Link> {
       key: 'manual' satisfies LinkKind,
       value: createLink(
         new go.Shape({
+          name: LINE,
           isPanelMain: true,
-          stroke: '#2563eb',
+          stroke: LINE_COLOR,
           strokeWidth: 1.5,
           strokeDashArray: [2, 4],
         }),
         new go.Shape({
+          name: ARROWHEAD,
           toArrow: go.Arrowheads.Standard,
-          fill: '#2563eb',
+          fill: LINE_COLOR,
           stroke: null,
           scale: 0.8,
         }),
@@ -350,7 +697,7 @@ export function createModel(
 
 /**
  * Click behaviour of the diagram:
- * - A click on a node's color, comment or batch icon, or on a link's info icon,
+ * - A click on a node's color, comment, batch or delete icon, or on a link's info icon,
  *   reports it and leaves the selection alone. The info icon is looked up among everything
  *   under the pointer, because in a dense diagram other lines run across it
  *   and would otherwise take the click.
@@ -379,12 +726,15 @@ function handleClicks(diagram: go.Diagram, clicks: IconClicks): void {
       clicks.onNodeBatch(node);
       return;
     }
+    if (node && findNamed(top, DELETE_ICON)) {
+      clicks.onNodeDelete(node);
+      return;
+    }
 
-    const infoIcon = this.diagram.findObjectsAt(point, (o) => findNamed(o, INFO_ICON)).first();
-    // An icon hidden underneath a node does not count: that click is for the node.
-    const onNode = this.diagram.findPartAt(point, false) instanceof go.Node;
-    if (infoIcon?.part?.data && !onNode) {
-      clicks.onLinkInfo(infoIcon.part.data as LinkData);
+    const infoIcon = findNamed(top, INFO_ICON)?.part;
+    const link = infoIcon instanceof go.Adornment ? infoIcon.adornedPart?.data : null;
+    if (link) {
+      clicks.onLinkInfo(link as LinkData);
       return;
     }
 
@@ -405,10 +755,26 @@ export function createDiagram(div: HTMLDivElement, clicks: IconClicks): go.Diagr
     allowCopy: false,
     allowInsert: false,
   });
+  // Info icons go between the lines (Background layer) and the nodes (default layer).
+  // The layer is temporary: what is in it is display only and is never recorded for undo.
+  diagram.addLayerBefore(
+    new go.Layer({ name: INFO_LAYER, isTemporary: true }),
+    diagram.findLayer('')!,
+  );
   // A link dragged from the rim of one node to another node becomes a 'manual' link.
   diagram.toolManager.linkingTool.archetypeLinkData = { category: 'manual' satisfies LinkKind };
   handleClicks(diagram, clicks);
+  linkFromHandle(diagram);
   diagram.addDiagramListener('SelectionMoved', (e) => rerouteLinksAcross(e.subject));
+  // Lines are drawn up to the outline of a node, so when a node changes shape
+  // its lines have to be measured again.
+  diagram.addModelChangedListener((e) => {
+    if (e.change !== go.ChangeType.Property || e.propertyName !== 'shape' || !e.object) return;
+    diagram
+      .findNodeForData(e.object)
+      ?.findLinksConnected()
+      .each((link) => link.updateAdornments());
+  });
   return diagram;
 }
 
@@ -473,21 +839,105 @@ function findFreeSpot(diagram: go.Diagram, near: go.Point): go.Point {
   }
 }
 
+/**
+ * Everything that belongs in a picture of the diagram: the nodes, the lines, and
+ * the lines' info icons and percentages, but not the marks of selection and highlight.
+ */
+export function picturedParts(diagram: go.Diagram): go.List<go.Part> {
+  const parts = new go.List<go.Part>();
+  diagram.nodes.each((node) => parts.add(node));
+  diagram.links.each((link) => {
+    parts.add(link);
+    for (const category of [INFO_ADORNMENT, OWNERSHIP_ADORNMENT]) {
+      const adornment = link.findAdornment(category);
+      if (adornment) parts.add(adornment);
+    }
+  });
+  return parts;
+}
+
+/**
+ * Marks `node` as the search result that is being looked at, with a thick gold
+ * outline, and brings it into view at a readable size; with null, the mark is
+ * taken away. Display only: nothing here becomes part of the undo history.
+ */
+export function showSearchHit(diagram: go.Diagram, node: go.Node | null): void {
+  // No transaction here: this is also called while GoJS is finishing one, and
+  // adornments are never recorded for undo anyway.
+  diagram.nodes.each((part) => {
+    if (part !== node) part.removeAdornment(SEARCH_ADORNMENT);
+  });
+  if (!node) return;
+  if (!node.findAdornment(SEARCH_ADORNMENT)) {
+    const outline = SEARCH_OUTLINE_TEMPLATE.copy();
+    outline.adornedObject = node;
+    (outline.elt(0) as go.Shape).figure = (node.data as NodeData).shape;
+    node.addAdornment(SEARCH_ADORNMENT, outline);
+  }
+  // Zoom in if the diagram is shown smaller than life size; never zoom out.
+  if (diagram.scale < 1) diagram.scale = 1;
+  diagram.centerRect(node.actualBounds);
+}
+
 /** Opacity of everything outside the highlighted tree. */
 const DIMMED = 0.15;
 
 /**
- * Shows `node`, its ancestors up to the root and all of its descendants at full
- * strength and dims the rest of the diagram; with null, nothing is dimmed.
+ * Shows `node`, its ancestors up to the root, all of its descendants, and the
+ * nodes it is joined to by a relationship the user drew, at full strength, each
+ * with a gold outline, and dims the rest of the diagram; with null, nothing is
+ * dimmed or outlined.
  * This is display only and never becomes part of the undo history.
  */
 export function highlightTree(diagram: go.Diagram, node: go.Node | null): void {
   const tree = node && node.findTreeParts().addAll(node.findTreeParentChain());
+  // The relationships the user drew from or to this node count as well, with the nodes at their other end.
+  node?.findLinksConnected().each((link) => {
+    if ((link.data as LinkData | null)?.category !== ('manual' satisfies LinkKind)) return;
+    tree?.add(link);
+    const other = link.getOtherNode(node);
+    if (other) tree?.add(other);
+  });
   diagram.commit((d) => {
-    const show = (part: go.Part) => (part.opacity = !tree || tree.has(part) ? 1 : DIMMED);
-    d.nodes.each(show);
+    const show = (part: go.Part) => {
+      part.opacity = !tree || tree.has(part) ? 1 : DIMMED;
+      // A link's icon and percentage are parts of their own and have to be dimmed with it.
+      for (const category of [INFO_ADORNMENT, OWNERSHIP_ADORNMENT]) {
+        const adornment = part.findAdornment(category);
+        if (adornment) adornment.opacity = part.opacity;
+      }
+    };
     d.links.each(show);
+    d.nodes.each((part) => {
+      show(part);
+      // Every node of the tree gets the gold outline, not just the selected one.
+      if (!tree?.has(part)) {
+        part.removeAdornment(FOCUS_ADORNMENT);
+      } else if (!part.findAdornment(FOCUS_ADORNMENT)) {
+        const outline = FOCUS_OUTLINE_TEMPLATE.copy();
+        outline.adornedObject = part;
+        (outline.elt(0) as go.Shape).figure = (part.data as NodeData).shape;
+        part.addAdornment(FOCUS_ADORNMENT, outline);
+      }
+    });
   }, null);
+}
+
+/**
+ * A small picture of the whole diagram, in `div`, with a box showing which part
+ * of it is on screen. Dragging the box, or clicking elsewhere in the picture,
+ * moves the view of the diagram itself.
+ */
+export function createOverview(div: HTMLDivElement, diagram: go.Diagram): go.Overview {
+  const overview = new go.Overview(div, {
+    observed: diagram,
+    contentAlignment: go.Spot.Center,
+    'animationManager.isEnabled': false,
+  });
+  const frame = overview.box.elt(0) as go.Shape;
+  frame.stroke = SELECTION_GOLD;
+  frame.strokeWidth = 2;
+  return overview;
 }
 
 /** Shows `model` in the diagram with an empty, unlimited undo history. */

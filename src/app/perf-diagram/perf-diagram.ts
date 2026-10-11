@@ -17,10 +17,15 @@ import {
   addNodeInView,
   createDiagram,
   createModel,
+  createOverview,
+  deleteIconCentre,
   highlightTree,
+  picturedParts,
   showModel,
+  showSearchHit,
+  textColorFor,
 } from '../diagram/diagram-factory';
-import { DATASETS, DEFAULT_DATASET, findDataset } from '../diagram/datasets';
+import { BLANK_DATASET, DATASETS, DEFAULT_DATASET, findDataset } from '../diagram/datasets';
 import {
   DEFAULT_LAYOUT,
   LAYOUTS,
@@ -28,6 +33,7 @@ import {
   createLayout,
   resetPortSpots,
 } from '../diagram/layouts';
+import { SHAPE_TILES } from '../diagram/shape-tiles';
 import { newBatchUrl } from '../new-batch/new-batch';
 import {
   DEFAULT_LINK_TYPE,
@@ -38,11 +44,15 @@ import {
 } from '../diagram/link-types';
 import {
   COLORS,
+  DEFAULT_COLOR,
+  DEFAULT_SHAPE,
   EDITABLE_FIELDS,
   EditableField,
+  FUND_TYPES,
   LinkData,
   NodeData,
   SHAPES,
+  formatOwnership,
   randomPatch,
 } from '../diagram/node-data';
 
@@ -83,8 +93,36 @@ interface LinkInfo {
   link: LinkData;
   from: NodeData | null;
   to: NodeData | null;
+  /** The ownership percentage as text, or null when there is no data. */
+  ownership: string | null;
   /** The link's data object as stored in the model. */
   json: string;
+}
+
+/** What the styles dialog will apply; null means "leave as it is". */
+interface StyleDraft {
+  color: string | null;
+  shape: go.FigureName | null;
+}
+
+/** The nodes of one fund type, as listed in the styles dialog. */
+interface StyleRow {
+  type: string;
+  count: number;
+  /** The color and the shape they all share, or null where they differ. */
+  color: string | null;
+  shape: go.FigureName | null;
+}
+
+interface DeleteRequest {
+  /** Keys of the nodes to delete. */
+  keys: number[];
+  /** Relationships that were selected along with them and are removed too. */
+  links: LinkData[];
+  /** Title of the node when there is exactly one. */
+  title: string | null;
+  /** How many relationships touch the nodes and are removed with them. */
+  attached: number;
 }
 
 /** First and last index into UndoManager.history, inclusive. */
@@ -102,11 +140,19 @@ interface Operation {
 
 const MAX_LOG_ENTRIES = 30;
 
+/**
+ * A picture of the diagram, for export and print, is drawn at twice the size of
+ * the diagram so that small text stays sharp, also on high-resolution screens.
+ * Very large diagrams are drawn smaller, so that no side exceeds the maximum.
+ */
+const IMAGE_SCALE = 2;
+const IMAGE_MAX_SIDE = 10_000;
+
 /** Upper limit for runs × nodes of one bulk edit; beyond it the page is blocked for too long. */
 const BULK_EDIT_BUDGET = 40_000;
 
 /** Largest node count that is loaded with a line type that is routed around the nodes. */
-const AVOID_NODES_LIMIT = 500;
+const AVOID_NODES_LIMIT = 200;
 
 @Component({
   selector: 'app-perf-diagram',
@@ -121,12 +167,39 @@ export class PerfDiagram {
   protected readonly layouts = LAYOUTS;
   protected readonly linkTypes = LINK_TYPES;
   protected readonly shapes = SHAPES;
+  protected readonly shapeTiles = SHAPE_TILES;
   protected readonly colors = COLORS;
 
   /** Id of the dataset the diagram was loaded with. */
   protected readonly datasetId = signal(DEFAULT_DATASET);
   protected readonly layoutType = signal<LayoutType>(DEFAULT_LAYOUT);
   protected readonly linkType = signal<LinkType>(DEFAULT_LINK_TYPE);
+  /** True when the diagram has no nodes; zooming and arranging make no sense then. */
+  protected readonly isEmpty = computed(() => (this.stats()?.nodes ?? 0) === 0);
+  /** What is typed into the search box, and the keys of the nodes whose name contains it. */
+  protected readonly searchQuery = signal('');
+  protected readonly searchMatches = signal<number[]>([]);
+  /** Which of the matches is being looked at; -1 before the first step. */
+  protected readonly searchIndex = signal(-1);
+  protected readonly searchSummary = computed(() => {
+    const found = this.searchMatches().length;
+    if (this.searchQuery().trim() === '') return '';
+    if (found === 0) return 'No nodes found';
+    return this.searchIndex() < 0 ? `${found} found` : `${this.searchIndex() + 1} of ${found}`;
+  });
+  /** The diagram's name and description, as shown in the bar above the canvas. */
+  protected readonly diagramName = signal('');
+  protected readonly diagramDescription = signal('');
+  /** The layout in use, with its name and icon, for the tool strip. */
+  protected readonly currentLayout = computed(
+    () => LAYOUTS.find((layout) => layout.type === this.layoutType()) ?? LAYOUTS[0],
+  );
+  /** Whether the tool strip is showing its column of layout icons. */
+  protected readonly layoutMenuOpen = signal(false);
+  /** The line type in use, with its name and icon, for the tool strip. */
+  protected readonly currentLinkStyle = computed(() => linkStyle(this.linkType()));
+  /** Whether the tool strip is showing its column of line type icons. */
+  protected readonly linkMenuOpen = signal(false);
   protected readonly bulkRuns = signal(50);
   /**
    * Most runs the bulk edit accepts: the number of nodes in the diagram, and
@@ -147,6 +220,59 @@ export class PerfDiagram {
   protected readonly linksOfSelectedNodes = signal(0);
   protected readonly log = signal<LogEntry[]>([]);
 
+  /** A picture of the diagram while it is being printed. */
+  protected readonly printImage = signal<string | null>(null);
+  /** What the delete confirmation dialog is asking about. */
+  protected readonly deleteRequest = signal<DeleteRequest | null>(null);
+  /** One row per fund type in the diagram, for the styles dialog. */
+  protected readonly styleRows = signal<StyleRow[]>([]);
+  /** The fund types ticked in the styles dialog. */
+  protected readonly styleTypes = signal<ReadonlySet<string>>(new Set());
+  /** The color and shape picked there but not applied yet; null leaves that one as it is. */
+  protected readonly styleDraft = signal<StyleDraft>({ color: null, shape: null });
+  protected readonly allStyleTypesSelected = computed(
+    () => this.styleRows().length > 0 && this.styleTypes().size === this.styleRows().length,
+  );
+  /** How many nodes the ticked fund types cover. */
+  protected readonly styleNodeCount = computed(() =>
+    this.styleRows()
+      .filter((row) => this.styleTypes().has(row.type))
+      .reduce((sum, row) => sum + row.count, 0),
+  );
+  /**
+   * What a node will look like after Apply: the picked color and shape, and for
+   * whatever was not picked, what the first ticked fund type has now.
+   */
+  protected readonly nodePreview = computed(() => {
+    const ticked = this.styleRows().filter((row) => this.styleTypes().has(row.type));
+    const draft = this.styleDraft();
+    const shape = draft.shape ?? ticked[0]?.shape ?? DEFAULT_SHAPE;
+    const color = draft.color ?? ticked[0]?.color ?? DEFAULT_COLOR;
+    const tile = SHAPE_TILES.find((candidate) => candidate.figure === shape) ?? SHAPE_TILES[0];
+    return {
+      path: tile.path,
+      fill: color,
+      // A diamond comes to a point on the left, so its arrows sit further in, as in the diagram.
+      arrowsLeft: shape === 'Diamond' ? 24 : 8,
+      handleRight: shape === 'Diamond' ? 18 : 6,
+      // The delete icon sits where it does in the diagram, which depends on the shape.
+      deleteIcon: deleteIconCentre(shape),
+      textColor: textColorFor(color),
+      subtitle:
+        ticked.length === 0
+          ? 'Fund type'
+          : ticked.length === 1
+            ? ticked[0].type
+            : `${ticked.length} fund types`,
+    };
+  });
+  /** Apply needs at least one fund type and at least a color or a shape. */
+  protected readonly canApplyStyle = computed(() => {
+    const draft = this.styleDraft();
+    return this.styleNodeCount() > 0 && (draft.color !== null || draft.shape !== null);
+  });
+  /** What is currently typed into the comment dialog; Save needs it to hold some text. */
+  protected readonly commentDraft = signal('');
   /** The node whose comment is being edited in the comment dialog. */
   protected readonly commentTarget = signal<NodeData | null>(null);
   /** The node whose color is being chosen in the color dialog. */
@@ -155,11 +281,17 @@ export class PerfDiagram {
   protected readonly linkInfo = signal<LinkInfo | null>(null);
 
   private readonly host = viewChild.required<ElementRef<HTMLDivElement>>('diagramHost');
+  private readonly overviewHost = viewChild.required<ElementRef<HTMLDivElement>>('overviewHost');
   private readonly linkDialog = viewChild.required<ElementRef<HTMLDialogElement>>('linkDialog');
   private readonly colorDialog = viewChild.required<ElementRef<HTMLDialogElement>>('colorDialog');
   private readonly commentDialog =
     viewChild.required<ElementRef<HTMLDialogElement>>('commentDialog');
+  private readonly deleteDialog = viewChild.required<ElementRef<HTMLDialogElement>>('deleteDialog');
+  private readonly stylesDialog = viewChild.required<ElementRef<HTMLDialogElement>>('stylesDialog');
+  private readonly resetDialog = viewChild.required<ElementRef<HTMLDialogElement>>('resetDialog');
   private diagram!: go.Diagram;
+  /** The small picture of the whole diagram in the corner of the canvas. */
+  private overview!: go.Overview;
   /** Model JSON after the initial layout: what "undo all" has to get back to. */
   private initialJson: string | null = null;
   /** Model JSON at the newest transaction, captured before undoing away from it. */
@@ -174,6 +306,7 @@ export class PerfDiagram {
   constructor() {
     afterNextRender(() => this.init());
     inject(DestroyRef).onDestroy(() => {
+      if (this.overview) this.overview.div = null;
       if (this.diagram) this.diagram.div = null;
     });
   }
@@ -193,13 +326,15 @@ export class PerfDiagram {
       onNodeComment: (node) => this.showComment(node),
       // A new tab, so the diagram and its undo history stay as they are.
       onNodeBatch: (node) => openInNewTab(newBatchUrl(node.key)),
+      onNodeDelete: (node) => this.askToDelete([node]),
     });
+    this.overview = createOverview(this.overviewHost().nativeElement, this.diagram);
 
     // Route Ctrl/Cmd+Z and Ctrl/Cmd+Y through the timed versions.
     this.diagram.commandHandler.undo = () => void this.undo();
     this.diagram.commandHandler.redo = () => void this.redo();
-    // Same for the Delete key, which only ever removes relationships.
-    this.diagram.commandHandler.deleteSelection = () => void this.removeSelectedLinks();
+    // Same for the Delete key, which removes whatever is selected.
+    this.diagram.commandHandler.deleteSelection = () => void this.deleteSelection();
 
     // Picks up transactions committed by GoJS itself (dragging, in-place text editing).
     this.diagram.addModelChangedListener((e) => {
@@ -216,10 +351,14 @@ export class PerfDiagram {
     this.diagram.addDiagramListener('InitialLayoutCompleted', () => {
       this.initialJson = this.model.toJson();
       this.busy.set(false);
+      // GoJS clears the history right after this event; read the numbers once it has.
+      queueMicrotask(() => this.refresh());
     });
     this.diagram.addDiagramListener('ChangedSelection', () => {
       this.syncSelection();
       this.highlightSelectedTree();
+      // Selecting something else takes the attention away from the search result.
+      if (this.diagram.selection.count > 0) this.leaveSearchHit();
     });
     // Zooming by wheel or pinch counts as an action that ends the highlight.
     this.diagram.addDiagramListener('ViewportBoundsChanged', (e) => {
@@ -322,13 +461,20 @@ export class PerfDiagram {
   /** Adds one new node in the middle of the view, as a single transaction. */
   protected addNode(): Promise<void> {
     return this.measure(() => {
-      const key = Math.max(0, ...this.model.nodeDataArray.map((data) => data.key)) + 1;
+      // Higher than every key in use, including those of deleted nodes that
+      // relationships still refer to, so the new node does not take over their lines.
+      const key =
+        Math.max(
+          0,
+          ...this.model.nodeDataArray.map((data) => data.key),
+          ...this.model.linkDataArray.flatMap((link) => [link.from, link.to]),
+        ) + 1;
       const node: NodeData = {
         key,
-        title: `New node ${key}`,
-        subtitle: 'draft',
-        shape: SHAPES[0],
-        color: COLORS[0],
+        title: `New fund ${key}`,
+        subtitle: FUND_TYPES[0],
+        shape: DEFAULT_SHAPE,
+        color: DEFAULT_COLOR,
         comment: '',
       };
       return this.newTransactions(
@@ -361,8 +507,145 @@ export class PerfDiagram {
     return this.setField(() => (node ? [node] : []), 'color', color);
   }
 
+  /** Opens the dialog in which color and shape are set per fund type. */
+  protected openStyles(): void {
+    this.refreshStyles();
+    this.styleDraft.set({ color: null, shape: null });
+    this.stylesDialog().nativeElement.showModal();
+  }
+
+  protected closeStyles(): void {
+    this.stylesDialog().nativeElement.close();
+  }
+
+  /**
+   * How a fund type's nodes look, for the small preview in its row. For a ticked
+   * type this already includes the color and shape picked but not yet applied.
+   */
+  protected stylePreview(row: StyleRow): { path: string; fill: string; mixed: boolean } {
+    const draft = this.styleTypes().has(row.type) ? this.styleDraft() : null;
+    const shape = draft?.shape ?? row.shape;
+    const color = draft?.color ?? row.color;
+    const tile = SHAPE_TILES.find((candidate) => candidate.figure === shape) ?? SHAPE_TILES[0];
+    return { path: tile.path, fill: color ?? '#ffffff', mixed: shape === null || color === null };
+  }
+
+  /** Ticks or unticks one fund type in the styles dialog. */
+  protected toggleStyleType(type: string): void {
+    const types = new Set(this.styleTypes());
+    if (!types.delete(type)) types.add(type);
+    this.styleTypes.set(types);
+  }
+
+  /** Ticks every fund type, or none. */
+  protected selectAllStyleTypes(all: boolean): void {
+    this.styleTypes.set(new Set(all ? this.styleRows().map((row) => row.type) : []));
+  }
+
+  /** Picks a color or shape for Apply; picking the same one again takes the choice back. */
+  protected chooseStyle<F extends keyof StyleDraft>(field: F, value: StyleDraft[F]): void {
+    this.styleDraft.update((draft) => ({
+      ...draft,
+      [field]: draft[field] === value ? null : value,
+    }));
+  }
+
+  /**
+   * Gives every node of the ticked fund types the picked color and shape, as one
+   * transaction, and closes the dialog. Nothing in the diagram changes before
+   * this is called.
+   */
+  protected applyStyles(): Promise<void> {
+    const types = this.styleTypes();
+    const { color, shape } = this.styleDraft();
+    this.closeStyles();
+    return this.measure(() => {
+      const nodes = this.model.nodeDataArray.filter(
+        (node) =>
+          types.has(node.subtitle) &&
+          ((color !== null && node.color !== color) || (shape !== null && node.shape !== shape)),
+      );
+      return this.newTransactions(
+        `Style ${nodes.length} ${nodes.length === 1 ? 'node' : 'nodes'}`,
+        once(() => nodes.length > 0),
+        () => {
+          this.model.commit((m) => {
+            for (const node of nodes) {
+              if (color !== null) m.set(node, 'color', color);
+              if (shape !== null) m.set(node, 'shape', shape);
+            }
+          }, 'apply styles');
+          this.styleDraft.set({ color: null, shape: null });
+        },
+      );
+    });
+  }
+
+  /** Asks before resetting every node's style. */
+  protected askToResetStyles(): void {
+    this.resetDialog().nativeElement.showModal();
+  }
+
+  protected cancelResetStyles(): void {
+    this.resetDialog().nativeElement.close();
+  }
+
+  /** Resets every node's style and closes both dialogs, so the styles dialog starts afresh next time. */
+  protected confirmResetStyles(): Promise<void> {
+    this.cancelResetStyles();
+    this.closeStyles();
+    this.styleTypes.set(new Set());
+    this.styleDraft.set({ color: null, shape: null });
+    return this.resetStyles();
+  }
+
+  /** Turns every node back into a gray rectangle, as one transaction. */
+  private resetStyles(): Promise<void> {
+    return this.measure(() => {
+      const nodes = this.model.nodeDataArray.filter(
+        (node) => node.shape !== DEFAULT_SHAPE || node.color !== DEFAULT_COLOR,
+      );
+      return this.newTransactions(
+        'Reset styles',
+        once(() => nodes.length > 0),
+        () =>
+          this.model.commit((m) => {
+            for (const node of nodes) {
+              m.set(node, 'shape', DEFAULT_SHAPE);
+              m.set(node, 'color', DEFAULT_COLOR);
+            }
+          }, 'reset styles'),
+      );
+    });
+  }
+
+  /** Groups the nodes by fund type (their subtitle) for the styles dialog. */
+  private refreshStyles(): void {
+    const rows = new Map<string, StyleRow>();
+    for (const node of this.model.nodeDataArray) {
+      const row = rows.get(node.subtitle);
+      if (!row) {
+        rows.set(node.subtitle, {
+          type: node.subtitle,
+          count: 1,
+          color: node.color,
+          shape: node.shape,
+        });
+        continue;
+      }
+      row.count++;
+      if (row.color !== node.color) row.color = null;
+      if (row.shape !== node.shape) row.shape = null;
+    }
+    this.styleRows.set([...rows.values()].sort((a, b) => a.type.localeCompare(b.type)));
+    // A type that no node has any more cannot stay ticked.
+    const ticked = [...this.styleTypes()].filter((type) => rows.has(type));
+    if (ticked.length !== this.styleTypes().size) this.styleTypes.set(new Set(ticked));
+  }
+
   /** Opens the comment dialog for one node. */
   private showComment(node: NodeData): void {
+    this.commentDraft.set(node.comment);
     this.commentTarget.set(node);
     this.commentDialog().nativeElement.showModal();
   }
@@ -397,6 +680,71 @@ export class PerfDiagram {
     });
   }
 
+  /**
+   * What the Delete key does: asks before deleting when nodes are selected, and
+   * removes selected relationships straight away when only those are selected.
+   */
+  protected deleteSelection(): Promise<void> | void {
+    const nodes = this.selectedNodes();
+    if (nodes.length > 0) return this.askToDelete(nodes, this.selectedLinkData());
+    return this.removeSelectedLinks();
+  }
+
+  /** Asks before deleting the selected nodes. */
+  protected deleteSelectedNodes(): void {
+    this.askToDelete(this.selectedNodes());
+  }
+
+  /** Opens the confirmation dialog for deleting these nodes, and these relationships with them. */
+  private askToDelete(nodes: NodeData[], links: LinkData[] = []): void {
+    if (nodes.length === 0) return;
+    const keys = new Set(nodes.map((node) => node.key));
+    const attached = this.model.linkDataArray.filter(
+      (link) => (keys.has(link.from) || keys.has(link.to)) && !links.includes(link),
+    );
+    this.deleteRequest.set({
+      keys: [...keys],
+      links,
+      title: nodes.length === 1 ? nodes[0].title : null,
+      attached: attached.length,
+    });
+    this.deleteDialog().nativeElement.showModal();
+  }
+
+  protected cancelDelete(): void {
+    this.deleteDialog().nativeElement.close();
+  }
+
+  /**
+   * Deletes what the confirmation dialog asked about, as one transaction: the
+   * nodes, and every relationship that starts or ends at one of them. All other
+   * nodes stay, and no relationship is created or re-attached.
+   */
+  protected confirmDelete(): Promise<void> {
+    const request = this.deleteRequest();
+    this.cancelDelete();
+    return this.measure(() => {
+      // Looked up again now, in case something changed while the dialog was open.
+      const nodes = (request?.keys ?? [])
+        .map((key) => this.model.findNodeDataForKey(key))
+        .filter((node) => node !== null);
+      const keys = new Set(nodes.map((node) => node.key));
+      const selected = request?.links ?? [];
+      const links = this.model.linkDataArray.filter(
+        (link) => keys.has(link.from) || keys.has(link.to) || selected.includes(link),
+      );
+      return this.newTransactions(
+        `Delete ${nodes.length} ${nodes.length === 1 ? 'node' : 'nodes'}`,
+        once(() => nodes.length > 0),
+        () =>
+          this.model.commit(() => {
+            this.model.removeLinkDataCollection(links);
+            this.model.removeNodeDataCollection(nodes);
+          }, 'delete'),
+      );
+    });
+  }
+
   /** Removes the relationships that are selected themselves. */
   protected removeSelectedLinks(): Promise<void> {
     return this.removeLinks(() => this.selectedLinkData());
@@ -413,6 +761,7 @@ export class PerfDiagram {
       link,
       from: this.model.findNodeDataForKey(link.from),
       to: this.model.findNodeDataForKey(link.to),
+      ownership: link.ownership === undefined ? null : formatOwnership(link.ownership),
       // GoJS keeps its own bookkeeping on data objects under "__" names.
       json: JSON.stringify(link, (name, value) => (name.startsWith('__') ? undefined : value), 2),
     });
@@ -488,6 +837,26 @@ export class PerfDiagram {
     }));
   }
 
+  /** Opens or closes one of the tool strip's two columns of icons; only one is open at a time. */
+  protected toggleMenu(menu: 'layout' | 'lines'): void {
+    const layout = menu === 'layout' && !this.layoutMenuOpen();
+    const lines = menu === 'lines' && !this.linkMenuOpen();
+    this.layoutMenuOpen.set(layout);
+    this.linkMenuOpen.set(lines);
+  }
+
+  /** Picks a line type from the tool strip's column of icons, which then closes. */
+  protected pickLinkType(type: LinkType): Promise<void> {
+    this.linkMenuOpen.set(false);
+    return this.changeLinkType(type);
+  }
+
+  /** Picks a layout from the tool strip's column of icons, which then closes. */
+  protected pickLayout(type: LayoutType): Promise<void> {
+    this.layoutMenuOpen.set(false);
+    return this.changeLayout(type);
+  }
+
   /** Switches the line type of every link as one transaction; the new routes are recorded too. */
   protected changeLinkType(type: LinkType): Promise<void> {
     return this.measure(() => ({
@@ -498,6 +867,70 @@ export class PerfDiagram {
       ),
       showBusyFirst: true,
     }));
+  }
+
+  /** Carries out what was picked in the Actions dropdown and puts the dropdown back. */
+  protected runAction(menu: HTMLSelectElement): void {
+    const action = menu.value;
+    menu.value = '';
+    if (action === 'export-png') this.exportPng();
+    if (action === 'print') this.print();
+  }
+
+  /** Downloads a picture of the whole diagram as a PNG file. */
+  protected exportPng(): void {
+    this.diagram.makeImageData({
+      ...this.imageOptions(),
+      returnType: 'blob',
+      callback: (blob: Blob) => {
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'fund-diagram.png';
+        link.click();
+        URL.revokeObjectURL(link.href);
+      },
+    });
+  }
+
+  /**
+   * Prints the whole diagram. A picture of it is put on the page, where the
+   * print style sheet shows it instead of the app; printing starts once the
+   * picture has loaded.
+   */
+  protected print(): void {
+    this.printImage.set(this.diagram.makeImageData(this.imageOptions()) as string);
+  }
+
+  /**
+   * How the diagram is turned into a picture: all of it, not just what is on
+   * screen, on white, sharp, and as it is, without the gold outlines of the
+   * selection and without the dimming of the tree highlight.
+   */
+  private imageOptions(): go.ImageRendererOptions {
+    this.clearHighlight();
+    const bounds = this.diagram.documentBounds;
+    const longest = Math.max(bounds.width, bounds.height, 1);
+    return {
+      background: '#ffffff',
+      parts: picturedParts(this.diagram),
+      // The info icons and percentages live in a temporary layer.
+      showTemporary: true,
+      scale: Math.min(IMAGE_SCALE, IMAGE_MAX_SIDE / longest),
+      maxSize: new go.Size(IMAGE_MAX_SIDE + 100, IMAGE_MAX_SIDE + 100),
+    };
+  }
+
+  protected printLoaded(): void {
+    window.print();
+    this.printImage.set(null);
+  }
+
+  protected zoomIn(): void {
+    this.diagram.commandHandler.increaseZoom();
+  }
+
+  protected zoomOut(): void {
+    this.diagram.commandHandler.decreaseZoom();
   }
 
   protected zoomToFit(): void {
@@ -521,6 +954,74 @@ export class PerfDiagram {
     if (!this.highlighted) return;
     this.highlighted = false;
     highlightTree(this.diagram, null);
+  }
+
+  /** Looks for the nodes whose name contains what was typed; no result is stepped to yet. */
+  protected search(query: string): void {
+    this.searchQuery.set(query);
+    this.searchIndex.set(-1);
+    showSearchHit(this.diagram, null);
+    this.updateSearch();
+  }
+
+  /** Goes to the next or previous search result: marks that node, centres on it and zooms in. */
+  protected searchStep(delta: 1 | -1): void {
+    const matches = this.searchMatches();
+    if (matches.length === 0) return;
+    const current = this.searchIndex();
+    const next =
+      current < 0
+        ? delta > 0
+          ? 0
+          : matches.length - 1
+        : (current + delta + matches.length) % matches.length;
+    this.searchIndex.set(next);
+    showSearchHit(this.diagram, this.diagram.findNodeForKey(matches[next]));
+  }
+
+  /** Stops looking at a particular search result; the matches and their count stay. */
+  private leaveSearchHit(): void {
+    if (this.searchIndex() < 0) return;
+    this.searchIndex.set(-1);
+    showSearchHit(this.diagram, null);
+  }
+
+  /**
+   * Works out the matches again. Called after every change to the diagram, since
+   * renaming, adding, deleting and undo all alter which nodes match.
+   */
+  private updateSearch(): void {
+    const query = this.searchQuery().trim().toLowerCase();
+    const lookingAt = this.searchMatches()[this.searchIndex()];
+    const matches = query
+      ? this.model.nodeDataArray
+          .filter((node) => node.title.toLowerCase().includes(query))
+          .map((node) => node.key)
+      : [];
+    this.searchMatches.set(matches);
+    // Stay on the result that was being looked at, if it still matches.
+    const index = lookingAt === undefined ? -1 : matches.indexOf(lookingAt);
+    this.searchIndex.set(index);
+    // The node that was being looked at no longer matches, or is gone.
+    if (lookingAt !== undefined && index < 0) showSearchHit(this.diagram, null);
+  }
+
+  /** Takes over the name or description typed above the canvas, as one transaction. */
+  protected setDiagramInfo(field: 'name' | 'description', input: HTMLInputElement): Promise<void> {
+    const value = input.value.trim();
+    input.value = value;
+    return this.measure(() =>
+      this.newTransactions(
+        field === 'name' ? 'Rename diagram' : 'Describe diagram',
+        once(() => value !== this.model.modelData[field]),
+        () => this.model.commit((m) => m.set(m.modelData, field, value), `edit ${field}`),
+      ),
+    );
+  }
+
+  /** Starts a diagram from scratch: an empty canvas to add nodes and relationships to. */
+  protected newDiagram(): void {
+    this.reset(BLANK_DATASET);
   }
 
   /** Loads the dataset with this id from scratch, discarding the undo history. */
@@ -583,13 +1084,20 @@ export class PerfDiagram {
 
   /** Loads a fresh model that keeps the currently selected layout and line type. */
   private loadModel(datasetId: string): void {
-    const data = findDataset(datasetId).create();
-    // Routing every link around the nodes takes about 10 s at 500 nodes and minutes
-    // beyond that, so bigger diagrams start with straight lines.
+    const dataset = findDataset(datasetId);
+    const data = dataset.create();
+    // Routing every link around the nodes takes about a second at 200 nodes, seven
+    // at 500 and minutes beyond that, so bigger diagrams start with straight lines.
     if (data.nodes.length > AVOID_NODES_LIMIT && avoidsNodes(this.linkType())) {
       this.linkType.set('straight');
     }
-    const settings = { layoutType: this.layoutType(), linkType: this.linkType() };
+    const settings = {
+      layoutType: this.layoutType(),
+      linkType: this.linkType(),
+      // A loaded diagram starts out named after its data; the user can rename it.
+      name: datasetId === BLANK_DATASET ? 'Untitled diagram' : dataset.label,
+      description: '',
+    };
     this.busy.set(true);
     this.initialJson = null;
     this.tipJson = null;
@@ -599,9 +1107,11 @@ export class PerfDiagram {
     showModel(this.diagram, createModel(data, settings));
   }
 
-  /** Makes the selects follow the model's settings, which a switch, an undo or a redo changes. */
+  /** Makes the controls follow the model's settings, which a change, an undo or a redo alters. */
   private syncSettings(): void {
-    const { layoutType, linkType } = this.model.modelData;
+    const { layoutType, linkType, name, description } = this.model.modelData;
+    this.diagramName.set(name);
+    this.diagramDescription.set(description);
     this.linkType.set(linkType);
     if (layoutType === this.layoutType()) return;
     this.layoutType.set(layoutType);
@@ -689,6 +1199,8 @@ export class PerfDiagram {
       canRedo: um.canRedo(),
       heapMb: memory ? memory.usedJSHeapSize / 1048576 : null,
     });
+    if (this.stylesDialog().nativeElement.open) this.refreshStyles();
+    this.updateSearch();
     // The limit follows the node count, so a number typed for a bigger diagram may now be too high.
     if (this.bulkRuns() > this.maxBulkRuns()) this.bulkRuns.set(this.maxBulkRuns());
     this.stateCheck.set(this.describeState());
