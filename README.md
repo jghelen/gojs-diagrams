@@ -6,6 +6,9 @@ for measuring how fast GoJS's undo/redo history is on diagrams of 24 to 2000 nod
 The first half of this document is for people who use the app. The second half explains how it is
 built and how to run its tests.
 
+The business requirements, rule by rule, are in
+[BUSINESS_REQUIREMENTS.md](BUSINESS_REQUIREMENTS.md).
+
 - [What it is for](#what-it-is-for)
 - [Quick start](#quick-start)
 - [User guide](#user-guide)
