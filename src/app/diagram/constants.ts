@@ -140,9 +140,11 @@ export const HOVER_COLOR = '#d4a017';
 export const AVOID_NODES_BELOW = 500;
 
 /**
- * The layouts that stay quick however big the diagram is. From SLOW_LAYOUTS_FROM
- * nodes on, "Randomize all" picks its next layout among these only: the others
- * (circle, layered, force-directed) then take many seconds each.
+ * The layouts that stay quick however big the diagram is. The others (circle,
+ * layered, force-directed) take many seconds each from SLOW_LAYOUTS_FROM nodes
+ * on. So there "Randomize all" picks its next layout among the quick ones only,
+ * and a diagram that big is not opened in a slow layout left over from a smaller
+ * one. The user can still choose a slow layout for a big diagram by hand.
  */
 export const QUICK_LAYOUTS: readonly LayoutType[] = ['top-bottom', 'bottom-top', 'grid'];
 export const SLOW_LAYOUTS_FROM = 500;

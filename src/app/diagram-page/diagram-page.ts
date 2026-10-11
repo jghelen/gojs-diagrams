@@ -10,7 +10,13 @@ import {
   viewChild,
 } from '@angular/core';
 import * as go from 'gojs/release/go';
-import { BLANK_DATASET, DEFAULT_DATASET } from '../diagram/constants';
+import {
+  BLANK_DATASET,
+  DEFAULT_DATASET,
+  DEFAULT_LAYOUT,
+  QUICK_LAYOUTS,
+  SLOW_LAYOUTS_FROM,
+} from '../diagram/constants';
 import { findDataset } from '../diagram/datasets';
 import {
   NodeModel,
@@ -261,6 +267,15 @@ export class DiagramPage {
     this.linkCard.close();
     const dataset = findDataset(datasetId);
     const data = dataset.create();
+    // The circle, layered and force-directed layouts take many seconds on a big
+    // diagram. One of them may be in use from a smaller diagram; a big one is then
+    // opened in the default layout rather than keeping the user waiting.
+    if (
+      data.nodes.length >= SLOW_LAYOUTS_FROM &&
+      !QUICK_LAYOUTS.includes(this.state.layoutType())
+    ) {
+      this.state.layoutType.set(DEFAULT_LAYOUT);
+    }
     const settings = {
       layoutType: this.state.layoutType(),
       linkType: this.state.linkType(),

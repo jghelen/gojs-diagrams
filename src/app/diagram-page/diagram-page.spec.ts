@@ -2194,6 +2194,27 @@ describe('DiagramPage', () => {
       expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
     }, 20_000);
 
+    it('are not opened in a layout that is slow there, even if a smaller diagram used it', async () => {
+      await bench.changeLayout('circle');
+      bench.reset('100');
+      await settle();
+      // A hundred funds in a circle are no trouble.
+      expect(bench.layoutType()).toBe('circle');
+
+      bench.reset('500');
+      await settle();
+      expect(bench.layoutType()).toBe('top-bottom');
+      expect(model().modelData.layoutType).toBe('top-bottom');
+      expect(linesOverNodes()).toBe(0);
+    }, 30_000);
+
+    it('keep a quick layout that was chosen before', async () => {
+      await bench.changeLayout('grid');
+      bench.reset('500');
+      await settle();
+      expect(bench.layoutType()).toBe('grid');
+    }, 30_000);
+
     it('name the line types the same as on a small diagram', async () => {
       const titles = async () => {
         page.querySelector<HTMLButtonElement>('button[aria-label="Lines"]')!.click();

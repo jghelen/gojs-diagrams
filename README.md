@@ -554,8 +554,13 @@ npm test -- --watch=false --include src/app/diagram/undo-history.spec.ts
 
 ### Automatic checks
 
-Every push to `main` and every pull request is checked on GitHub by the workflow in
-`.github/workflows/ci.yml`. It runs four things, and fails if any of them does:
+The workflow in `.github/workflows/ci.yml` checks the code on GitHub at two moments:
+
+1. when a pull request into `main` is opened, and again each time commits are added to it;
+2. when something lands on `main`: a merged pull request, or a direct push.
+
+Pull requests into other branches, and pushes to other branches, are not checked. Each run does
+four things, and fails if any of them does:
 
 | Check      | Command                     | What it catches                                                                              |
 | ---------- | --------------------------- | -------------------------------------------------------------------------------------------- |

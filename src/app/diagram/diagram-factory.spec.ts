@@ -1,3 +1,4 @@
+import { createLayout } from './layouts';
 import * as go from 'gojs/release/go';
 import {
   countLinksOverNodes,
@@ -20,7 +21,7 @@ import {
   syncLinkCards,
   textColorFor,
 } from './diagram-factory';
-import { LinkData, NodeData, formatOwnership } from './node-data';
+import { createLinks, createNodes, formatOwnership, LinkData, NodeData } from './node-data';
 import { DEFAULT_COLOR, DEFAULT_SHAPE, SHAPES } from './constants';
 
 const NODE_SIZE = { width: 173.5, height: 97.5 };
@@ -1234,6 +1235,54 @@ describe('relationship lines on a big diagram', () => {
     }, 'move');
     test.settle();
     expect(countLinksOverNodes(test.diagram)).toBe(0);
+  });
+
+  it('are not mapped out by GoJS when a big diagram is opened after a small one', () => {
+    // GoJS maps every node to route lines around them. On a big diagram that is not
+    // its job; for one that is spread very wide, the map does not even fit into memory.
+    for (const layout of ['top-bottom', 'force'] as const) {
+      const test = createTestDiagram({ count: 100, linkType: 'avoid', layout });
+      const mapped = vi.spyOn(test.diagram, 'getPositions');
+      test.diagram.layout = createLayout(layout, 500);
+      test.history.load(
+        createModel(
+          { nodes: createNodes(500), links: createLinks(500) },
+          {
+            layoutType: layout,
+            linkType: 'avoid',
+            name: 'Big',
+            description: '',
+            cardsExpanded: false,
+            subtitleField: null,
+          },
+        ),
+      );
+      test.settle();
+      expect(test.diagram.nodes.count).toBe(500);
+      expect(mapped).not.toHaveBeenCalled();
+      expect(countLinksOverNodes(test.diagram)).toBe(0);
+    }
+  });
+
+  it('are still routed around the nodes by GoJS when a small diagram is opened after a big one', () => {
+    const test = createTestDiagram({ count: 500, linkType: 'avoid' });
+    test.diagram.layout = createLayout('top-bottom', 30);
+    test.history.load(
+      createModel(
+        { nodes: createNodes(30), links: createLinks(30) },
+        {
+          layoutType: 'top-bottom',
+          linkType: 'avoid',
+          name: 'Small',
+          description: '',
+          cardsExpanded: false,
+          subtitleField: null,
+        },
+      ),
+    );
+    test.settle();
+    for (const link of linksOf(test.diagram)) expect(link.routing).toBe(go.Routing.AvoidsNodes);
+    expect(countLinksOverNodes(test.diagram)).toBeLessThanOrEqual(1);
   });
 
   it('leave straight and curved lines alone', () => {

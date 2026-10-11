@@ -1427,6 +1427,26 @@ class SideBySideRouter extends AvoidsLinksRouter {
 }
 
 /**
+ * Keeps GoJS's own router for taking lines around nodes from running on a big
+ * diagram.
+ *
+ * It should not have anything to do there, because the lines of a big diagram
+ * are not marked to be routed that way. But while other data is being opened
+ * the new lines are, for a moment, marked the way the old ones were. On coming
+ * from a small diagram to a big one GoJS then mapped out every node of the big
+ * one once, for nothing. That takes time, and for a diagram that is spread over
+ * a very wide area (2000 nodes in the force-directed layout) the map does not
+ * fit into memory: opening the data failed.
+ */
+function keepNodeAvoidingOffBigDiagrams(diagram: go.Diagram): void {
+  const router = diagram.findRouter('AvoidsNodes');
+  if (!router) return;
+  const canRoute = router.canRoute.bind(router);
+  router.canRoute = (container) =>
+    !tooBigToAvoidNodes(diagram.model.nodeDataArray.length) && canRoute(container);
+}
+
+/**
  * Routes the right-angled lines of a big diagram around its nodes. GoJS's own
  * way of doing that takes too long from about 500 nodes on, so there the lines
  * are sent through the gaps between the rows of nodes instead; how is told in
@@ -1502,7 +1522,9 @@ export function createDiagram(div: HTMLDivElement, clicks: IconClicks): go.Diagr
   diagram.toolManager.linkingTool.archetypeLinkData = { category: 'manual' satisfies LinkKind };
   handleClicks(diagram, clicks);
   linkFromEdge(diagram);
-  // Small diagrams: GoJS routes the lines around the nodes, and this lays them side by side.
+  // Small diagrams: GoJS routes the lines around the nodes with its own router, which
+  // every diagram has, and this one lays them side by side.
+  keepNodeAvoidingOffBigDiagrams(diagram);
   diagram.routers.add(new SideBySideRouter({ linkSpacing: LINE_SPACING }));
   // Big diagrams: this does both.
   diagram.routers.add(new LaneRouter());

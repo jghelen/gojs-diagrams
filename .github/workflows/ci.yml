@@ -1,11 +1,15 @@
-# Checks every push to main and every pull request: formatting, lint, build, unit tests.
+# Checks the code twice on its way into main: formatting, lint, build, unit tests.
 # The same checks run locally with `npm run verify`.
 name: CI
 
 on:
+  # 1. When a pull request into main is opened, and again whenever commits are
+  #    added to it, so that it is known to be sound before it is merged.
+  pull_request:
+    branches: [main]
+  # 2. When something lands on main: a merged pull request, or a direct push.
   push:
     branches: [main]
-  pull_request:
 
 # A newer push to the same branch makes the run for the older one pointless.
 concurrency:
