@@ -1996,30 +1996,69 @@ describe('DiagramPage', () => {
   });
 
   describe('large diagrams', () => {
-    it('are loaded with straight lines, because routing around nodes would take many seconds', async () => {
+    /** How many lines run across a node that is not one of their own ends. */
+    const linesOverNodes = (): number => {
+      const bounds: go.Rect[] = [];
+      diagram.nodes.each((node) => bounds.push(node.actualBounds));
+      let count = 0;
+      diagram.links.each((link) => {
+        const own = [link.fromNode!.actualBounds, link.toNode!.actualBounds];
+        for (let i = 1; i < link.pointsCount; i++) {
+          const [a, b] = [link.getPoint(i - 1), link.getPoint(i)];
+          const crossed = bounds.some(
+            (node) =>
+              !own.includes(node) &&
+              go.Rect.intersectsLineSegment(
+                node.x + 1,
+                node.y + 1,
+                node.width - 2,
+                node.height - 2,
+                a.x,
+                a.y,
+                b.x,
+                b.y,
+              ),
+          );
+          if (crossed) {
+            count++;
+            return;
+          }
+        }
+      });
+      return count;
+    };
+
+    it('keep the line type they are opened with, and their lines go around the nodes', async () => {
       expect(bench.linkType()).toBe('avoid');
       bench.reset('500');
       await settle();
       expect(bench.stats()?.nodes).toBe(500);
-      expect(bench.linkType()).toBe('straight');
-      expect(model().modelData.linkType).toBe('straight');
+      expect(bench.linkType()).toBe('avoid');
+      expect(model().modelData.linkType).toBe('avoid');
+      expect(linesOverNodes()).toBe(0);
     }, 20_000);
 
-    it('switch to orthogonal lines without routing them around the nodes, as one undo step', async () => {
+    it('switch between line types as one undo step each, around the nodes again on the way back', async () => {
       bench.reset('500');
       await settle();
-      await bench.changeLinkType('avoid');
+      await bench.changeLinkType('straight');
       await settle();
-      expect(bench.linkType()).toBe('avoid');
       expect(bench.stats()).toMatchObject({ historyLength: 1 });
-      diagram.links.each((link) => expect(link.routing).toBe(go.Routing.Orthogonal));
+      expect(linesOverNodes()).toBeGreaterThan(0);
+
+      await bench.changeLinkType('orthogonal');
+      await settle();
+      expect(linesOverNodes()).toBe(0);
 
       await bench.undo();
-      expect(bench.linkType()).toBe('straight');
+      await bench.undo();
+      await settle();
+      expect(bench.linkType()).toBe('avoid');
+      expect(linesOverNodes()).toBe(0);
       expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
     }, 20_000);
 
-    it('say in the Lines menu that orthogonal lines cross nodes there', async () => {
+    it('name the line types the same as on a small diagram', async () => {
       const titles = async () => {
         page.querySelector<HTMLButtonElement>('button[aria-label="Lines"]')!.click();
         await settle();
@@ -2030,22 +2069,17 @@ describe('DiagramPage', () => {
         await settle();
         return found;
       };
-      expect((await titles())[0]).toBe('Orthogonal, rounded');
+      const names = [
+        'Orthogonal, rounded',
+        'Orthogonal, square',
+        'Straight (crosses nodes)',
+        'Curved (crosses nodes)',
+      ];
+      expect(await titles()).toEqual(names);
 
       bench.reset('500');
       await settle();
-      expect(await titles()).toEqual([
-        'Orthogonal, rounded (crosses nodes on a diagram this big)',
-        'Orthogonal, square (crosses nodes on a diagram this big)',
-        'Straight (crosses nodes)',
-        'Curved (crosses nodes)',
-      ]);
-    }, 20_000);
-
-    it('keep node-avoiding lines below 500 nodes', async () => {
-      bench.reset('100');
-      await settle();
-      expect(bench.linkType()).toBe('avoid');
+      expect(await titles()).toEqual(names);
     }, 20_000);
   });
 
@@ -2113,6 +2147,23 @@ describe('DiagramPage', () => {
 
       await startEmpty();
       expect(actionsMenu().disabled).toBe(true);
+    });
+
+    it('has nothing to search: the search box is disabled and says why', async () => {
+      const search = () => page.querySelector<HTMLInputElement>('.search input')!;
+      expect(search().disabled).toBe(false);
+      expect(search().placeholder).toBe('Search nodes');
+
+      await startEmpty();
+      expect(search().disabled).toBe(true);
+      expect(search().placeholder).toBe('No nodes to search');
+      // Name and description can be given before the first node.
+      expect(page.querySelector<HTMLInputElement>('.diagram-name')!.disabled).toBe(false);
+
+      await bench.addNode();
+      await settle();
+      expect(search().disabled).toBe(false);
+      expect(search().placeholder).toBe('Search nodes');
     });
 
     it('still offers Reset and New diagram', async () => {

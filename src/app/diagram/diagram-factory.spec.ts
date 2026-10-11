@@ -1,10 +1,11 @@
 import * as go from 'gojs/release/go';
 import {
-  TestDiagram,
+  countLinksOverNodes,
   countNodeOverlaps,
   createTestDiagram,
   linksOf,
   nodesOf,
+  TestDiagram,
 } from '../../testing/diagram-harness';
 import {
   addNodeInView,
@@ -439,15 +440,19 @@ describe('relationship lines', () => {
     }
   });
 
-  it('draw the main holdings thicker than the co-investments, so that the tree stands out', () => {
+  it('draw every line equally thick, whatever kind of relationship it is', () => {
     const { diagram } = createTestDiagram();
-    const width = (kind: string) =>
-      (
-        linksOf(diagram)
-          .find((link) => (link.data as LinkData).category === kind)!
-          .findObject('LINE') as go.Shape
-      ).strokeWidth;
-    expect(width('hierarchy')).toBeGreaterThan(width('relation'));
+    const widths = new Set(
+      linksOf(diagram).map((link) => (link.findObject('LINE') as go.Shape).strokeWidth),
+    );
+    expect([...widths]).toEqual([1.5]);
+    const arrows = new Set(
+      linksOf(diagram).map((link) => (link.findObject('ARROW') as go.Shape).scale),
+    );
+    expect(arrows.size).toBe(1);
+    // Both kinds are there to be compared.
+    const kinds = new Set(linksOf(diagram).map((link) => link.category));
+    expect(kinds).toEqual(new Set(['hierarchy', 'relation']));
   });
 
   it('cross each other plainly, without a hop at the crossing', () => {
@@ -848,32 +853,248 @@ describe('relationship lines', () => {
     expect(places()).toEqual(places());
   });
 
-  it('are drawn right up to the outline of a diamond, an ellipse and a capsule', () => {
-    const test = createTestDiagram();
-    // How far the line is drawn past its end point; GoJS expresses that as a negative "short length".
-    const lengthenedBy = (shortLength: number) => -(shortLength || 0);
+  /** Which side of its node an end of a line is on. */
+  const sideOf = (point: go.Point, node: go.Node): string => {
+    const bounds = node.actualBounds;
+    const near = (a: number, b: number) => Math.abs(a - b) < 1;
+    if (near(point.y, bounds.top)) return 'top';
+    if (near(point.y, bounds.bottom)) return 'bottom';
+    if (near(point.x, bounds.left)) return 'left';
+    if (near(point.x, bounds.right)) return 'right';
+    return 'nowhere';
+  };
+  /** The two ends of a line: on which side of their node, and how far from the middle of it. */
+  const endsOf = (link: go.Link): { side: string; fromMiddle: number }[] =>
+    [
+      [link.getPoint(0), link.fromNode!] as const,
+      [link.getPoint(link.pointsCount - 1), link.toNode!] as const,
+    ].map(([point, node]) => ({
+      side: sideOf(point, node),
+      fromMiddle: point.x - node.actualBounds.centerX,
+    }));
+  const sidesOf = (link: go.Link): string[] => endsOf(link).map((end) => end.side);
 
-    for (const shape of ['Diamond', 'Ellipse', 'Capsule'] as const) {
-      setAll(test, 'shape', shape);
-      let lengthened = 0;
-      for (const link of linksOf(test.diagram)) {
-        const from = lengthenedBy(link.fromShortLength);
-        const to = lengthenedBy(link.toShortLength);
-        expect(from).toBeGreaterThanOrEqual(0);
-        expect(to).toBeGreaterThanOrEqual(0);
-        // Never further than half the node: the outline is always that near.
-        expect(Math.max(from, to)).toBeLessThanOrEqual(NODE_SIZE.width / 2);
-        if (from > 0.5 || to > 0.5) lengthened++;
-        // The arrowhead moves forward with the end of the line.
-        expect((link.findObject('ARROW') as go.Shape).segmentOffset.x).toBeCloseTo(to, 5);
+  it('attach to the top or bottom side of their nodes, around its middle, whatever the layout and line type', () => {
+    for (const count of [30, 100]) {
+      for (const layout of [
+        'top-bottom',
+        'bottom-top',
+        'layered',
+        'grid',
+        'circle',
+        'force',
+      ] as const) {
+        for (const linkType of ['avoid', 'orthogonal', 'straight', 'curved'] as const) {
+          const { diagram } = createTestDiagram({ count, layout, linkType });
+          for (const link of linksOf(diagram)) {
+            for (const end of endsOf(link)) {
+              expect(['top', 'bottom'], `${count}, ${layout}, ${linkType}`).toContain(end.side);
+              // Never out at the corners of the node.
+              expect(Math.abs(end.fromMiddle)).toBeLessThanOrEqual(NODE_SIZE.width / 2 - 20 + 0.5);
+            }
+          }
+        }
       }
-      expect(lengthened).toBeGreaterThan(0);
     }
+  });
+
+  it('leave the bottom of a parent and arrive at the top of its child', () => {
+    const { diagram } = createTestDiagram({ layout: 'top-bottom' });
+    const hierarchy = linksOf(diagram).filter((link) => link.category === 'hierarchy');
+    expect(hierarchy.length).toBe(29);
+    for (const link of hierarchy) expect(sidesOf(link)).toEqual(['bottom', 'top']);
+  });
+
+  it('do it the other way round in a tree that grows upwards', () => {
+    const { diagram } = createTestDiagram({ layout: 'bottom-top' });
+    for (const link of linksOf(diagram).filter((found) => found.category === 'hierarchy')) {
+      expect(sidesOf(link)).toEqual(['top', 'bottom']);
+    }
+  });
+
+  const fund = (key: number): NodeData => ({
+    key,
+    title: `Fund ${key}`,
+    legalEntityType: 'Hedge fund',
+    shape: 'Rectangle',
+    color: '#f3f4f6',
+    comment: '',
+  });
+  /** Puts the nodes where the test wants them: key, then x and y of the top left corner. */
+  const place = (test: TestDiagram, places: Record<number, [number, number]>): void => {
+    test.diagram.commit(() => {
+      for (const [key, [x, y]] of Object.entries(places)) {
+        test.diagram.findNodeForKey(Number(key))!.position = new go.Point(x, y);
+      }
+    }, 'place');
+    test.diagram.links.each((link) => link.invalidateRoute());
+    test.settle();
+  };
+
+  it('attach in the very middle when a line is alone on its side', () => {
+    const test = createTestDiagram({
+      nodes: [fund(1), fund(2)],
+      links: [{ key: 1, from: 1, to: 2, category: 'relation' }],
+    });
+    place(test, { 1: [0, 0], 2: [500, 400] });
+    expect(endsOf(linksOf(test.diagram)[0])).toEqual([
+      { side: 'bottom', fromMiddle: 0 },
+      { side: 'top', fromMiddle: 0 },
+    ]);
+  });
+
+  it('join two funds that stand side by side over their tops', () => {
+    const test = createTestDiagram({
+      nodes: [fund(1), fund(2)],
+      links: [{ key: 1, from: 1, to: 2, category: 'relation' }],
+    });
+    place(test, { 1: [0, 0], 2: [500, 0] });
+    expect(sidesOf(linksOf(test.diagram)[0])).toEqual(['top', 'top']);
+  });
+
+  describe('several lines on the same side of a node', () => {
+    /** One fund that invests in three others below it: to the left, to the right and far right. */
+    const fanOut = (linkType: 'avoid' | 'straight' = 'avoid'): TestDiagram => {
+      const test = createTestDiagram({
+        nodes: [fund(1), fund(2), fund(3), fund(4)],
+        links: [
+          // Not in the order in which they stand, to show that the order of the keys does not decide.
+          { key: 1, from: 1, to: 4, category: 'relation' },
+          { key: 2, from: 1, to: 2, category: 'hierarchy' },
+          { key: 3, from: 1, to: 3, category: 'hierarchy' },
+        ],
+        linkType,
+      });
+      place(test, { 1: [600, 0], 2: [0, 400], 3: [900, 400], 4: [1500, 400] });
+      return test;
+    };
+    const lineTo = (test: TestDiagram, key: number) =>
+      linksOf(test.diagram).find((link) => link.toNode!.key === key)!;
+    const startOf = (test: TestDiagram, key: number) => endsOf(lineTo(test, key))[0].fromMiddle;
+
+    it('stand next to each other around the middle, in the order of where they lead', () => {
+      const test = fanOut();
+      expect([2, 3, 4].map((key) => startOf(test, key))).toEqual([-6, 0, 6]);
+      // Each of them is alone where it arrives, so there it is in the middle.
+      for (const key of [2, 3, 4]) expect(endsOf(lineTo(test, key))[1].fromMiddle).toBe(0);
+    });
+
+    it('do so for straight lines too', () => {
+      const test = fanOut('straight');
+      expect([2, 3, 4].map((key) => startOf(test, key))).toEqual([-6, 0, 6]);
+    });
+
+    it('can each be clicked right at the node', () => {
+      const test = fanOut();
+      for (const key of [2, 3, 4]) {
+        const line = lineTo(test, key);
+        const start = line.getPoint(0);
+        test.diagram.clearSelection();
+        test.clickAt(new go.Point(start.x, start.y + 5));
+        expect(test.diagram.selection.count).toBe(1);
+        expect(test.diagram.selection.first()).toBe(line);
+      }
+    });
+
+    it('give the middle to the line that leads straight down, so that it stays a straight line', () => {
+      const test = fanOut();
+      // The fund far right moves to stand right below the investor.
+      place(test, { 4: [600, 400] });
+      expect(startOf(test, 4)).toBe(0);
+      const line = lineTo(test, 4);
+      const xs = new Set<number>();
+      for (let i = 0; i < line.pointsCount; i++) xs.add(line.getPoint(i).x);
+      expect(xs.size).toBe(1);
+      // The other two arrange themselves around it: both lead elsewhere, one left, one right.
+      expect([2, 3].map((key) => startOf(test, key))).toEqual([-6, 6]);
+    });
+
+    it('find their places again after a neighbour was dragged to the other side', () => {
+      const test = fanOut();
+      const moved = test.diagram.findNodeForKey(2)!;
+      // Dragged from far left to far right, as the dragging tool reports it.
+      test.diagram.commit(() => {
+        moved.position = new go.Point(2200, 400);
+        test.diagram.raiseDiagramEvent('SelectionMoved', new go.Set<go.Part>([moved]));
+      }, 'move');
+      test.settle();
+      expect([3, 4, 2].map((key) => startOf(test, key))).toEqual([-6, 0, 6]);
+    });
+
+    it('move closer together on a side with more of them than fit', () => {
+      const nodes = [fund(1)];
+      const links: LinkData[] = [];
+      for (let key = 2; key <= 41; key++) {
+        nodes.push(fund(key));
+        links.push({ key, from: 1, to: key, category: 'relation' });
+      }
+      const test = createTestDiagram({ nodes, links, layout: 'grid', linkType: 'straight' });
+      const places: Record<number, [number, number]> = { 1: [4000, 0] };
+      for (let key = 2; key <= 41; key++) places[key] = [(key - 2) * 250, 600];
+      place(test, places);
+      const starts = linksOf(test.diagram)
+        .map((link) => endsOf(link)[0].fromMiddle)
+        .sort((a, b) => a - b);
+      expect(new Set(starts.map((start) => start.toFixed(2))).size).toBe(40);
+      expect(starts[1] - starts[0]).toBeLessThan(6);
+      expect(starts[0]).toBeGreaterThanOrEqual(-(NODE_SIZE.width / 2 - 20) - 0.5);
+      expect(starts[39]).toBeLessThanOrEqual(NODE_SIZE.width / 2 - 20 + 0.5);
+    });
+  });
+
+  it('follow their nodes: the ends change sides when a child is moved above its parent', () => {
+    const test = createTestDiagram({ layout: 'top-bottom' });
+    const link = linksOf(test.diagram).find((found) => found.category === 'hierarchy')!;
+    expect(sidesOf(link)).toEqual(['bottom', 'top']);
+
+    const [parent, child] = [link.fromNode!, link.toNode!];
+    test.diagram.commit(() => {
+      child.location = new go.Point(parent.location.x + 400, parent.location.y - 600);
+    }, 'move');
+    test.settle();
+    expect(sidesOf(link)).toEqual(['top', 'bottom']);
+
+    // Nothing was stored on the line for that, so undoing the move is all it takes.
+    test.history.undo();
+    test.settle();
+    expect(sidesOf(link)).toEqual(['bottom', 'top']);
+    expect(link.fromSpot.isDefault()).toBe(true);
+    expect(link.toSpot.isDefault()).toBe(true);
+  });
+
+  it('need no help to reach the outline where they attach in the very middle of a side', () => {
+    const test = createTestDiagram({
+      nodes: [fund(1), fund(2)],
+      links: [{ key: 1, from: 1, to: 2, category: 'relation' }],
+    });
+    for (const shape of ['Diamond', 'Ellipse', 'Capsule', 'RoundedTopRectangle'] as const) {
+      setAll(test, 'shape', shape);
+      place(test, { 1: [0, 0], 2: [500, 400] });
+      const [link] = linksOf(test.diagram);
+      // Every shape reaches the middle of its top and of its bottom.
+      expect(Math.abs(link.fromShortLength || 0)).toBeLessThan(0.1);
+      expect(Math.abs(link.toShortLength || 0)).toBeLessThan(0.1);
+    }
+  });
+
+  it('are drawn up to the outline of a diamond where they attach beside the middle', () => {
+    const test = createTestDiagram();
+    setAll(test, 'shape', 'Diamond');
+    let lengthened = 0;
+    for (const link of linksOf(test.diagram)) {
+      const [from, to] = [-(link.fromShortLength || 0), -(link.toShortLength || 0)];
+      expect(from).toBeGreaterThanOrEqual(0);
+      expect(to).toBeGreaterThanOrEqual(0);
+      if (from > 0.5 || to > 0.5) lengthened++;
+      // The arrowhead moves forward with the end of the line.
+      expect((link.findObject('ARROW') as go.Shape).segmentOffset.x).toBeCloseTo(to, 5);
+    }
+    expect(lengthened).toBeGreaterThan(0);
 
     setAll(test, 'shape', 'Rectangle');
     for (const link of linksOf(test.diagram)) {
-      expect(lengthenedBy(link.fromShortLength)).toBeLessThan(0.5);
-      expect(lengthenedBy(link.toShortLength)).toBeLessThan(0.5);
+      expect(Math.abs(link.fromShortLength || 0)).toBeLessThan(0.5);
+      expect(Math.abs(link.toShortLength || 0)).toBeLessThan(0.5);
     }
   });
 
@@ -898,6 +1119,127 @@ describe('relationship lines', () => {
         expect(onOutline).toBeCloseTo(1, 1);
       }
     }
+  });
+
+  it('run straight from a parent to the first of its leaves, which stands right below it', () => {
+    const test = createTestDiagram({ layout: 'top-bottom' });
+    let straight = 0;
+    for (const parent of nodesOf(test.diagram)) {
+      const leaves = linksOf(test.diagram)
+        .filter((link) => link.category === 'hierarchy' && link.fromNode === parent)
+        .map((link) => ({ link, child: link.toNode! }))
+        .filter(({ child }) => child.findTreeChildrenNodes().count === 0);
+      if (leaves.length === 0 || leaves.length !== parent.findTreeChildrenNodes().count) continue;
+      // The leaves stand in one column under their parent, the nearest first.
+      leaves.sort((a, b) => a.child.location.y - b.child.location.y);
+      for (const { child } of leaves) {
+        expect(child.actualBounds.centerX).toBeCloseTo(parent.actualBounds.centerX, 1);
+      }
+      const { link } = leaves[0];
+      const xs = new Set<number>();
+      for (let i = 0; i < link.pointsCount; i++) xs.add(Math.round(link.getPoint(i).x));
+      expect([...xs]).toEqual([Math.round(parent.actualBounds.centerX)]);
+      straight++;
+    }
+    expect(straight).toBeGreaterThan(3);
+  });
+
+  it('are never pushed onto a node by laying them side by side', () => {
+    for (const count of [30, 100, 200]) {
+      for (const layout of ['top-bottom', 'layered', 'circle'] as const) {
+        const { diagram } = createTestDiagram({ count, layout, linkType: 'avoid' });
+        // GoJS itself now and then finds no way around the nodes for a line; more than
+        // a line or two would mean the lines were pushed there.
+        expect(countLinksOverNodes(diagram), `${count}, ${layout}`).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
+  it('keep the percentages off the info icons', () => {
+    for (const layout of ['top-bottom', 'bottom-top', 'grid'] as const) {
+      const { diagram } = createTestDiagram({ count: 30, layout });
+      const icons = linksOf(diagram)
+        .map((link) => link.findAdornment('Info'))
+        .filter((icon) => icon !== null)
+        .map((icon) => icon.actualBounds);
+      expect(icons.length).toBeGreaterThan(20);
+      for (const label of allLabels(diagram)) {
+        expect(icons.some((icon) => icon.intersectsRect(label))).toBe(false);
+      }
+    }
+  });
+});
+
+describe('relationship lines on a big diagram', () => {
+  it.each([500, 1000])(
+    'go around the nodes of %i funds, in every layout that keeps rows',
+    (count) => {
+      for (const layout of ['top-bottom', 'bottom-top', 'grid'] as const) {
+        for (const linkType of ['avoid', 'orthogonal'] as const) {
+          const { diagram } = createTestDiagram({ count, layout, linkType });
+          expect(countLinksOverNodes(diagram), `${layout}, ${linkType}`).toBe(0);
+        }
+      }
+    },
+  );
+
+  it('are still right-angled, and still attach around the middle of a top or bottom side', () => {
+    const { diagram } = createTestDiagram({ count: 500, linkType: 'avoid' });
+    for (const link of linksOf(diagram)) {
+      for (let i = 1; i < link.pointsCount; i++) {
+        const [a, b] = [link.getPoint(i - 1), link.getPoint(i)];
+        expect(Math.abs(a.x - b.x) < 0.01 || Math.abs(a.y - b.y) < 0.01).toBe(true);
+      }
+      const bounds = [link.fromNode!.actualBounds, link.toNode!.actualBounds];
+      const ends = [link.getPoint(0), link.getPoint(link.pointsCount - 1)];
+      ends.forEach((end, i) => {
+        expect(Math.abs(end.x - bounds[i].centerX)).toBeLessThanOrEqual(
+          bounds[i].width / 2 - 20 + 0.5,
+        );
+        expect([bounds[i].top, bounds[i].bottom].some((y) => Math.abs(y - end.y) < 0.5)).toBe(true);
+      });
+    }
+  });
+
+  it('stand side by side at a node with several of them, each at a place of its own', () => {
+    const { diagram } = createTestDiagram({ count: 500, linkType: 'avoid' });
+    let shared = 0;
+    for (const node of nodesOf(diagram)) {
+      const places = new Map<string, number>();
+      node.findLinksConnected().each((link) => {
+        const end = link.fromNode === node ? link.getPoint(0) : link.getPoint(link.pointsCount - 1);
+        const place = `${end.x.toFixed(1)},${end.y.toFixed(1)}`;
+        places.set(place, (places.get(place) ?? 0) + 1);
+      });
+      for (const count of places.values()) if (count > 1) shared++;
+    }
+    expect(shared).toBe(0);
+  });
+
+  it('are routed in well under a second, also for 2000 funds', () => {
+    const test = createTestDiagram({ count: 2000, linkType: 'avoid' });
+    const start = performance.now();
+    test.diagram.links.each((link) => link.invalidateRoute());
+    test.settle();
+    expect(performance.now() - start).toBeLessThan(3000);
+    expect(countLinksOverNodes(test.diagram)).toBe(0);
+  });
+
+  it('take a new way when a node is moved into theirs', () => {
+    const test = createTestDiagram({ count: 500, linkType: 'avoid' });
+    expect(countLinksOverNodes(test.diagram)).toBe(0);
+    const [first, second] = nodesOf(test.diagram);
+    test.diagram.commit(() => {
+      second.location = new go.Point(first.location.x + 900, first.location.y + 700);
+    }, 'move');
+    test.settle();
+    expect(countLinksOverNodes(test.diagram)).toBe(0);
+  });
+
+  it('leave straight and curved lines alone', () => {
+    const { diagram } = createTestDiagram({ count: 500, linkType: 'straight' });
+    for (const link of linksOf(diagram)) expect(link.pointsCount).toBeLessThanOrEqual(4);
+    expect(countLinksOverNodes(diagram)).toBeGreaterThan(0);
   });
 });
 

@@ -5,7 +5,7 @@ import {
   linksOf,
   nodesOf,
 } from '../../testing/diagram-harness';
-import { LAYOUTS, LayoutType, createLayout, resetPortSpots } from './layouts';
+import { LAYOUTS, LayoutType, createLayout } from './layouts';
 import { DEFAULT_LAYOUT, NODE_GAP } from './constants';
 
 const ALL_LAYOUTS = LAYOUTS.map((layout) => layout.type);
@@ -53,19 +53,33 @@ describe('createLayout', () => {
     expect((createLayout('bottom-top', 30) as go.TreeLayout).angle).toBe(270);
   });
 
-  it('draws a small tree like an organisation chart, with lines pinned to the facing sides', () => {
+  it('draws a small tree like an organisation chart, with the leaves in a column straight under their parent', () => {
     const tree = createLayout('top-bottom', 30) as go.TreeLayout;
     expect(tree.treeStyle).toBe(go.TreeStyle.LastParents);
-    expect(tree.setsPortSpot).toBe(true);
-    expect(tree.alternateChildPortSpot.equals(go.Spot.Left)).toBe(true);
+    // No shift to the side: the column has the same left edge as the parent.
+    expect(tree.alternateLayerSpacing).toBe(0);
+    expect(tree.alternateLayerSpacingParentOverlap).toBe(1);
+    // The same gap from parent to leaf and from leaf to leaf as between any two rows.
+    expect(tree.alternateNodeIndent).toBe(tree.layerSpacing);
+    expect(tree.alternateNodeSpacing).toBe(tree.layerSpacing);
   });
 
-  it('stacks the children of a big tree in two columns and leaves the line ends free', () => {
+  it('stacks the children of a big tree in two columns, with the same gap between all rows', () => {
     const tree = createLayout('top-bottom', 200) as go.TreeLayout;
     expect(tree.alignment).toBe(go.TreeAlignment.Bus);
-    expect(tree.setsPortSpot).toBe(false);
-    expect(tree.setsChildPortSpot).toBe(false);
+    expect(tree.rowSpacing).toBe(tree.layerSpacing);
   });
+
+  it.each(['top-bottom', 'bottom-top'] as const)(
+    'leaves it to the lines where they attach to their nodes (%s)',
+    (type) => {
+      for (const count of [30, 200]) {
+        const tree = createLayout(type, count) as go.TreeLayout;
+        expect(tree.setsPortSpot).toBe(false);
+        expect(tree.setsChildPortSpot).toBe(false);
+      }
+    },
+  );
 });
 
 describe.each(ALL_LAYOUTS)('%s layout on a diagram', (type) => {
@@ -143,23 +157,5 @@ describe('force-directed layout', () => {
       cardsExpanded: true,
     });
     expect(countNodeOverlaps(diagram)).toBe(0);
-  });
-});
-
-describe('resetPortSpots', () => {
-  it('lets lines attach anywhere again after a tree layout pinned them', () => {
-    const { diagram } = createTestDiagram({ layout: 'top-bottom' });
-    const hierarchy = linksOf(diagram).filter((link) => link.isTreeLink);
-    expect(hierarchy.some((link) => !link.fromSpot.isDefault())).toBe(true);
-
-    diagram.commit((d) => resetPortSpots(d), null);
-    for (const link of hierarchy) {
-      expect(link.fromSpot.isDefault()).toBe(true);
-      expect(link.toSpot.isDefault()).toBe(true);
-    }
-    for (const node of nodesOf(diagram)) {
-      expect(node.port.fromSpot.isNone()).toBe(true);
-      expect(node.port.toSpot.isNone()).toBe(true);
-    }
   });
 });

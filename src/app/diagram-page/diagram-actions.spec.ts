@@ -299,7 +299,9 @@ describe('DiagramActions', () => {
       test.settle();
       expect(test.diagram.scale).toBeLessThan(3);
       const view = test.diagram.viewportBounds;
-      expect(view.containsRect(test.diagram.documentBounds)).toBe(true);
+      for (const node of nodesOf(test.diagram)) {
+        expect(view.containsRect(node.actualBounds)).toBe(true);
+      }
 
       expect(test.history.length).toBe(0);
       expect(runner.log()).toEqual([]);

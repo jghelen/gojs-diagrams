@@ -17,6 +17,8 @@ export class DiagramInfoBar {
   private readonly nodeSearch = inject(NodeSearch);
 
   protected readonly busy = inject(OperationRunner).busy;
+  /** True when the diagram has no nodes: there is nothing to search then. */
+  protected readonly isEmpty = this.state.isEmpty;
   protected readonly diagramName = this.state.name;
   protected readonly diagramDescription = this.state.description;
   protected readonly searchQuery = this.nodeSearch.query;

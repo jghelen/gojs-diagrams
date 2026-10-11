@@ -170,54 +170,36 @@ class SpacedForceDirectedLayout extends go.ForceDirectedLayout {
  */
 function createTreeLayout(angle: 90 | 270, nodeCount: number, gaps: Gaps): go.TreeLayout {
   const shared = { isOngoing: false, angle, layerSpacing: gaps.down, nodeSpacing: gaps.across };
-  // The strip beside a column of leaves, down which the line to those leaves runs.
-  const strip = gaps.across / 2;
+  // Where a line attaches to its node is the line's own business (the middle of
+  // the top or bottom side, see RelationshipLink), so the layout leaves that alone.
+  const ends = { setsPortSpot: false, setsChildPortSpot: false };
   if (nodeCount > CLASSIC_TREE_LIMIT) {
     return new HierarchyTreeLayout({
       ...shared,
+      ...ends,
       alignment: go.TreeAlignment.Bus,
-      // In a diagram this dense, lines pinned to one side of a node end up
-      // running across other nodes, so here they may attach anywhere.
-      setsPortSpot: false,
-      setsChildPortSpot: false,
+      // The same gap between all rows, whatever they are rows of. Every node then
+      // stands in one of a set of rows that run across the whole diagram, with a
+      // free lane between any two of them for the lines (see lane-router.ts).
+      rowSpacing: gaps.down,
     });
   }
-  // In a small tree the layout also sets where lines attach: they leave a parent
-  // on the side that faces its children and arrive on the side that faces the parent.
   return new HierarchyTreeLayout({
     ...shared,
+    ...ends,
     treeStyle: go.TreeStyle.LastParents,
-    // The column of leaves runs away from the root: down in a tree that grows
-    // downwards, up in one that grows upwards.
+    // The leaves of a parent stand in one column, straight under the parent (or
+    // over it, in a tree that grows upwards): the line to the first of them is
+    // then a straight one, and an only child always stands right below its parent.
     alternateAngle: 0,
     alternateAlignment: angle === 90 ? go.TreeAlignment.Start : go.TreeAlignment.End,
-    alternateNodeIndent: strip,
-    alternateNodeIndentPastParent: 1,
-    alternateNodeSpacing: NODE_GAP / 2,
-    alternateLayerSpacing: gaps.down,
+    alternateLayerSpacing: 0,
     alternateLayerSpacingParentOverlap: 1,
-    // One line runs down (or up) the free strip beside the column, from near the
-    // parent's corner, and branches into the side of every leaf.
-    alternatePortSpot: new go.Spot(0.001, angle === 90 ? 1 : 0, strip, 0),
-    alternateChildPortSpot: go.Spot.Left,
-  });
-}
-
-/**
- * Lets every line attach wherever suits its route again. The tree layouts pin
- * the hierarchy lines to particular sides of their nodes, which must not carry
- * over into the next layout. Call this inside the transaction that runs it.
- */
-export function resetPortSpots(diagram: go.Diagram): void {
-  diagram.nodes.each((node) => {
-    node.port.fromSpot = go.Spot.None;
-    node.port.toSpot = go.Spot.None;
-  });
-  diagram.links.each((link) => {
-    // Cross links never follow a layout's sides; see their template.
-    if (!link.isTreeLink) return;
-    link.fromSpot = go.Spot.Default;
-    link.toSpot = go.Spot.Default;
+    // The same gap everywhere: from the parent to the first leaf, and from leaf to
+    // leaf, where the line to the next leaf turns in.
+    alternateNodeIndent: gaps.down,
+    alternateNodeIndentPastParent: 1,
+    alternateNodeSpacing: gaps.down,
   });
 }
 

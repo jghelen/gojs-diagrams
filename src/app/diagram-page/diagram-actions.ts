@@ -9,7 +9,7 @@ import {
 } from '../diagram/constants';
 import { NodeModel, addNodeInView } from '../diagram/diagram-factory';
 import { HistoryService } from '../diagram/history.service';
-import { LAYOUTS, LayoutType, createLayout, resetPortSpots } from '../diagram/layouts';
+import { LAYOUTS, LayoutType, createLayout } from '../diagram/layouts';
 import { LinkType, linkStyle } from '../diagram/link-types';
 import {
   EDITABLE_FIELDS,
@@ -296,7 +296,6 @@ export class DiagramActions {
     return this.runner.run(() => ({
       ...this.changing('Auto arrange', true, () => {
         this.history.record('auto arrange', () => {
-          resetPortSpots(this.diagram);
           this.diagram.layoutDiagram(true);
         });
         this.zoomToFitSoon();
@@ -394,7 +393,6 @@ export class DiagramActions {
    */
   private arrangeWith(type: LayoutType, roomForCards: boolean): void {
     const layout = createLayout(type, this.diagram.nodes.count, roomForCards);
-    resetPortSpots(this.diagram);
     this.diagram.layout = layout;
     // Layouts do not run by themselves after every change, so ask for this one run.
     layout.isValidLayout = false;

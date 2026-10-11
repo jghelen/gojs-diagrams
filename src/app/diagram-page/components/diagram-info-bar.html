@@ -26,9 +26,9 @@
     <input
       type="search"
       aria-label="Search nodes by name"
-      placeholder="Search nodes"
+      [placeholder]="isEmpty() ? 'No nodes to search' : 'Search nodes'"
       [value]="searchQuery()"
-      [disabled]="busy()"
+      [disabled]="busy() || isEmpty()"
       (input)="search($any($event.target).value)"
       (keydown.enter)="searchStep($any($event).shiftKey ? -1 : 1)"
     />

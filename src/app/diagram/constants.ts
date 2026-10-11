@@ -17,9 +17,10 @@ import type { LinkType } from './link-types';
 /**
  * The shapes a node can have.
  *
- * Only figures that come with GoJS itself, and only ones that reach the left
- * and right edge of their bounds half way up: lines that are routed around
- * nodes would cut through the empty corners of, say, a triangle.
+ * Only figures that come with GoJS itself, and only ones whose outline reaches
+ * the middle of the top and of the bottom of their bounds: that is where every
+ * line attaches, and at, say, a triangle standing on its tip it would end in
+ * mid air.
  */
 export const SHAPES: readonly go.FigureName[] = [
   go.Figures.Rectangle,
@@ -74,8 +75,9 @@ export type StyleFieldId = (typeof STYLE_FIELDS)[number]['id'];
 
 /** The border of every node: dark gray. */
 export const NODE_BORDER = '#555555';
-/** Every relationship line is black; the kinds differ in thickness and dashing only. */
+/** Every relationship line is black and equally thick; only a hand-drawn one differs, by being dotted. */
 export const LINE_COLOR = '#000000';
+export const LINE_WIDTH = 1.5;
 /** The outline of a selected node, of the nodes of a highlighted tree and of a search result. */
 export const SELECTION_GOLD = '#d4a017';
 /** The ownership percentages at the ends of lines: dark green. */
@@ -109,6 +111,14 @@ export const CO_INVESTMENTS_PER_FUND = 0.5;
  * lines to run side by side with their percentages.
  */
 export const NODE_GAP = 60;
+
+/**
+ * How far apart lines are drawn that share a stretch of their way, or that
+ * attach to the same side of a node. As near to each other as they can be while
+ * each can still be told from the next, and clicked: a line takes the clicks up
+ * to half this distance on either side of it.
+ */
+export const LINE_SPACING = 6;
 
 /** The color of a line while the mouse is on it, so that one line can be followed among many. */
 export const HOVER_COLOR = '#d4a017';

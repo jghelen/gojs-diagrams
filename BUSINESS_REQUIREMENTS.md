@@ -79,8 +79,8 @@ Every icon without a text label shows its name when the user hovers over it.
   8. percentages have two decimals, and for some lines there is no data.
 - **BR-4.3** Every fund in a newly opened diagram is a very light gray square with a dark gray
   border.
-- **BR-4.4** A diagram opens laid out top to bottom, with lines that go around the nodes. A
-  diagram of 500 funds or more opens with straight lines instead, so that it opens quickly.
+- **BR-4.4** A diagram opens laid out top to bottom, with lines that go around the nodes, whatever
+  its size. Opening other data keeps the layout and the line type that were chosen.
 
 ### 4.2 Loading animation
 
@@ -207,24 +207,42 @@ Every icon without a text label shows its name when the user hovers over it.
 
 ### 6.1 Kinds of relationship
 
-| Kind                               | Drawn as             | Info icon | Where it comes from |
-| ---------------------------------- | -------------------- | --------- | ------------------- |
-| Main holding (hierarchy)           | Solid black, thicker | Yes       | The loaded data     |
-| Co-investment (other relationship) | Solid black, thin    | Yes       | The loaded data     |
-| Manual relationship                | **Dotted** black     | No        | Drawn by the user   |
+| Kind                               | Drawn as         | Info icon | Where it comes from |
+| ---------------------------------- | ---------------- | --------- | ------------------- |
+| Main holding (hierarchy)           | Solid black      | Yes       | The loaded data     |
+| Co-investment (other relationship) | Solid black      | Yes       | The loaded data     |
+| Manual relationship                | **Dotted** black | No        | Drawn by the user   |
 
-- **BR-6.1** All lines are black and end in an arrowhead at the target fund.
+- **BR-6.1** All lines are black, equally thick, and end in an arrowhead at the target fund. Main
+  holdings and co-investments look the same; the relationship card says which one a line is.
 - **BR-6.2** A line starts and ends exactly on the outline of the shape, for every shape. There is
   no gap between line and node.
-- **BR-6.3** On a diagram of fewer than 500 funds, with the default line types, lines go around nodes
-  and do not run across them. On bigger diagrams lines may cross nodes (see BR-9.6).
+- **BR-6.2a** A line attaches to the **top or the bottom side** of a node, in the middle, never to
+  the left or right side. It leaves the bottom of the fund that invests and arrives at the top of
+  the fund it invests in. Where that fund stands above the investor (Bottom to top layout, or
+  after a node was moved), it leaves the top and arrives at the bottom. Two funds that stand side
+  by side are joined over their tops.
+- **BR-6.2b** A parent's line therefore arrives at the top, in the middle, of its child.
+- **BR-6.2c** Where several lines attach to the same side of a node, they stand next to each
+  other around the middle of the side, 6 units apart, in the order of where they lead, so that
+  each can be seen and clicked right up to the node. On a side with more lines than fit, they
+  move closer together and stay clear of the corners of the node.
+- **BR-6.2d** A line is straight wherever possible. A fund that stands right below its investor
+  is joined to it by one straight line, which takes the very middle of both sides. In the Top to
+  bottom and Bottom to top layouts an only child, and the first of several leaves, stands right
+  under (or over) its parent.
+- **BR-6.2e** The ends of lines follow the nodes: when a node is moved to the other side of
+  another, the lines between them change sides, and the other lines on those sides close up.
+- **BR-6.3** With the two orthogonal line types, lines go around nodes and do not run across
+  them, on diagrams of every size: their runs lie in the gaps above and below the nodes.
 - **BR-6.3a** Layouts leave 60 units of free space between nodes, so that several lines and their
   percentages can pass between two nodes.
 - **BR-6.3b** While the mouse is on a line, that line is drawn in gold and thicker, so that it
   can be followed among the others. Lines cross each other plainly, without a hop at the crossing.
 - **BR-6.3c** Right-angled lines that would run along the same stretch are drawn side by side,
-  not on top of each other, so that each can be told from the others. This applies on diagrams
-  of fewer than 500 funds.
+  not on top of each other, 6 units apart: as near to each other as they can be while each can
+  still be told from the others and clicked. Where more lines pass through a gap than fit at
+  that distance, they move closer together. A line is never moved onto a node to make room.
 
 ### 6.2 Ownership
 
@@ -378,11 +396,10 @@ diagram has no nodes (BR-4.15).
 - **BR-9.5** The Lines item, below Layout, opens a column of icons, one per line type, each named
   on hover: Orthogonal rounded, Orthogonal square, Straight, Curved.
 - **BR-9.6** Straight and curved lines cannot go around nodes; their names say "(crosses
-  nodes)". The two orthogonal types route lines around nodes on diagrams of fewer than 500 funds.
-- **BR-9.6a** On a diagram of 500 funds or more, the orthogonal types keep their right-angled
-  look but are not routed around nodes, because that would block the screen for many seconds or
-  minutes. Their names in the Lines column then say "(crosses nodes on a diagram this big)".
-  Switching the line type must never freeze the screen, whatever the size of the diagram.
+  nodes)". The two orthogonal types route lines around nodes on diagrams of every size.
+- **BR-9.6a** Switching the line type must never freeze the screen, whatever the size of the
+  diagram. On a diagram of 500 funds or more the lines are therefore routed by a faster method
+  than on smaller ones; the result looks the same.
 - **BR-9.7** Switching the line type is one undo step.
 - **BR-9.8** Only one of the columns (Layout, Lines, Shape) is open at a time. A column opens
   beside the navigation and always stays inside the canvas.
@@ -404,6 +421,8 @@ diagram has no nodes (BR-4.15).
 
 ### 10.3 Search
 
+- **BR-10.3a** The search box is disabled while the diagram has no nodes, and says "No nodes to
+  search".
 - **BR-10.4** The search box finds nodes whose name contains the typed text, ignoring upper and
   lower case.
 - **BR-10.5** The number of matching nodes is shown next to the box; "No nodes found" when there
@@ -510,11 +529,10 @@ called the **developer tools**.
 
 ## 15. Not available yet
 
-| Item                                 | Status                                                                                      |
-| ------------------------------------ | ------------------------------------------------------------------------------------------- |
-| Save, Save As                        | Listed in the Actions menu, disabled. Diagrams are not stored anywhere                      |
-| Up and down arrows on a node         | Shown, without an action. The intended behaviour is to be defined                           |
-| Add Batch target page                | A placeholder page that shows the fund's id                                                 |
-| Undo all / Redo all in one click     | Not offered on screen; the user steps with Undo and Redo                                    |
-| Lines around nodes from 500 funds up | Not offered: it would block the screen for too long. Orthogonal lines may cross nodes there |
-| Real fund data                       | The diagrams are a fixed sample and generated test data                                     |
+| Item                             | Status                                                                 |
+| -------------------------------- | ---------------------------------------------------------------------- |
+| Save, Save As                    | Listed in the Actions menu, disabled. Diagrams are not stored anywhere |
+| Up and down arrows on a node     | Shown, without an action. The intended behaviour is to be defined      |
+| Add Batch target page            | A placeholder page that shows the fund's id                            |
+| Undo all / Redo all in one click | Not offered on screen; the user steps with Undo and Redo               |
+| Real fund data                   | The diagrams are a fixed sample and generated test data                |

@@ -83,7 +83,8 @@ changing either is one undo step.
 
 ### Searching for a node
 
-Type part of a name into the search box at the right of the bar above the canvas. Next to it you
+Type part of a name into the search box at the right of the bar above the canvas. The box is
+disabled while the diagram has no nodes. Next to it you
 see how many nodes match, whatever the case of the letters. The **<** and **>** buttons, or Enter
 and Shift+Enter, step through the matches: the node you are on gets a thick gold outline, is
 brought to the middle of the view and, if the diagram was zoomed out, zoomed in to full size. The
@@ -125,9 +126,7 @@ and undo if there is something to undo, stay available.
 - **Lines**, the icon under the layout icon in the tool strip, picks how relationships are
   drawn. Click it to see one icon per line type, named on hover. "Straight" and "Curved" lines
   cross whatever lies between their ends, and say "(crosses nodes)". The two "Orthogonal" types
-  are routed around the nodes on a diagram of fewer than 500 nodes. Routing around nodes takes
-  minutes on bigger diagrams, so there the orthogonal types keep their right angles but may
-  cross nodes (their names then say so), and a new diagram starts with straight lines.
+  are routed around the nodes, on diagrams of every size.
 - **Auto arrange**, the last icon of the tool strip, runs the current layout again, which tidies
   up after you moved nodes by hand.
 - **Zoom to fit**, in the tool strip under zoom out, shows the whole diagram.
@@ -256,15 +255,26 @@ That, too, is one undo step.
 
 There are three kinds of line. All are black and end in an arrowhead.
 
-| Line           | Meaning                                                                  | Info icon |
-| -------------- | ------------------------------------------------------------------------ | --------- |
-| Solid, thicker | A main holding: the fund above is the largest investor in the fund below | yes       |
-| Solid, thin    | A co-investment: a smaller stake another fund holds                      | yes       |
-| Dotted         | A relationship you drew yourself                                         | no        |
+| Line   | Meaning                                                                                                                                                                                                                    | Info icon |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| Solid  | A relationship from the data: a main holding (the fund above is the largest investor in the fund below) or a co-investment (a smaller stake another fund holds). Which of the two it is says the card behind its info icon | yes       |
+| Dotted | A relationship you drew yourself                                                                                                                                                                                           | no        |
 
+All lines are equally thick.
+
+- **Where a line meets its node:** always on the top or the bottom side, in the middle. A line
+  leaves the bottom of the fund that invests and arrives at the top of the fund it invests in;
+  in the Bottom to top layout it is the other way round, and two funds that stand side by side
+  are joined over their tops. Where several lines meet the same side of a node, they stand next
+  to each other around the middle, 6 units apart, so that each can be seen and clicked right up
+  to the node.
+- **Straight where possible:** a line to a fund that stands right below its investor is one
+  straight line. The Top to bottom and Bottom to top layouts put an only child, and the first of
+  several leaves, right under its parent for that reason.
 - **Lines side by side:** where several right-angled lines would run along the same stretch,
-  they are drawn next to each other, 7 units apart, so that each can be followed. This applies
-  to the two orthogonal line types on diagrams of fewer than 500 funds.
+  they are drawn next to each other, 6 units apart: as near as they can be while each can still
+  be followed and clicked. Where more lines pass through a gap than fit at that distance, they
+  move closer together, and a line is never pushed onto a node to make room.
 - **Following a line:** move the mouse over a line and it turns gold and thicker, so that one
   line can be followed among the others.
 - **Ownership:** a dark green percentage near the arrowhead says how much of the fund the line
@@ -454,10 +464,23 @@ diamond is much narrower near its tips than a rectangle); longer text is cut off
   their turn in the order of their keys; each percentage takes the first of its places that is
   free of other percentages and of nodes. The places start beside the arrowhead and go back
   along the route of the line. Taking them in a fixed order makes the result the same every time.
-- **Lines meet the outline of the shape.** GoJS ends an orthogonal line on the node's bounding
-  rectangle, which leaves a gap in front of a diamond, an ellipse or a capsule. The route is left
-  alone (GoJS's routers rewrite it); instead the drawn line is lengthened by the size of the gap,
+- **Where a line attaches is the line's own business.** `RelationshipLink.computeSpot` answers
+  with the top or bottom side and a place on it (`line-ends.ts`), from where the two nodes stand
+  right now. Nothing is stored on the link or the node, so a moved node, an undo or another
+  layout needs no bookkeeping. The layouts are told not to set any sides.
+- **Lines meet the outline of the shape.** A line that attaches beside the middle of a diamond's
+  top ends on the bounding rectangle, a little above the outline. The route is left alone
+  (GoJS's routers rewrite it); instead the drawn line is lengthened by the size of the gap,
   using a negative `toShortLength` / `fromShortLength`, and the arrowhead is moved with it.
+- **Two routers.** Below 500 nodes GoJS routes the lines around the nodes itself
+  (`Routing.AvoidsNodes`) and an extension lays lines that share a stretch side by side; a guard
+  around it takes back any move that would put a line on a node. From 500 nodes on GoJS's
+  routing takes seconds to minutes, so there the app's own router does both jobs
+  (`lane-router.ts`). It does not search: nodes stand in rows, between two rows there is a gap
+  that is free from one side of the diagram to the other (a lane), and between two neighbouring
+  nodes of a row there is a gap from lane to lane (a corridor). A line goes from lane to lane
+  through corridors. Routing all 3,000 lines of the 2000-fund diagram that way takes about a
+  third of a second.
 - **Selection and tree highlight** use a gold outline adornment in the node's own shape instead
   of GoJS's default blue rectangle.
 
@@ -470,8 +493,10 @@ diamond is much narrower near its tips than a rectangle); longer text is cut off
 - The initial layout is committed as a transaction and the history is cleared afterwards, without
   a model event.
 - `Diagram.layout` assignments are recorded, so undo and redo also swap the layout object back.
-- `TreeLayout` pins lines to sides by setting `fromSpot` / `toSpot` on the **links**; they have to
-  be reset before another layout runs.
+- `TreeLayout` pins lines to sides by setting `fromSpot` / `toSpot` on the **links** unless
+  `setsPortSpot` and `setsChildPortSpot` are switched off.
+- `Link.computeSpot` can be overridden to decide the side per route; GoJS routes around nodes
+  only after that, in a later pass, so a route cannot be checked inside `computePoints`.
 - A link's `toShortLength` is `NaN` until it is set, so comparisons with it need care.
 - Node-avoiding routing (`Routing.AvoidsNodes`) is best effort: when it finds no path it draws a
   plain orthogonal line. It also only re-routes a line when one of its own ends moves, so after a
@@ -545,6 +570,7 @@ npm run verify
 | `diagram/history.service.spec.ts`                                                                                                                            | The history service: recording, undo and redo, positions, the state check, unfinished transactions, changes that are not recorded                                                                                                                                                                                                                                                                                                                                         |
 | `diagram/constants.spec.ts`                                                                                                                                  | The constants: no duplicates, defaults among the choices, a picture for every shape                                                                                                                                                                                                                                                                                                                                                                                       |
 | `diagram/shape-tiles.spec.ts`, `diagram/benchmark.spec.ts`                                                                                                   | Shape pictures for the Styles dialog; the timing helpers                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `diagram/line-ends.spec.ts`, `diagram/lane-router.spec.ts`                                                                                                   | Which sides a line attaches to and where on them; routes through lanes and corridors that never cross a node, lines of a gap side by side                                                                                                                                                                                                                                                                                                                                 |
 | `diagram/file-name.spec.ts`, `diagram/change-details.spec.ts`                                                                                                | The name of the exported file; the description of what an operation changed                                                                                                                                                                                                                                                                                                                                                                                               |
 | `diagram-page/diagram-page.spec.ts`                                                                                                                          | The page: loading and its animation (everything disabled until all nodes are shown), undo/redo and the state check, bulk-run input, multi-node edits, comments, delete confirmation, relationships, layout and line type, tree highlight, the Styles dialog, the canvas tools, the Actions menu, name and description (required for a new diagram), search, the overview, new diagram, what is disabled on a diagram without nodes, the developer tools switch, Add Batch |
 | `diagram-page/operation-runner.spec.ts`, `diagram-actions.spec.ts`, `diagram-state.spec.ts`                                                                  | The operation runner (order, timing log, recovery); every action as one undo step, zooming; the settings and history numbers the page shows                                                                                                                                                                                                                                                                                                                               |
@@ -570,9 +596,9 @@ The tests run without a real browser, so some things can only be checked by hand
   them are tested directly: where a node may be dropped, and where a relationship may start.
 - **A real new tab.** The test for **Add Batch** checks that a new tab is asked for with the right
   address, not what a particular browser then does.
-- **Speed.** No test fails when something gets slower. The tests check that a diagram of 500
-  nodes or more is loaded with straight lines, and that the loading animation ends within its
-  time limit, but not how long loading, undo or redo really take.
+- **Speed.** No test fails when something gets slower. The tests check that the lines of 2000 funds
+  are routed within a generous limit and that the loading animation ends within its time limit,
+  but not how long loading, undo or redo really take.
 - **Other browsers.** Nothing is run in Chrome, Safari or Firefox.
 - **Features without behaviour.** The up and down arrows on a node, **Save** and **Save As** do
   nothing yet; the tests only check that they are there (and that the two menu entries are
@@ -660,25 +686,27 @@ Read the [licence](#licence) section before publishing a build on the public int
   Reset diagram keep working. Without this GoJS would stay inside the unfinished transaction and
   the diagram would be stuck until the page is reloaded. The error itself is written to the
   browser console.
-- **Large diagrams and node-avoiding lines.** Routing every line around the nodes takes about a
-  second at 200 nodes, about seven seconds at 500 and minutes beyond that, and the page does not
-  respond meanwhile. Lines are therefore routed around nodes only on diagrams of fewer than 500
-  nodes; between 200 and 500 that means a wait of one to several seconds when the diagram is
-  loaded or the line type is switched. A bigger diagram is loaded with straight lines, and when you pick an orthogonal line
-  type there, the lines get their right angles but may run across nodes. Switching the line
-  type on 2000 nodes then takes well under a second.
-- **Crossing the 500-node mark by hand.** Whether lines avoid nodes is decided when a diagram is
+- **Waiting on mid-sized diagrams.** Below 500 nodes GoJS routes the lines around the nodes,
+  which takes about a second at 200 nodes and several at 400, when the diagram is loaded or the
+  line type is switched. From 500 nodes on the app's own router does it in a fraction of a second.
+- **Crossing the 500-node mark by hand.** Which router is used is decided when a diagram is
   loaded and when the line type is switched. If you add or delete nodes across the limit, the
   existing lines keep the routing they had until you switch the line type again.
-- **Lines across nodes.** With the orthogonal line types this is rare but not impossible; GoJS
-  falls back to a plain line when it finds no way around.
+- **Lines across nodes.** Below 500 nodes this is rare but not impossible: GoJS falls back to a
+  plain line when it finds no way around, for about one line in a hundred in some layouts. From
+  500 nodes on a line crosses a node only if its own node is shut in by other nodes above and
+  below, which the layouts never produce; it takes dragging nodes onto each other.
+- **Slow layouts on big diagrams.** The Circle, Layered digraph and Force-directed layouts take
+  many seconds from 1000 nodes on (Layered digraph about half a minute at 2000). That time is
+  spent inside GoJS's layout, not on the lines.
+- **Places after an undo.** When a move is undone, the lines of the moved node find their places
+  again, but the lines of its neighbours keep theirs until they are next routed.
 - **The children of a deleted node** stay in the diagram without a parent; nothing re-attaches
   them.
 - **Operations block the page while they run.** A bulk edit is capped so that it stays in the
   range of seconds.
-- **Percentages on very large diagrams.** On diagrams of 500 nodes or more, lines run across
-  nodes, and a few percentages (about 2 in 2,500 on the 2000-fund diagram) find no place that is
-  free of nodes. They still never cover each other.
+- **Percentages in tight spots.** Where every place beside a line lies on a node, its percentage
+  goes on a node rather than on another percentage. That is rare.
 - **The up and down arrows** on a node do nothing yet, and neither do **Save** and **Save As**.
 - **Export and print** draw a very large diagram smaller, so that no side exceeds 10,000 pixels.
 - **"Add Batch" in embedded browsers.** The icon opens a new tab the standard way. Some embedded

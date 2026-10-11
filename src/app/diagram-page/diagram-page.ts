@@ -22,7 +22,6 @@ import {
 } from '../diagram/diagram-factory';
 import { HistoryService, withoutUndo } from '../diagram/history.service';
 import { createLayout } from '../diagram/layouts';
-import { avoidsNodes, tooBigToAvoidNodes } from '../diagram/link-types';
 import { LinkData, NodeData } from '../diagram/node-data';
 import { newBatchUrl } from '../new-batch/new-batch';
 import { openInNewTab } from './browser';
@@ -262,11 +261,6 @@ export class DiagramPage {
     this.linkCard.close();
     const dataset = findDataset(datasetId);
     const data = dataset.create();
-    // A big diagram's lines are not routed around its nodes, and orthogonal lines
-    // that run across nodes are hard to follow, so it starts with straight ones.
-    if (tooBigToAvoidNodes(data.nodes.length) && avoidsNodes(this.state.linkType())) {
-      this.state.linkType.set('straight');
-    }
     const settings = {
       layoutType: this.state.layoutType(),
       linkType: this.state.linkType(),

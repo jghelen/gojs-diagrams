@@ -7,13 +7,7 @@ import {
   signal,
 } from '@angular/core';
 import { LAYOUTS, LayoutType } from '../../diagram/layouts';
-import {
-  LINK_TYPES,
-  LinkType,
-  avoidsNodes,
-  linkStyle,
-  tooBigToAvoidNodes,
-} from '../../diagram/link-types';
+import { LINK_TYPES, LinkType, linkStyle } from '../../diagram/link-types';
 import { SHAPE_TILES } from '../../diagram/shape-tiles';
 import { DiagramActions } from '../diagram-actions';
 import { DiagramState } from '../diagram-state';
@@ -115,15 +109,9 @@ export class ToolStrip {
     return this.actions.setField(() => nodes, 'shape', shape);
   }
 
-  /**
-   * The name of a line type as shown on hover. On a big diagram the orthogonal
-   * types are not routed around the nodes, and their names say so.
-   */
+  /** The name of a line type as shown on hover. */
   protected linkTypeLabel(type: LinkType): string {
-    const label = linkStyle(type).label;
-    return avoidsNodes(type) && tooBigToAvoidNodes(this.stats()?.nodes ?? 0)
-      ? `${label} (crosses nodes on a diagram this big)`
-      : label;
+    return linkStyle(type).label;
   }
 
   protected zoomToFit(): void {

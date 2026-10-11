@@ -62,15 +62,18 @@ export function avoidsNodes(type: LinkType): boolean {
   return linkStyle(type).routing === go.Routing.AvoidsNodes;
 }
 
-/** True when a diagram of that many nodes is too big to route its lines around them. */
+/**
+ * True when a diagram of that many nodes is too big for GoJS to route its lines
+ * around the nodes; the app's own, faster router does it there (lane-router.ts).
+ */
 export function tooBigToAvoidNodes(nodeCount: number): boolean {
   return nodeCount >= AVOID_NODES_BELOW;
 }
 
 /**
- * How lines of that type are routed in a diagram of that many nodes. On a big
- * diagram the orthogonal types keep their right-angled look but are no longer
- * routed around the nodes.
+ * How GoJS routes lines of that type in a diagram of that many nodes. On a big
+ * diagram it only draws the orthogonal types at right angles; taking them
+ * around the nodes is then left to the lane router.
  */
 export function routingFor(type: LinkType, nodeCount: number): go.Routing {
   const routing = linkStyle(type).routing;

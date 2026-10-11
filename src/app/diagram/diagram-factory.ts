@@ -4,12 +4,16 @@ import * as go from 'gojs/release/go';
 import { AvoidsLinksRouter } from 'gojs-extensions/extensionsJSM/AvoidsLinksRouter';
 import { LayoutType } from './layouts';
 import { withoutUndo } from './history.service';
+import { LaneRequest, routeThroughLanes } from './lane-router';
+import { Side, facingSides, offsetsAlongSide } from './line-ends';
 import { LinkType, avoidsNodes, linkStyle, routingFor, tooBigToAvoidNodes } from './link-types';
 import { LinkData, LinkKind, NodeData, formatOwnership } from './node-data';
 import {
   DIMMED_OPACITY,
   HOVER_COLOR,
   LINE_COLOR,
+  LINE_SPACING,
+  LINE_WIDTH,
   NODE_BORDER,
   OWNERSHIP_COLOR,
   REVEAL_GRACE_MS,
@@ -694,6 +698,28 @@ class RectIndex {
       (this.cells.get(key) ?? []).some((other) => other.intersectsRect(rect)),
     );
   }
+
+  /** Whether the straight line from `a` to `b` runs through any of the rectangles, except those in `ignore`. */
+  crossedBy(a: go.Point, b: go.Point, ignore: readonly go.Rect[]): boolean {
+    const span = new go.Rect(a, b);
+    return this.keysOf(span).some((key) =>
+      (this.cells.get(key) ?? []).some(
+        (rect) =>
+          !ignore.some((own) => own.equals(rect)) &&
+          // A line may run along the very edge of a node without being on it.
+          go.Rect.intersectsLineSegment(
+            rect.x + 1,
+            rect.y + 1,
+            rect.width - 2,
+            rect.height - 2,
+            a.x,
+            a.y,
+            b.x,
+            b.y,
+          ),
+      ),
+    );
+  }
 }
 
 /**
@@ -798,6 +824,46 @@ export function placeLinkCards(diagram: go.Diagram): void {
 class RelationshipLink extends go.Link {
   private get linkData(): LinkData | null {
     return this.data as LinkData | null;
+  }
+
+  /**
+   * Where on its node an end of this line attaches: on the top or the bottom
+   * side, in the middle, and next to the other lines that attach to that side.
+   * The rules are in line-ends.ts.
+   *
+   * GoJS asks this every time it works out the route, so the ends follow the
+   * nodes when one of them is moved, and nothing has to be stored or undone.
+   */
+  override computeSpot(from: boolean, port?: go.GraphObject | null): go.Spot {
+    const node = from ? this.fromNode : this.toNode;
+    const side = this.sideAt(node);
+    if (!node || !side) return super.computeSpot(from, port);
+
+    // The lines on the same side of the node, always in the same order.
+    const lines: RelationshipLink[] = [];
+    node.linksConnected.each((link) => {
+      if (link instanceof RelationshipLink && link.sideAt(node) === side) lines.push(link);
+    });
+    lines.sort((a, b) => Number(a.key) - Number(b.key));
+    const bounds = node.actualBounds;
+    const ends = lines.map((line) => {
+      const other = (line.fromNode === node ? line.toNode : line.fromNode)!.actualBounds;
+      return { otherX: other.centerX, distance: Math.abs(other.centerY - bounds.centerY) };
+    });
+    const offset = offsetsAlongSide(ends, bounds.centerX, bounds.width)[lines.indexOf(this)];
+    return new go.Spot(0.5, side === 'top' ? 0 : 1, offset, 0);
+  }
+
+  /**
+   * The side of `node` that this line attaches to; null while that cannot be
+   * said, as for a line that is still being drawn and has only one end.
+   */
+  private sideAt(node: go.Node | null): Side | null {
+    const [source, target] = [this.fromNode, this.toNode];
+    if (!node || !source || !target || source === target) return null;
+    if (!source.actualBounds.isReal() || !target.actualBounds.isReal()) return null;
+    const sides = facingSides(source.actualBounds, target.actualBounds);
+    return node === source ? sides.from : sides.to;
   }
 
   /**
@@ -1056,8 +1122,9 @@ function scheduleOwnershipPlacement(diagram: go.Diagram): void {
 
 /**
  * Places the percentages of all lines of the diagram, so that each can be read:
- * none of them covers another, whichever nodes their lines end at, and none of
- * them lies on a node, where it would be hidden behind it.
+ * none of them covers another, whichever nodes their lines end at, none of them
+ * lies on a node, where it would be hidden behind it, and none is written across
+ * the info icon of a line.
  *
  * The lines take their turn in the order of their keys, and each gets the first
  * of its places (see `ownershipLabelPlaces`) that is free; that way the outcome
@@ -1072,10 +1139,15 @@ export function placeOwnershipLabels(diagram: go.Diagram): void {
   const nodes = new RectIndex();
   diagram.nodes.each((node) => nodes.add(node.actualBounds));
   const labels = new RectIndex();
+  // The info icons count like nodes: a percentage written across one hides it.
+  const icons = new RectIndex();
 
   const lines: RelationshipLink[] = [];
   diagram.links.each((link) => {
-    if (link instanceof RelationshipLink && link.pointsCount >= 2) lines.push(link);
+    if (!(link instanceof RelationshipLink) || link.pointsCount < 2) return;
+    lines.push(link);
+    const icon = link.findAdornment(INFO_ADORNMENT);
+    if (icon) icons.add(icon.actualBounds);
   });
   lines.sort((a, b) => Number(a.key) - Number(b.key));
 
@@ -1096,6 +1168,9 @@ export function placeOwnershipLabels(diagram: go.Diagram): void {
     const free = (place: { box: go.Rect }) => !labels.overlaps(place.box);
     const target = line.toNode?.actualBounds;
     const best =
+      places.find(
+        (place) => free(place) && !nodes.overlaps(place.box) && !icons.overlaps(place.box),
+      ) ??
       places.find((place) => free(place) && !nodes.overlaps(place.box)) ??
       // Hemmed in by nodes on all sides: then at least not on the node the line ends at.
       places.find((place) => free(place) && !target?.intersectsRect(place.box)) ??
@@ -1165,8 +1240,9 @@ function createLink(...parts: go.GraphObject[]): go.Link {
       .bindModel('curve', 'linkType', (type: LinkType) => linkStyle(type).curve)
       .bindModel('corner', 'linkType', (type: LinkType) => linkStyle(type).corner)
       .add(
-        // A wide invisible stroke along the same path, so thin lines are easy to click.
-        new go.Shape({ isPanelMain: true, stroke: 'transparent', strokeWidth: 8 }),
+        // An invisible stroke along the same path, wider than the line, so that thin lines
+        // are easy to click; as wide as lines are apart, so that each gets its own clicks.
+        new go.Shape({ isPanelMain: true, stroke: 'transparent', strokeWidth: LINE_SPACING }),
         ...parts,
       )
   );
@@ -1175,31 +1251,38 @@ function createLink(...parts: go.GraphObject[]): go.Link {
 /** Name of the visible line in every link template (there is a wide invisible one for clicking too). */
 const LINE = 'LINE';
 
-// Only hierarchy links make up a node's tree (see highlightTree), and only they
-// follow the sides that a tree layout assigns: a cross link attaches wherever
-// suits its route.
-const NOT_IN_TREE = { isTreeLink: false, fromSpot: go.Spot.None, toSpot: go.Spot.None };
+// Only hierarchy links make up a node's tree (see highlightTree).
+const NOT_IN_TREE = { isTreeLink: false };
 
 function createLinkTemplates(): go.Map<string, go.Link> {
   return new go.Map<string, go.Link>([
     {
       key: 'hierarchy' satisfies LinkKind,
       value: createLink(
-        // The main holdings are the backbone of the diagram, so they are drawn the thickest.
-        new go.Shape({ name: LINE, isPanelMain: true, stroke: LINE_COLOR, strokeWidth: 2 }),
+        new go.Shape({
+          name: LINE,
+          isPanelMain: true,
+          stroke: LINE_COLOR,
+          strokeWidth: LINE_WIDTH,
+        }),
         new go.Shape({
           name: ARROWHEAD,
           toArrow: go.Arrowheads.Standard,
           fill: LINE_COLOR,
           stroke: null,
-          scale: 0.9,
+          scale: 0.8,
         }),
       ),
     },
     {
       key: 'relation' satisfies LinkKind,
       value: createLink(
-        new go.Shape({ name: LINE, isPanelMain: true, stroke: LINE_COLOR, strokeWidth: 1 }),
+        new go.Shape({
+          name: LINE,
+          isPanelMain: true,
+          stroke: LINE_COLOR,
+          strokeWidth: LINE_WIDTH,
+        }),
         new go.Shape({
           name: ARROWHEAD,
           toArrow: go.Arrowheads.Standard,
@@ -1217,7 +1300,7 @@ function createLinkTemplates(): go.Map<string, go.Link> {
           name: LINE,
           isPanelMain: true,
           stroke: LINE_COLOR,
-          strokeWidth: 1.5,
+          strokeWidth: LINE_WIDTH,
           strokeDashArray: [2, 4],
         }),
         new go.Shape({
@@ -1290,9 +1373,6 @@ function handleClicks(diagram: go.Diagram, clicks: IconClicks): void {
   };
 }
 
-/** How far apart lines are drawn that would otherwise run on top of each other. */
-const LINE_SPACING = 7;
-
 /**
  * Draws lines that share a stretch of their way side by side instead of on top
  * of each other, so that each can be told from the others. It works on the
@@ -1308,6 +1388,81 @@ class SideBySideRouter extends AvoidsLinksRouter {
     return (
       rightAngled && !tooBigToAvoidNodes(model.nodeDataArray.length) && super.canRoute(container)
     );
+  }
+
+  /**
+   * Moves lines apart, but never onto a node. Between two rows of nodes there is
+   * room for only so many lines side by side; where more of them pass, the
+   * router would push the outer ones over the nodes on either side. A line that
+   * ends up on a node it did not cross before goes back to the route it had, on
+   * top of another line: two lines on each other are easier to read than a line
+   * that disappears behind a node.
+   */
+  override routeLinks(links: go.Set<go.Link>, container: go.Diagram | go.Group): void {
+    const diagram = this.diagram;
+    if (!diagram) return;
+    const nodes = new RectIndex();
+    diagram.nodes.each((node) => nodes.add(node.actualBounds));
+    const crossesNode = (link: go.Link, points: go.List<go.Point>): boolean => {
+      const own = [link.fromNode, link.toNode].flatMap((node) => (node ? [node.actualBounds] : []));
+      for (let i = 1; i < points.count; i++) {
+        if (nodes.crossedBy(points.elt(i - 1), points.elt(i), own)) return true;
+      }
+      return false;
+    };
+
+    const before = new Map<go.Link, go.List<go.Point>>();
+    links.each((link) => before.set(link, link.points.copy()));
+    super.routeLinks(links, container);
+    for (const [link, points] of before) {
+      if (crossesNode(link, link.points) && !crossesNode(link, points)) link.points = points;
+    }
+  }
+}
+
+/**
+ * Routes the right-angled lines of a big diagram around its nodes. GoJS's own
+ * way of doing that takes too long from about 500 nodes on, so there the lines
+ * are sent through the gaps between the rows of nodes instead; how is told in
+ * lane-router.ts.
+ *
+ * Where a line can go depends on all nodes, and how the lines of a gap are laid
+ * next to each other depends on all lines. So whenever some line needs a new
+ * route, all of them are routed again; that is quick enough.
+ */
+class LaneRouter extends go.Router {
+  override canRoute(container: go.Group | go.Diagram): boolean {
+    const model = this.diagram?.model;
+    if (!model) return false;
+    const { linkType } = model.modelData as Partial<ModelData>;
+    const rightAngled = linkType !== undefined && avoidsNodes(linkType);
+    return (
+      rightAngled && tooBigToAvoidNodes(model.nodeDataArray.length) && super.canRoute(container)
+    );
+  }
+
+  override routeLinks(_links: go.Set<go.Link>, container: go.Diagram | go.Group): void {
+    const diagram = this.diagram;
+    if (!diagram || container !== diagram) return;
+    const boundsOf = new Map<go.Node, go.Rect>();
+    diagram.nodes.each((node) => {
+      if (node.actualBounds.isReal()) boundsOf.set(node, node.actualBounds.copy());
+    });
+    const requests: LaneRequest<go.Link>[] = [];
+    diagram.links.each((link) => {
+      const source = link.fromNode && boundsOf.get(link.fromNode);
+      const target = link.toNode && boundsOf.get(link.toNode);
+      if (link instanceof RelationshipLink && source && target) {
+        requests.push({ id: link, source, target });
+      }
+    });
+
+    for (const [link, points] of routeThroughLanes([...boundsOf.values()], requests)) {
+      const same =
+        link.pointsCount === points.length &&
+        points.every((point, i) => point.equalsApprox(link.getPoint(i)));
+      if (!same) link.points = new go.List<go.Point>().addAll(points);
+    }
   }
 }
 
@@ -1341,7 +1496,10 @@ export function createDiagram(div: HTMLDivElement, clicks: IconClicks): go.Diagr
   diagram.toolManager.linkingTool.archetypeLinkData = { category: 'manual' satisfies LinkKind };
   handleClicks(diagram, clicks);
   linkFromEdge(diagram);
+  // Small diagrams: GoJS routes the lines around the nodes, and this lays them side by side.
   diagram.routers.add(new SideBySideRouter({ linkSpacing: LINE_SPACING }));
+  // Big diagrams: this does both.
+  diagram.routers.add(new LaneRouter());
   diagram.addDiagramListener('SelectionMoved', (e) => rerouteLinksAcross(e.subject));
   // Lines are drawn up to the outline of a node, so when a node changes shape
   // its lines have to be measured again.
@@ -1367,13 +1525,17 @@ export function createDiagram(div: HTMLDivElement, clicks: IconClicks): go.Diagr
 }
 
 /**
- * Lines are routed around the nodes only when their own ends move. So after a
- * drag, the lines that now run across a moved node are routed again. This
- * happens inside the drag's transaction and is undone with it.
+ * Lines are routed only when their own ends move. So after a drag, the lines
+ * that now run across a moved node are routed again, and so are the lines of
+ * the nodes it is joined to. This happens inside the drag's transaction and is
+ * undone with it.
  */
 function rerouteLinksAcross(moved: go.Set<go.Part>): void {
   moved.each((part) => {
     if (!(part instanceof go.Node)) return;
+    // A moved node may now stand on another side of its neighbours. The lines of
+    // a neighbour share its sides, so all of them find their places anew.
+    part.findNodesConnected().each((neighbour) => neighbour.invalidateConnectedLinks());
     const b = part.actualBounds;
     part.diagram?.links.each((link) => {
       if (link.fromNode === part || link.toNode === part) return;
