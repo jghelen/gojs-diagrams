@@ -1,6 +1,7 @@
 -- Diagrams to look at: the ones the editor is tested with. The editor has no
--- data of its own, so these are what it shows at first. Optional, and for a database that is still empty apart from the
--- legal entity types: it counts on the sample funds getting the ids 1 to 24.
+-- data of its own, so these are what it shows at first. Optional, and for a
+-- database that is still empty apart from the legal entity types: it counts on
+-- the sample funds getting the ids 1 to 24.
 --
 --   Sample fund structure LE 24        24 funds,   26 relationships
 --   30 generated funds LE 30           30 funds,   44 relationships
