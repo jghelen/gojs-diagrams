@@ -133,11 +133,13 @@ export const HOVER_COLOR = '#d4a017';
 // ----- Sizes from which the app behaves differently -----
 
 /**
- * Lines are routed around the nodes on diagrams with fewer nodes than this.
- * Doing that for every line takes about a second at 200 nodes, seven at 500 and
- * minutes beyond that, during which the page does not respond.
+ * On diagrams with fewer nodes than this, GoJS itself routes the lines around
+ * the nodes. That takes about a second at 200 nodes and several seconds at 500,
+ * during which the page does not respond, and minutes beyond 1000. From this
+ * number on the app's own router does it instead, in a fraction of a second
+ * (lane-router.ts).
  */
-export const AVOID_NODES_BELOW = 500;
+export const AVOID_NODES_BELOW = 1000;
 
 /**
  * The layouts that stay quick however big the diagram is. The others (circle,

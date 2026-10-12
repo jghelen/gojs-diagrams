@@ -8,7 +8,8 @@ built and how to run its tests.
 
 The business requirements, rule by rule, are in
 [BUSINESS_REQUIREMENTS.md](BUSINESS_REQUIREMENTS.md). How undo and redo work, step by step and with
-diagrams, is in [UNDO_HISTORY.md](UNDO_HISTORY.md). Test cases to run by hand are in
+diagrams, is in [UNDO_HISTORY.md](UNDO_HISTORY.md). The database, which is the first step towards a backend, is in
+[DATABASE.md](DATABASE.md). Test cases to run by hand are in
 [test-cases/](test-cases/): [undo.md](test-cases/undo.md), [styles.md](test-cases/styles.md) and
 [diagram-info-bar.md](test-cases/diagram-info-bar.md) (name, description and search).
 
@@ -18,6 +19,8 @@ diagrams, is in [UNDO_HISTORY.md](UNDO_HISTORY.md). Test cases to run by hand ar
 - [How it works](#how-it-works)
 - [Tests](#tests)
 - [Project structure](#project-structure)
+- [Database](#database)
+- [Backend](#backend)
 - [Build and hosting](#build-and-hosting)
 - [Known limits](#known-limits)
 - [Licence](#licence)
@@ -506,10 +509,10 @@ diamond is much narrower near its tips than a rectangle); longer text is cut off
   top ends on the bounding rectangle, a little above the outline. The route is left alone
   (GoJS's routers rewrite it); instead the drawn line is lengthened by the size of the gap,
   using a negative `toShortLength` / `fromShortLength`, and the arrowhead is moved with it.
-- **Two routers.** Below 500 nodes GoJS routes the lines around the nodes itself
+- **Two routers.** Below 1000 nodes GoJS routes the lines around the nodes itself
   (`Routing.AvoidsNodes`) and an extension lays lines that share a stretch side by side; a guard
-  around it takes back any move that would put a line on a node. From 500 nodes on GoJS's
-  routing takes seconds to minutes, so there the app's own router does both jobs
+  around it takes back any move that would put a line on a node. From 1000 nodes on GoJS's
+  routing takes minutes, so there the app's own router does both jobs
   (`lane-router.ts`). It does not search: nodes stand in rows, between two rows there is a gap
   that is free from one side of the diagram to the other (a lane), and between two neighbouring
   nodes of a row there is a gap from lane to lane (a corridor). A line goes from lane to lane
@@ -592,7 +595,7 @@ The workflow in `.github/workflows/ci.yml` checks the code on GitHub at two mome
 2. when something lands on `main`: a merged pull request, or a direct push.
 
 Pull requests into other branches, and pushes to other branches, are not checked. Each run does
-four things, and fails if any of them does:
+these things, and fails if any of them does:
 
 | Check      | Command                     | What it catches                                                                              |
 | ---------- | --------------------------- | -------------------------------------------------------------------------------------------- |
@@ -600,6 +603,10 @@ four things, and fails if any of them does:
 | Lint       | `npm run lint`              | Likely mistakes and Angular bad practice, in code and templates (ESLint with angular-eslint) |
 | Build      | `npm run build`             | Anything that does not compile, and a bundle over its size budget                            |
 | Unit tests | `npm test -- --watch=false` | Behaviour that changed                                                                       |
+
+After these the run checks the [backend](#backend): its types and tests
+(`npm --prefix backend run verify`), and its tests on a PostgreSQL server that GitHub starts for
+the run (`npm --prefix backend run test:db`).
 
 **Making GitHub refuse a merge until the checks have passed.** The workflow only reports; the
 "Merge pull request" button is governed by a setting of the repository, which has to be switched
@@ -635,7 +642,9 @@ A workflow cannot do this by itself. Turning a failing pull request into a draft
 does not merge, was tried here and failed: the label was set, but the step that makes the draft
 ended with an error, so the pull request stayed mergeable.
 
-Run all four locally, the same way, before pushing:
+Run them locally, the same way, before pushing. This includes the backend's types and tests, so
+its packages have to be installed (`npm install --prefix backend`); the tests on a database are
+run separately, see [Backend](#its-tests):
 
 ```bash
 npm run verify
@@ -650,7 +659,7 @@ npm run verify
 | `diagram/node-data.spec.ts`                                                                                                                                                                   | Generated funds and relationships: counts, one parent per fund, no duplicates, ownership with two decimals, default gray square                                                                                                                                                                                                                                                                                                                                           |
 | `diagram/sample-data.spec.ts`                                                                                                                                                                 | The sample fund structure is one tree with the expected funds, legal entity types and ownership                                                                                                                                                                                                                                                                                                                                                                           |
 | `diagram/datasets.spec.ts`                                                                                                                                                                    | The Data dropdown's entries and the 30-fund default                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `diagram/link-types.spec.ts`                                                                                                                                                                  | The four line types, which of them avoid nodes, and that they only do so on diagrams of fewer than 500 nodes                                                                                                                                                                                                                                                                                                                                                              |
+| `diagram/link-types.spec.ts`                                                                                                                                                                  | The four line types, which of them avoid nodes, and that GoJS only does so on diagrams of fewer than 1000 nodes                                                                                                                                                                                                                                                                                                                                                           |
 | `diagram/layouts.spec.ts`                                                                                                                                                                     | Every layout positions all nodes without overlaps; tree direction; small versus big trees                                                                                                                                                                                                                                                                                                                                                                                 |
 | `diagram/diagram-factory.spec.ts`                                                                                                                                                             | Nodes (fixed size, icons, arrows, rule, red comment dot, gold outline), clicks on icons and selection, lines (black, solid or dotted, info icon, ownership label (never on another percentage or on a node, in every layout and line type), meeting the outline of a shape), tree highlight, adding a node, drag rule                                                                                                                                                     |
 | `diagram/undo-history.spec.ts`                                                                                                                                                                | Undo/redo of every kind of change back to the exact initial state, more than 999 steps, deleted nodes coming back with their relationships                                                                                                                                                                                                                                                                                                                                |
@@ -756,6 +765,181 @@ Only three things go through the page itself, because they need the diagram or a
 loading data (from the header), opening the delete confirmation (from the side panel), and telling
 GoJS that the canvas changed size (when the statistics are opened or closed).
 
+## Database
+
+The data is meant to live in PostgreSQL 14 or newer. The tables exist and the
+[backend](#backend) reads from them; the app itself does not use them yet. What they are and why is
+told in [DATABASE.md](DATABASE.md). In short:
+
+- Every node is a **legal entity**, stored once. It can be placed in several diagrams or in none.
+- A **relationship** between two legal entities does not depend on the diagram: every diagram that
+  has both of them draws it, with the same kind and percentage.
+- A diagram can have **artificial links** of its own: dashed lines drawn between two of its nodes,
+  which exist in that diagram only and are not relationships.
+- A legal entity can have **user-defined fields** (text, number, date or yes/no); each entity has
+  a given field or does not.
+- A diagram keeps its own settings, and for each of its nodes the position, colour, shape and
+  comment.
+
+### Creating it
+
+With a PostgreSQL server running, one script creates the database `fund_diagrams` with its tables
+and one sample diagram. It asks for the password of the `postgres` user once. The PostgreSQL 14 on
+this machine listens on port 5433:
+
+```bash
+PGPORT=5433 backend/db/setup.sh --with-sample
+```
+
+### Connecting from DataGrip
+
+1. Open the **Database** tool window, press **+** → **Data Source** → **PostgreSQL**.
+2. Fill in:
+
+   | Field    | Value                                                 |
+   | -------- | ----------------------------------------------------- |
+   | Host     | `localhost`                                           |
+   | Port     | `5433` on this machine (PostgreSQL's usual is `5432`) |
+   | User     | `postgres`                                            |
+   | Password | the password chosen when PostgreSQL was installed     |
+   | Database | `fund_diagrams`                                       |
+
+3. Click **Download missing driver files** if DataGrip offers it, then **Test Connection**, then
+   **OK**.
+
+The tables are under `fund_diagrams` → `public` → `tables`. If none show, tick `public` in the data
+source's **Schemas** tab. More, including what to do when the connection is refused, is in
+[DATABASE.md](DATABASE.md#connecting-from-datagrip).
+
+The password of `postgres` cannot be looked up: PostgreSQL does not keep it in a readable form.
+Where it may have been saved, how to set a new one, and how to do without it, is in
+[DATABASE.md](DATABASE.md#if-you-do-not-know-the-password).
+
+## Backend
+
+A small server in `backend/`: Node.js 24 with [Express](https://expressjs.com) and the PostgreSQL
+driver `pg`, written in TypeScript. Node runs the `.ts` files as they are, so there is no build
+step. It has one address so far; the app does not call it yet.
+
+### Starting it
+
+The [database](#creating-it) has to exist. Then, once:
+
+```bash
+cd backend
+npm install
+cp .env.example .env
+```
+
+and write the password of the database into `backend/.env`, on the line `PGPASSWORD=`. On this
+machine also set `PGPORT=5433`. The file is not committed. Then:
+
+```bash
+npm start
+```
+
+`npm run dev` does the same and restarts when a file changes. The server listens on
+<http://localhost:3000>; another port can be set with `PORT` in `.env`.
+
+### Reading a diagram
+
+`GET /api/diagrams/{id}` gives one diagram with its settings, nodes and lines:
+
+```bash
+curl http://localhost:3000/api/diagrams/1
+```
+
+```json
+{
+  "id": 1,
+  "version": 1,
+  "settings": {
+    "name": "Sample fund structure",
+    "description": "",
+    "layoutType": "top-bottom",
+    "linkType": "avoid",
+    "cardsExpanded": false,
+    "subtitleField": null,
+    "subtitleUserDefinedFieldId": null
+  },
+  "nodes": [
+    {
+      "key": 1,
+      "title": "Meridian Global FoF",
+      "legalEntityType": "Fund of funds",
+      "shape": "Rectangle",
+      "color": "#f3f4f6",
+      "comment": "Annual audit is due on 31 March.",
+      "loc": "700.5 0",
+      "fields": [
+        {
+          "id": 1,
+          "name": "Jurisdiction",
+          "dataType": "text",
+          "isOptional": false,
+          "value": "Luxembourg"
+        }
+      ]
+    }
+  ],
+  "links": [
+    { "key": 1, "from": 1, "to": 2, "category": "hierarchy", "ownership": 64 },
+    { "key": 31, "from": 24, "to": 1, "category": "manual" }
+  ]
+}
+```
+
+The names are the ones the app uses, so `nodes`, `links` and `settings` fit its `createModel()`
+as they are.
+
+- **`nodes`**: `key` is the id of the legal entity. `title` and `legalEntityType` are the same in
+  every diagram; `shape`, `color`, `comment` and `loc` belong to this diagram. `loc` is left out
+  for a node that has no position yet. `fields` are the user-defined fields the entity has; a
+  field it has but with no value comes with `"value": null`, a field it does not have is not
+  listed.
+- **`links`**: every relationship between two legal entities that are both in the diagram
+  (`category` `hierarchy` or `relation`, with `ownership` when the percentage is known), and the
+  diagram's own artificial links (`category` `manual`, to be drawn dashed). Nothing in the
+  database says per diagram which relationships to show. No two lines have the same `key`.
+- **`version`** goes up with every save; it will let a save notice that somebody else saved first.
+
+| Answer | When                                                              | Body                                                                                                                |
+| ------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `200`  | The diagram exists                                                | The diagram, as above                                                                                               |
+| `400`  | The id is not a whole number above zero (`abc`, `0`, `-1`, `1.5`) | `{ "error": "The id of a diagram is a whole number above zero." }`                                                  |
+| `404`  | There is no diagram with this id                                  | `{ "error": "There is no diagram with the id 7." }`                                                                 |
+| `500`  | The database could not be reached or failed                       | `{ "error": "The request could not be answered. Try again later." }`; the cause is written to the server's log only |
+
+### Its files
+
+| File                                   | Purpose                                                              |
+| -------------------------------------- | -------------------------------------------------------------------- |
+| `backend/src/server.ts`                | Starts the server                                                    |
+| `backend/src/app.ts`                   | The addresses and their answers, including the errors                |
+| `backend/src/database.ts`              | The connections to PostgreSQL, from the settings in `.env`           |
+| `backend/src/diagrams/read-diagram.ts` | The four queries that read one diagram, in one read-only transaction |
+| `backend/src/diagrams/to-diagram.ts`   | Turns the rows into the diagram that is handed out                   |
+| `backend/src/diagrams/diagram.ts`      | What a diagram looks like in an answer                               |
+| `backend/db/`                          | The tables, see [Database](#database)                                |
+
+### Its tests
+
+```bash
+cd backend
+npm run verify
+```
+
+checks the types and runs the tests that need no database: the answers of the address, with
+something standing in for the database, and the turning of rows into a diagram.
+
+```bash
+npm run test:db
+```
+
+runs the tests that read from a real PostgreSQL server, with the settings of `.env`. They create a
+database of their own (`fund_diagrams_test_…`) with the tables and the sample diagram, read
+diagrams from it, and drop it again; `fund_diagrams` is not touched.
+
 ## Build and hosting
 
 ```bash
@@ -776,18 +960,20 @@ Read the [licence](#licence) section before publishing a build on the public int
   Reset diagram keep working. Without this GoJS would stay inside the unfinished transaction and
   the diagram would be stuck until the page is reloaded. The error itself is written to the
   browser console.
-- **Waiting on mid-sized diagrams.** Below 500 nodes GoJS routes the lines around the nodes,
-  which takes about a second at 200 nodes and several at 400, when the diagram is loaded or the
-  line type is switched. From 500 nodes on the app's own router does it in a fraction of a second.
-- **Crossing the 500-node mark by hand.** Which router is used is decided when a diagram is
+- **Waiting on mid-sized diagrams.** Below 1000 nodes GoJS routes the lines around the nodes,
+  which takes about a second at 200 nodes and several seconds at 500, when the diagram is loaded,
+  rearranged or its line type switched; the page does not respond meanwhile. From 1000 nodes on
+  the app's own router does it in a fraction of a second. The number is `AVOID_NODES_BELOW` in
+  `src/app/diagram/constants.ts`.
+- **Crossing the 1000-node mark by hand.** Which router is used is decided when a diagram is
   loaded and when the line type is switched. If you add or delete nodes across the limit, the
   existing lines keep the routing they had until you switch the line type again.
-- **Lines across nodes.** Below 500 nodes this is rare but not impossible: GoJS falls back to a
+- **Lines across nodes.** Below 1000 nodes this is rare but not impossible: GoJS falls back to a
   plain line when it finds no way around, for about one line in a hundred in some layouts. From
-  500 nodes on a line crosses a node only if its own node is shut in by other nodes above and
+  1000 nodes on a line crosses a node only if its own node is shut in by other nodes above and
   below, which the layouts never produce; it takes dragging nodes onto each other.
 - **Force-directed on big diagrams.** The app's router for big diagrams needs nodes that stand
-  in rows. In the Force-directed layout they do not, so on a diagram of 500 nodes or more in that
+  in rows. In the Force-directed layout they do not, so on a diagram of 1000 nodes or more in that
   layout most orthogonal lines run across nodes; straight lines suit it better. Such a diagram
   never opens in that layout by itself.
 - **When a diagram cannot be opened.** If an error stops a diagram while it is being arranged,

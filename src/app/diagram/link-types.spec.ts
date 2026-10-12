@@ -44,14 +44,16 @@ describe('link types', () => {
     expect(avoidsNodes(DEFAULT_LINK_TYPE)).toBe(true);
   });
 
-  it('routes around the nodes only on diagrams of fewer than 500 nodes', () => {
-    expect(AVOID_NODES_BELOW).toBe(500);
-    expect(tooBigToAvoidNodes(499)).toBe(false);
-    expect(tooBigToAvoidNodes(500)).toBe(true);
+  it('lets GoJS route around the nodes on diagrams of fewer than 1000 nodes', () => {
+    expect(AVOID_NODES_BELOW).toBe(1000);
+    expect(tooBigToAvoidNodes(999)).toBe(false);
+    expect(tooBigToAvoidNodes(1000)).toBe(true);
     for (const type of ['avoid', 'orthogonal'] as const) {
       expect(routingFor(type, 200)).toBe(go.Routing.AvoidsNodes);
-      expect(routingFor(type, 499)).toBe(go.Routing.AvoidsNodes);
-      expect(routingFor(type, 500)).toBe(go.Routing.Orthogonal);
+      expect(routingFor(type, 500)).toBe(go.Routing.AvoidsNodes);
+      expect(routingFor(type, 999)).toBe(go.Routing.AvoidsNodes);
+      // From there on the app's own router takes the lines around the nodes.
+      expect(routingFor(type, 1000)).toBe(go.Routing.Orthogonal);
       expect(routingFor(type, 2000)).toBe(go.Routing.Orthogonal);
     }
   });

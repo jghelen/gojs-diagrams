@@ -45,3 +45,8 @@ Thumbs.db
 
 # Local tooling
 /.claude
+
+# The backend
+/backend/node_modules
+# Holds the password of the database.
+/backend/.env

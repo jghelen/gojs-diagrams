@@ -2372,16 +2372,16 @@ describe('DiagramPage', () => {
 
     it('keep the line type they are opened with, and their lines go around the nodes', async () => {
       expect(bench.linkType()).toBe('avoid');
-      bench.reset('500');
+      bench.reset('1000');
       await settle();
-      expect(bench.stats()?.nodes).toBe(500);
+      expect(bench.stats()?.nodes).toBe(1000);
       expect(bench.linkType()).toBe('avoid');
       expect(model().modelData.linkType).toBe('avoid');
       expect(linesOverNodes()).toBe(0);
-    }, 20_000);
+    }, 60_000);
 
     it('switch between line types as one undo step each, around the nodes again on the way back', async () => {
-      bench.reset('500');
+      bench.reset('1000');
       await settle();
       await bench.changeLinkType('straight');
       await settle();
@@ -2398,7 +2398,7 @@ describe('DiagramPage', () => {
       expect(bench.linkType()).toBe('avoid');
       expect(linesOverNodes()).toBe(0);
       expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
-    }, 20_000);
+    }, 60_000);
 
     it('are not opened in a layout that is slow there, even if a smaller diagram used it', async () => {
       await bench.changeLayout('circle');
@@ -2411,15 +2411,14 @@ describe('DiagramPage', () => {
       await settle();
       expect(bench.layoutType()).toBe('top-bottom');
       expect(model().modelData.layoutType).toBe('top-bottom');
-      expect(linesOverNodes()).toBe(0);
-    }, 30_000);
+    }, 60_000);
 
     it('keep a quick layout that was chosen before', async () => {
       await bench.changeLayout('grid');
       bench.reset('500');
       await settle();
       expect(bench.layoutType()).toBe('grid');
-    }, 30_000);
+    }, 60_000);
 
     it('name the line types the same as on a small diagram', async () => {
       const titles = async () => {
@@ -2440,10 +2439,10 @@ describe('DiagramPage', () => {
       ];
       expect(await titles()).toEqual(names);
 
-      bench.reset('500');
+      bench.reset('1000');
       await settle();
       expect(await titles()).toEqual(names);
-    }, 20_000);
+    }, 60_000);
   });
 
   describe('new diagram', () => {

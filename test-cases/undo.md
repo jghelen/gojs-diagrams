@@ -218,13 +218,13 @@ and listed here so that the picture is complete.
 
 ## 13. Large diagrams
 
-| ID       | Case                             | Steps                                                                                        | Expected result                                                                                                               | Automated   |
-| -------- | -------------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| UNDO-140 | Undo on 2000 funds               | Choose **2000 generated funds**. **Randomize all**. Undo.                                    | Back to the start. The "Undo" row shows the time it took; the page responds again within a few seconds.                       | Manual only |
-| UNDO-141 | Undo of a layout on 500 funds    | Choose **500 generated funds**. **Layout** → Grid. Undo.                                     | Back to the start, with the lines around the nodes again. No notice, no frozen page.                                          | Manual only |
-| UNDO-142 | Undo of a line type on 500 funds | Choose **500 generated funds**. **Lines** → Straight, then → Orthogonal, square. Undo twice. | Back to the start. After each Undo the lines are as that line type draws them; with the orthogonal types none crosses a node. | page        |
-| UNDO-143 | A long history on a big diagram  | Choose **200 generated funds**. Enter 50, press **× randomize all**. Hold Ctrl/Cmd+Z.        | Every step is taken back in turn. Back to the start. The page never stays unresponsive for longer than a single step takes.   | Manual only |
-| UNDO-144 | Memory                           | During UNDO-143, watch **JS heap** in the History panel (Chrome).                            | It grows with the history and does not jump at an Undo. This is for information; there is no limit to pass.                   | Manual only |
+| ID       | Case                              | Steps                                                                                         | Expected result                                                                                                               | Automated   |
+| -------- | --------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| UNDO-140 | Undo on 2000 funds                | Choose **2000 generated funds**. **Randomize all**. Undo.                                     | Back to the start. The "Undo" row shows the time it took; the page responds again within a few seconds.                       | Manual only |
+| UNDO-141 | Undo of a layout on 1000 funds    | Choose **1000 generated funds**. **Layout** → Grid. Undo.                                     | Back to the start, with the lines around the nodes again. No notice, no frozen page.                                          | Manual only |
+| UNDO-142 | Undo of a line type on 1000 funds | Choose **1000 generated funds**. **Lines** → Straight, then → Orthogonal, square. Undo twice. | Back to the start. After each Undo the lines are as that line type draws them; with the orthogonal types none crosses a node. | page        |
+| UNDO-143 | A long history on a big diagram   | Choose **200 generated funds**. Enter 50, press **× randomize all**. Hold Ctrl/Cmd+Z.         | Every step is taken back in turn. Back to the start. The page never stays unresponsive for longer than a single step takes.   | Manual only |
+| UNDO-144 | Memory                            | During UNDO-143, watch **JS heap** in the History panel (Chrome).                             | It grows with the history and does not jump at an Undo. This is for information; there is no limit to pass.                   | Manual only |
 
 ## Known limits
 

@@ -279,8 +279,8 @@ Every icon without a text label shows its name when the user hovers over it.
   fund or at different funds: each is moved to a free place beside its line.
 - **BR-6.7b** A percentage does not lie on a fund, where the fund would hide it. Where the place
   next to the arrowhead is taken or lies on a fund, the percentage goes to the other side of the
-  line or further back along the line, following its bends. On diagrams of 500 funds or more,
-  where lines cross funds, a few percentages may find no such place; they still never cover each
+  line or further back along the line, following its bends. Where lines cross funds
+  (see BR-9.6b), a few percentages may find no such place; they still never cover each
   other.
 - **BR-6.7c** The same diagram always shows its percentages in the same places.
 
@@ -428,11 +428,12 @@ diagram has no nodes (BR-4.15).
   on hover: Orthogonal rounded, Orthogonal square, Straight, Curved.
 - **BR-9.6** Straight and curved lines cannot go around nodes; their names say "(crosses
   nodes)". The two orthogonal types route lines around nodes on diagrams of every size.
-- **BR-9.6b** Going around nodes on a diagram of 500 funds or more needs funds that stand in rows,
+- **BR-9.6b** Going around nodes on a diagram of 1000 funds or more needs funds that stand in rows,
   as in every layout but Force-directed. In that layout lines of such a diagram may cross funds.
 - **BR-9.6a** Switching the line type must never freeze the screen, whatever the size of the
-  diagram. On a diagram of 500 funds or more the lines are therefore routed by a faster method
-  than on smaller ones; the result looks the same.
+  diagram. On a diagram of 1000 funds or more the lines are therefore routed by a faster method
+  than on smaller ones; the result looks the same. Below that size, routing around nodes can take
+  several seconds on the bigger diagrams (about 500 funds), during which the page does not respond.
 - **BR-9.7** Switching the line type is one undo step.
 - **BR-9.8** Only one of the columns (Layout, Lines, Shape) is open at a time. A column opens
   beside the navigation and always stays inside the canvas.

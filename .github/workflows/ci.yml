@@ -1,4 +1,5 @@
-# Checks every push to main and every pull request: formatting, lint, build, unit tests.
+# Checks every push to main and every pull request: formatting, lint, build, unit tests,
+# and the backend: its types, its tests, and its tests on a real database.
 # The same checks run locally with `npm run verify`.
 name: CI
 
@@ -20,6 +21,20 @@ jobs:
     name: Format, lint, build, test
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # A PostgreSQL server for the backend's database tests. It lives for this run
+    # only and holds nothing, so its password is no secret.
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -28,6 +43,9 @@ jobs:
           # The Node version the project is developed with.
           node-version-file: .nvmrc
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
 
       # Exactly the versions of package-lock.json.
       - run: npm ci
@@ -44,3 +62,20 @@ jobs:
       # The tests run in jsdom, so no browser has to be installed.
       - name: Unit tests
         run: npm test -- --watch=false
+
+      # The backend has packages of its own, in backend/.
+      - name: Backend, packages
+        run: npm ci --prefix backend
+
+      - name: Backend, types and tests
+        run: npm --prefix backend run verify
+
+      # These make a database in the server above, with the tables of backend/db,
+      # read diagrams from it, and drop it again.
+      - name: Backend, tests on a database
+        run: npm --prefix backend run test:db
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: postgres
+          PGPASSWORD: postgres
