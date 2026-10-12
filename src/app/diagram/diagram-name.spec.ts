@@ -1,4 +1,4 @@
-import { DATASETS } from './datasets';
+import { DATASETS } from '../../testing/datasets';
 import { DIAGRAM_NAME_RULE, checkedDiagramName, withoutSpecialCharacters } from './diagram-name';
 
 describe('withoutSpecialCharacters', () => {

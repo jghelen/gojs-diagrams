@@ -11,7 +11,7 @@ import { createPool } from '../src/database.ts';
 import { readDiagram } from '../src/diagrams/read-diagram.ts';
 
 const database = `fund_diagrams_test_${process.pid}`;
-const sqlFiles = ['001_schema.sql', '002_seed.sql', '003_sample_diagram.sql'];
+const sqlFiles = ['001_schema.sql', '002_seed.sql', '003_sample_diagrams.sql'];
 
 describe('readDiagram, from a database', () => {
   let pool: pg.Pool;
@@ -27,7 +27,8 @@ describe('readDiagram, from a database', () => {
   }
 
   before(async () => {
-    await inServer(`create database ${database}`);
+    // As backend/db/setup.sh creates it.
+    await inServer(`create database ${database} encoding 'UTF8' template template0`);
     pool = createPool({ ...process.env, PGDATABASE: database });
     for (const file of sqlFiles) {
       await pool.query(await readFile(new URL(`../db/${file}`, import.meta.url), 'utf8'));
@@ -46,8 +47,8 @@ describe('readDiagram, from a database', () => {
     assert.equal(diagram.id, 1);
     assert.equal(diagram.version, 1);
     assert.deepEqual(diagram.settings, {
-      name: 'Sample fund structure',
-      description: '',
+      name: 'Sample fund structure LE 24',
+      description: '24 funds and 26 relationships',
       layoutType: 'top-bottom',
       linkType: 'avoid',
       cardsExpanded: false,
@@ -81,7 +82,9 @@ describe('readDiagram, from a database', () => {
   it('reads the kinds of the lines, and a percentage as a number', async () => {
     const { links } = (await readDiagram(pool, 1))!;
     const { rows } = await pool.query(
-      `select id, kind, ownership_percent::text as percent from relationship order by id`,
+      // The sample funds are the legal entities 1 to 24.
+      `select id, kind, ownership_percent::text as percent from relationship
+       where from_legal_entity_id <= 24 order by id`,
     );
 
     assert.deepEqual(
@@ -114,71 +117,148 @@ describe('readDiagram, from a database', () => {
     );
   });
 
-  it('gives the same legal entity another look in another diagram', async () => {
-    await pool.query(`
-      insert into diagram (name, layout_type, link_type, cards_expanded, subtitle_field)
-        values ('Second diagram', 'grid', 'curved', true, 'legalEntityType');
-      insert into diagram_node (diagram_id, legal_entity_id, shape, color, x, y, comment) values
-        (2, 1, 'Ellipse', '#bfdbfe', 840.4155888772582, -240.75846260198898, 'Only here'),
-        (2, 2, 'Diamond', '#fde68a', null, null, ''),
-        (2, 24, 'Rectangle', '#f3f4f6', 0, 300, '');`);
+  describe('with a second diagram of some of the same legal entities', () => {
+    /** The id of a diagram that shows the sample funds 1, 2 and 24 in its own way. */
+    let secondId: number;
 
-    const second = (await readDiagram(pool, 2))!;
-    const first = (await readDiagram(pool, 1))!;
-
-    assert.deepEqual(second.settings, {
-      name: 'Second diagram',
-      description: '',
-      layoutType: 'grid',
-      linkType: 'curved',
-      cardsExpanded: true,
-      subtitleField: 'legalEntityType',
-      subtitleUserDefinedFieldId: null,
+    before(async () => {
+      const { rows } = await pool.query(`
+        insert into diagram (name, layout_type, link_type, cards_expanded, subtitle_field)
+        values ('Second diagram', 'grid', 'curved', true, 'legalEntityType')
+        returning id`);
+      secondId = rows[0].id;
+      await pool.query(
+        `insert into diagram_node (diagram_id, legal_entity_id, shape, color, x, y, comment) values
+           ($1, 1, 'Ellipse', '#bfdbfe', 840.4155888772582, -240.75846260198898, 'Only here'),
+           ($1, 2, 'Diamond', '#fde68a', null, null, ''),
+           ($1, 24, 'Rectangle', '#f3f4f6', 0, 300, '')`,
+        [secondId],
+      );
     });
-    const [one, two] = second.nodes;
-    assert.equal(one.title, first.nodes[0].title);
-    assert.deepEqual(one.fields, first.nodes[0].fields);
-    assert.equal(one.shape, 'Ellipse');
-    assert.equal(one.color, '#bfdbfe');
-    assert.equal(one.comment, 'Only here');
-    // Every digit of a position comes back.
-    assert.equal(one.loc, '840.4155888772582 -240.75846260198898');
-    // Not placed yet.
-    assert.equal('loc' in two, false);
-    assert.equal(first.nodes[0].shape, 'Rectangle');
+
+    it('gives the same legal entity another look in another diagram', async () => {
+      const second = (await readDiagram(pool, secondId))!;
+      const first = (await readDiagram(pool, 1))!;
+
+      assert.deepEqual(second.settings, {
+        name: 'Second diagram',
+        description: '',
+        layoutType: 'grid',
+        linkType: 'curved',
+        cardsExpanded: true,
+        subtitleField: 'legalEntityType',
+        subtitleUserDefinedFieldId: null,
+      });
+      const [one, two] = second.nodes;
+      assert.equal(one.title, first.nodes[0].title);
+      assert.deepEqual(one.fields, first.nodes[0].fields);
+      assert.equal(one.shape, 'Ellipse');
+      assert.equal(one.color, '#bfdbfe');
+      assert.equal(one.comment, 'Only here');
+      // Every digit of a position comes back.
+      assert.equal(one.loc, '840.4155888772582 -240.75846260198898');
+      // Not placed yet.
+      assert.equal('loc' in two, false);
+      assert.equal(first.nodes[0].shape, 'Rectangle');
+    });
+
+    it('draws a relationship in every diagram that has both of its legal entities', async () => {
+      const first = (await readDiagram(pool, 1))!;
+      const second = (await readDiagram(pool, secondId))!;
+
+      // Of the 26 relationships of the sample funds, only the one between 1 and 2
+      // has both of its ends in the second diagram, and nobody had to add it there.
+      const between = (link: { from: number; to: number }) => link.from === 1 && link.to === 2;
+      assert.deepEqual(second.links, [first.links.find(between)]);
+      assert.equal(second.links[0].category, 'hierarchy');
+    });
+
+    it('adds the artificial links of a diagram to that diagram only', async () => {
+      await pool.query(
+        `insert into diagram_artificial_link (diagram_id, from_legal_entity_id, to_legal_entity_id)
+         values ($1, 24, 1)`,
+        [secondId],
+      );
+
+      const first = (await readDiagram(pool, 1))!;
+      const second = (await readDiagram(pool, secondId))!;
+
+      const artificial = second.links.filter((link) => link.category === 'manual');
+      assert.equal(artificial.length, 1);
+      const [{ key, ...line }] = artificial;
+      assert.deepEqual(line, { from: 24, to: 1, category: 'manual' });
+      assert.equal(second.links.length, 2);
+      // The funds 24 and 1 are in the first diagram too, and get no line there.
+      assert.equal(first.links.length, 26);
+      assert.ok(first.links.every((link) => link.category !== 'manual'));
+      // No line of any diagram has the key of another.
+      assert.ok(first.links.every((link) => link.key !== key));
+    });
   });
 
-  it('draws a relationship in every diagram that has both of its legal entities', async () => {
-    const first = (await readDiagram(pool, 1))!;
-    const second = (await readDiagram(pool, 2))!;
+  describe('the diagrams of the sample file', () => {
+    const NAMES = [
+      'Sample fund structure LE 24',
+      '30 generated funds LE 30',
+      '100 generated funds LE 100',
+      '200 generated funds LE 200',
+      '500 generated funds LE 500',
+      '1000 generated funds LE 1000',
+      '2000 generated funds LE 2000',
+      'Empty diagram LE 0',
+    ];
 
-    // The second diagram has the funds 1, 2 and 24. Of the 26 relationships, only
-    // the one between 1 and 2 has both of its ends there, and nobody had to add it.
-    const between = (link: { from: number; to: number }) => link.from === 1 && link.to === 2;
-    assert.deepEqual(second.links, [first.links.find(between)]);
-    assert.equal(second.links[0].category, 'hierarchy');
-  });
+    it("are the eight of the editor's Data dropdown, in that order", async () => {
+      const { rows } = await pool.query(`select name from diagram where id <= 8 order by id`);
 
-  it('adds the artificial links of a diagram to that diagram only', async () => {
-    await pool.query(`
-      insert into diagram_artificial_link (diagram_id, from_legal_entity_id, to_legal_entity_id)
-        values (2, 24, 1)`);
+      assert.deepEqual(
+        rows.map((row) => row.name),
+        NAMES,
+      );
+    });
 
-    const first = (await readDiagram(pool, 1))!;
-    const second = (await readDiagram(pool, 2))!;
+    it('say in their names how many legal entities they have', async () => {
+      for (let id = 1; id <= NAMES.length; id++) {
+        const diagram = (await readDiagram(pool, id))!;
 
-    const artificial = second.links.filter((link) => link.category === 'manual');
-    assert.equal(artificial.length, 1);
-    const [{ key, ...line }] = artificial;
-    assert.deepEqual(line, { from: 24, to: 1, category: 'manual' });
-    assert.equal(second.links.length, 2);
-    // The funds 24 and 1 are in the first diagram too, and get no line there.
-    assert.equal(first.links.length, 26);
-    assert.ok(first.links.every((link) => link.category !== 'manual'));
-    // No line of any diagram has the key of another.
-    const keys = [...first.links, ...second.links.filter((link) => link.category === 'manual')];
-    assert.equal(new Set(keys.map((link) => link.key)).size, keys.length);
-    assert.ok(first.links.every((link) => link.key !== key));
+        assert.equal(diagram.settings.name, NAMES[id - 1]);
+        assert.match(diagram.settings.name, new RegExp(` LE ${diagram.nodes.length}$`));
+        // Letters, digits and spaces only, as the editor wants a name.
+        assert.match(diagram.settings.name, /^[A-Za-z0-9 ]+$/);
+      }
+    });
+
+    it('have funds of their own, each with its relationships', async () => {
+      const lines = [26, 44, 149, 299, 749, 1499, 2999, 0];
+      const seen = new Set<number>();
+      for (let id = 1; id <= NAMES.length; id++) {
+        const diagram = (await readDiagram(pool, id))!;
+
+        assert.equal(diagram.links.length, lines[id - 1], NAMES[id - 1]);
+        for (const node of diagram.nodes) {
+          assert.equal(seen.has(node.key), false, `fund ${node.key} is in two diagrams`);
+          seen.add(node.key);
+        }
+        const keys = new Set(diagram.nodes.map((node) => node.key));
+        assert.ok(diagram.links.every((link) => keys.has(link.from) && keys.has(link.to)));
+      }
+      assert.equal(seen.size, 3854);
+    });
+
+    it('leave the generated funds without a position, for the editor to arrange', async () => {
+      const generated = (await readDiagram(pool, 2))!;
+      const sample = (await readDiagram(pool, 1))!;
+
+      assert.ok(generated.nodes.every((node) => !('loc' in node)));
+      assert.ok(sample.nodes.every((node) => typeof node.loc === 'string'));
+    });
+
+    it('read the largest, of 2000 funds, in one go', async () => {
+      const diagram = (await readDiagram(pool, 7))!;
+
+      assert.equal(diagram.nodes.length, 2000);
+      assert.equal(diagram.links.filter((link) => link.category === 'hierarchy').length, 1999);
+    });
   });
 
   it('reads a diagram without nodes', async () => {

@@ -1,30 +1,20 @@
-import { Routes, UrlMatchResult, UrlSegment } from '@angular/router';
+import { Routes } from '@angular/router';
 import { DiagramList } from './diagram-list/diagram-list';
 import { NewBatch } from './new-batch/new-batch';
 import { DiagramPage } from './diagram-page/diagram-page';
 
-/**
- * The editor has two addresses: "/" for the data of the Data dropdown, and
- * "/diagrams/<id>" for a diagram of the database. They are one route, so that
- * going from one address to the other keeps the page and the diagram in it:
- * picking sample data while a stored diagram is shown only changes the address.
- */
-export function editorAddress(segments: UrlSegment[]): UrlMatchResult | null {
-  if (segments.length === 0) return { consumed: [] };
-  if (segments.length === 2 && segments[0].path === 'diagrams') {
-    return { consumed: segments, posParams: { id: segments[1] } };
-  }
-  return null;
-}
-
 export const routes: Routes = [
+  // The app starts with the list of diagrams: every diagram comes from the database.
+  { path: '', pathMatch: 'full', redirectTo: 'diagrams' },
   { path: 'diagrams', component: DiagramList },
   {
-    matcher: editorAddress,
+    // The editor, for the diagram with this id; /diagrams/new starts a new one.
+    // From one diagram to another the page stays and opens the other diagram.
+    path: 'diagrams/:id',
     component: DiagramPage,
     // Nothing is saved yet, so leaving a diagram with changes loses them: ask first.
     canDeactivate: [(page: DiagramPage) => page.mayLeave()],
   },
   { path: 'batches/new', component: NewBatch },
-  { path: '**', redirectTo: '' },
+  { path: '**', redirectTo: 'diagrams' },
 ];

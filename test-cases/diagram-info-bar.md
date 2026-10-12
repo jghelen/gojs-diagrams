@@ -21,10 +21,14 @@ its **description**, the **search** for nodes, and stepping through what the sea
 
 ## How to read this file
 
+**"Open" a diagram** means: click **All diagrams** in the top bar and click the title of the
+diagram in the list. The diagrams named here are the sample diagrams of the database
+(`backend/db/setup.sh --with-sample`); the backend has to be running.
+
 **Starting point of every case**, unless the case says otherwise:
 
-1. Open the app, choose **Sample fund structure** in the dropdown of the top bar and press
-   **Reset diagram** (the reload icon). The diagram has 24 funds; four of them have "Meridian" in
+1. Open the app, which starts with the list of diagrams, and click **Sample fund structure LE
+   24** there. The diagram has 24 funds; four of them have "Meridian" in
    their name and two have "Credit".
 2. Switch the **developer tools** on (the `</>` icon at the right end of the top bar). Some cases
    read **Transactions in history** in the History panel and the **benchmark statistics** below the
@@ -49,23 +53,23 @@ means no automated test covers it. Files are under `src/app/`:
 
 ## 1. The bar as a whole
 
-| ID     | Case                                         | Steps                                                                     | Expected result                                                                                                  | Automated   |
-| ------ | -------------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ----------- |
-| BAR-01 | Order of its parts                           | Look at the bar.                                                          | Name, then description, then the search box with its count and the two buttons at the right.                     | page        |
-| BAR-02 | Everything is disabled while a diagram loads | Choose **200 generated funds** and watch the bar while the nodes appear.  | Name, description, search and both buttons are disabled until all nodes are shown.                               | page        |
-| BAR-03 | Disabled while an operation runs             | Enter 24 in the Edits panel and press **× randomize all**; watch the bar. | The boxes are disabled while it runs and enabled afterwards.                                                     | Manual only |
-| BAR-04 | A narrow window                              | Make the browser window narrow.                                           | The parts of the bar wrap onto a second line instead of being cut off or overlapping.                            | Manual only |
-| BAR-05 | Notes appear below the boxes                 | Type "a/b" into the name box (see section 5).                             | The note is on a line of its own below the boxes; the canvas gets that much shorter and the diagram stays whole. | page        |
+| ID     | Case                                         | Steps                                                                         | Expected result                                                                                                  | Automated   |
+| ------ | -------------------------------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ----------- |
+| BAR-01 | Order of its parts                           | Look at the bar.                                                              | Name, then description, then the search box with its count and the two buttons at the right.                     | page        |
+| BAR-02 | Everything is disabled while a diagram loads | Open **200 generated funds LE 200** and watch the bar while the nodes appear. | Name, description, search and both buttons are disabled until all nodes are shown.                               | page        |
+| BAR-03 | Disabled while an operation runs             | Enter 24 in the Edits panel and press **× randomize all**; watch the bar.     | The boxes are disabled while it runs and enabled afterwards.                                                     | Manual only |
+| BAR-04 | A narrow window                              | Make the browser window narrow.                                               | The parts of the bar wrap onto a second line instead of being cut off or overlapping.                            | Manual only |
+| BAR-05 | Notes appear below the boxes                 | Type "a/b" into the name box (see section 5).                                 | The note is on a line of its own below the boxes; the canvas gets that much shorter and the diagram stays whole. | page        |
 
 ## 2. Name: what it shows
 
-| ID     | Case                                 | Steps                                                        | Expected result                                                                   | Automated |
-| ------ | ------------------------------------ | ------------------------------------------------------------ | --------------------------------------------------------------------------------- | --------- |
-| BAR-10 | Named after the data                 | Look at the name box after Reset diagram.                    | "Sample fund structure", in bold.                                                 | page      |
-| BAR-11 | Follows the data that is opened      | Choose **30 generated funds**, then **100 generated funds**. | The box reads "30 generated funds", then "100 generated funds".                   | page      |
-| BAR-12 | A new diagram has no name            | Press **New diagram**.                                       | The box is empty and shows the placeholder "Diagram name (required)" (section 4). | page      |
-| BAR-13 | Hover text                           | Hold the mouse over the name box.                            | "Letters, digits and spaces only".                                                | page      |
-| BAR-14 | The name does not depend on the view | Change the layout and the line type, zoom, select nodes.     | The name stays as it is.                                                          | page      |
+| ID     | Case                                 | Steps                                                                   | Expected result                                                                   | Automated |
+| ------ | ------------------------------------ | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------- | --------- |
+| BAR-10 | Named after the data                 | Look at the name box after Reset diagram.                               | "Sample fund structure LE 24", in bold.                                           | page      |
+| BAR-11 | Follows the data that is opened      | Open **30 generated funds LE 30**, then **100 generated funds LE 100**. | The box reads "30 generated funds LE 30", then "100 generated funds LE 100".      | page      |
+| BAR-12 | A new diagram has no name            | Press **New diagram**.                                                  | The box is empty and shows the placeholder "Diagram name (required)" (section 4). | page      |
+| BAR-13 | Hover text                           | Hold the mouse over the name box.                                       | "Letters, digits and spaces only".                                                | page      |
+| BAR-14 | The name does not depend on the view | Change the layout and the line type, zoom, select nodes.                | The name stays as it is.                                                          | page      |
 
 ## 3. Name: changing it
 
@@ -124,24 +128,24 @@ Until such loading exists, these cases can only be run by the automated tests.
 | BAR-54 | The note stays while working      | Change a node, zoom, search.                                     | The note is still there.                                                                                                                                                                               | page       |
 | BAR-55 | Dismiss                           | Press the × at the end of the note.                              | The note goes. The cleaned name stays.                                                                                                                                                                 | page       |
 | BAR-56 | Giving a name removes the note    | Type a new name and press Enter.                                 | The note goes.                                                                                                                                                                                         | page       |
-| BAR-57 | Other data removes the note       | Choose other data in the top bar.                                | The note goes. Opening the same stored diagram again shows it again.                                                                                                                                   | page       |
+| BAR-57 | Other data removes the note       | Open another diagram from the list.                              | The note goes. Opening the same stored diagram again shows it again.                                                                                                                                   | page       |
 | BAR-58 | A name of special characters only | A diagram stored as "\*\*\*".                                    | The name box is empty and marked as required; the note shows "\*\*\*".                                                                                                                                 | name       |
 | BAR-59 | A valid stored name               | A diagram stored as "Meridian holdings 2026".                    | The name is shown as it is, with no note.                                                                                                                                                              | page, name |
 
 ## 7. Description
 
-| ID     | Case                              | Steps                                                              | Expected result                                                                                       | Automated     |
-| ------ | --------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- | ------------- |
-| BAR-60 | Empty at first                    | Look at the description box after Reset diagram.                   | Empty, with the placeholder "Description".                                                            | page          |
-| BAR-61 | Enter takes it over               | Type "Ownership as of year end" and press Enter.                   | The text stays in the box. Transactions in history is 1. The statistics get a row "Describe diagram". | page, actions |
-| BAR-62 | Leaving the box takes it over     | Type another text and click on the canvas.                         | One more step.                                                                                        | page          |
-| BAR-63 | Spaces around it are dropped      | Type " As of year end " and press Enter.                           | The box shows "As of year end".                                                                       | page          |
-| BAR-64 | Any characters                    | Type "As of 2026/Q3 (draft): 80% done & checked!" and press Enter. | Kept exactly as typed. No note appears: the rule for names does not apply here.                       | page, actions |
-| BAR-65 | The same text again               | Press Enter without changing the text.                             | No step is added.                                                                                     | actions       |
-| BAR-66 | Can be emptied                    | Delete the text and press Enter.                                   | The box is empty again; one more step. The box is not marked: a description is not required.          | Manual only   |
-| BAR-67 | Empty again with other data       | Give a description, then choose other data or press Reset diagram. | The description box is empty.                                                                         | page          |
-| BAR-68 | Name and description are separate | Change the name, then the description.                             | Two steps. Neither box changes the other.                                                             | page          |
-| BAR-69 | A long description                | Type 300 characters and press Enter.                               | Taken over; the box shows the beginning and scrolls with the cursor.                                  | Manual only   |
+| ID     | Case                              | Steps                                                                 | Expected result                                                                                       | Automated     |
+| ------ | --------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------- |
+| BAR-60 | Empty at first                    | Look at the description box after Reset diagram.                      | Empty, with the placeholder "Description".                                                            | page          |
+| BAR-61 | Enter takes it over               | Type "Ownership as of year end" and press Enter.                      | The text stays in the box. Transactions in history is 1. The statistics get a row "Describe diagram". | page, actions |
+| BAR-62 | Leaving the box takes it over     | Type another text and click on the canvas.                            | One more step.                                                                                        | page          |
+| BAR-63 | Spaces around it are dropped      | Type " As of year end " and press Enter.                              | The box shows "As of year end".                                                                       | page          |
+| BAR-64 | Any characters                    | Type "As of 2026/Q3 (draft): 80% done & checked!" and press Enter.    | Kept exactly as typed. No note appears: the rule for names does not apply here.                       | page, actions |
+| BAR-65 | The same text again               | Press Enter without changing the text.                                | No step is added.                                                                                     | actions       |
+| BAR-66 | Can be emptied                    | Delete the text and press Enter.                                      | The box is empty again; one more step. The box is not marked: a description is not required.          | Manual only   |
+| BAR-67 | Empty again with other data       | Give a description, then open another diagram or press Reset diagram. | The description box is empty.                                                                         | page          |
+| BAR-68 | Name and description are separate | Change the name, then the description.                                | Two steps. Neither box changes the other.                                                             | page          |
+| BAR-69 | A long description                | Type 300 characters and press Enter.                                  | Taken over; the box shows the beginning and scrolls with the cursor.                                  | Manual only   |
 
 ## 8. Search: finding nodes
 
@@ -204,30 +208,30 @@ Until such loading exists, these cases can only be run by the automated tests.
 
 ## 12. Search and other data
 
-| ID      | Case                             | Steps                                                               | Expected result                                                                                           | Automated   |
-| ------- | -------------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------- |
-| BAR-130 | Reset diagram empties the search | Search "Meridian", step to a result. Press **Reset diagram**.       | The search box is empty, no count, no outline.                                                            | page        |
-| BAR-131 | Other data empties the search    | Search "Meridian". Choose **30 generated funds**.                   | The search box is empty.                                                                                  | page        |
-| BAR-132 | New diagram empties the search   | Search "Meridian". Press **New diagram**.                           | The search box is empty.                                                                                  | page        |
-| BAR-133 | Disabled on an empty diagram     | Press **New diagram**.                                              | The search box is disabled and reads "No nodes to search". **<** and **>** are disabled.                  | page        |
-| BAR-134 | Enabled with the first node      | After BAR-133 press **Add node**.                                   | The search box is enabled and reads "Search nodes".                                                       | page        |
-| BAR-135 | Disabled again without nodes     | After BAR-134 press **Undo**.                                       | Disabled again. Name and description stay enabled.                                                        | page        |
-| BAR-136 | A big diagram                    | Choose **2000 generated funds**. Type a word that many funds share. | The count appears at once while typing. Stepping to a result brings it to the middle of the view at once. | Manual only |
-| BAR-137 | Developer tools off              | Switch the developer tools off and repeat BAR-71 and BAR-90.        | The search works the same.                                                                                | page        |
+| ID      | Case                             | Steps                                                                     | Expected result                                                                                           | Automated   |
+| ------- | -------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------- |
+| BAR-130 | Reset diagram empties the search | Search "Meridian", step to a result. Press **Reset diagram**.             | The search box is empty, no count, no outline.                                                            | page        |
+| BAR-131 | Other data empties the search    | Search "Meridian". Open **30 generated funds LE 30**.                     | The search box is empty.                                                                                  | page        |
+| BAR-132 | New diagram empties the search   | Search "Meridian". Press **New diagram**.                                 | The search box is empty.                                                                                  | page        |
+| BAR-133 | Disabled on an empty diagram     | Press **New diagram**.                                                    | The search box is disabled and reads "No nodes to search". **<** and **>** are disabled.                  | page        |
+| BAR-134 | Enabled with the first node      | After BAR-133 press **Add node**.                                         | The search box is enabled and reads "Search nodes".                                                       | page        |
+| BAR-135 | Disabled again without nodes     | After BAR-134 press **Undo**.                                             | Disabled again. Name and description stay enabled.                                                        | page        |
+| BAR-136 | A big diagram                    | Open **2000 generated funds LE 2000**. Type a word that many funds share. | The count appears at once while typing. Stepping to a result brings it to the middle of the view at once. | Manual only |
+| BAR-137 | Developer tools off              | Switch the developer tools off and repeat BAR-71 and BAR-90.              | The search works the same.                                                                                | page        |
 
 ## 13. Undo and redo
 
 The cases for undo as a whole are in [undo.md](undo.md); these are the ones about this bar.
 
-| ID      | Case                         | Steps                                                | Expected result                                                                                                       | Automated    |
-| ------- | ---------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------ |
-| BAR-140 | Undo of a new name           | Rename the diagram. Press **Undo**.                  | The name box shows "Sample fund structure" again. The state line reads "Initial state: matches the startup snapshot". | page         |
-| BAR-141 | Redo of a new name           | After BAR-140 press **Redo**.                        | The new name is back in the box.                                                                                      | page         |
-| BAR-142 | Undo of a description        | Give a description. Undo.                            | The description box is empty.                                                                                         | page         |
-| BAR-143 | Undo of the first name       | **New diagram**. Name it. Undo.                      | The name box is empty and marked as required again.                                                                   | page         |
-| BAR-144 | Name and description in turn | Change name, description, name. Undo three times.    | Each Undo takes back one of them, the last first, and each box shows what it held before.                             | page         |
-| BAR-145 | Searching is not a step      | Search, step through the results, clear the box.     | Transactions in history is unchanged. Undo does not bring a search back or take one away.                             | page, search |
-| BAR-146 | Closing the tab              | Rename the diagram and try to close the browser tab. | The browser asks whether to leave, because the diagram has a change. After Undo it no longer asks.                    | page         |
+| ID      | Case                         | Steps                                                | Expected result                                                                                                             | Automated    |
+| ------- | ---------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| BAR-140 | Undo of a new name           | Rename the diagram. Press **Undo**.                  | The name box shows "Sample fund structure LE 24" again. The state line reads "Initial state: matches the startup snapshot". | page         |
+| BAR-141 | Redo of a new name           | After BAR-140 press **Redo**.                        | The new name is back in the box.                                                                                            | page         |
+| BAR-142 | Undo of a description        | Give a description. Undo.                            | The description box is empty.                                                                                               | page         |
+| BAR-143 | Undo of the first name       | **New diagram**. Name it. Undo.                      | The name box is empty and marked as required again.                                                                         | page         |
+| BAR-144 | Name and description in turn | Change name, description, name. Undo three times.    | Each Undo takes back one of them, the last first, and each box shows what it held before.                                   | page         |
+| BAR-145 | Searching is not a step      | Search, step through the results, clear the box.     | Transactions in history is unchanged. Undo does not bring a search back or take one away.                                   | page, search |
+| BAR-146 | Closing the tab              | Rename the diagram and try to close the browser tab. | The browser asks whether to leave, because the diagram has a change. After Undo it no longer asks.                          | page         |
 
 ## Known limits
 

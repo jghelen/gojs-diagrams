@@ -21,7 +21,8 @@ import {
   syncLinkCards,
   textColorFor,
 } from './diagram-factory';
-import { createLinks, createNodes, formatOwnership, LinkData, NodeData } from './node-data';
+import { createLinks, createNodes } from '../../testing/generated-funds';
+import { formatOwnership, LinkData, NodeData } from './node-data';
 import { DEFAULT_COLOR, DEFAULT_SHAPE, SHAPES } from './constants';
 
 const NODE_SIZE = { width: 173.5, height: 97.5 };

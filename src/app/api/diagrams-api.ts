@@ -79,9 +79,13 @@ export function nodesAndLinksOf(stored: StoredDiagram): { nodes: NodeData[]; lin
 export class DiagramsApi {
   private readonly http = inject(HttpClient);
 
-  /** One page of the list of all diagrams; `page` counts from 1. */
-  list(page: number): Promise<DiagramListPage> {
-    return firstValueFrom(this.http.get<DiagramListPage>('/api/diagrams', { params: { page } }));
+  /**
+   * One page of the list of diagrams; `page` counts from 1. With a `search`
+   * text, the list and its totals are of the diagrams that have it in their name.
+   */
+  list(page: number, search = ''): Promise<DiagramListPage> {
+    const params: Record<string, string | number> = search ? { page, search } : { page };
+    return firstValueFrom(this.http.get<DiagramListPage>('/api/diagrams', { params }));
   }
 
   /** One diagram with its settings, nodes and lines. Fails when there is none with this id. */

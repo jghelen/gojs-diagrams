@@ -19,7 +19,8 @@ import { OperationRunner } from '../app/diagram-page/operation-runner/operation-
 import { SelectionState } from '../app/diagram-page/selection-state/selection-state';
 import { LayoutType, createLayout } from '../app/diagram/layouts';
 import { LinkType } from '../app/diagram/link-types';
-import { LinkData, NodeData, createLinks, createNodes } from '../app/diagram/node-data';
+import { LinkData, NodeData } from '../app/diagram/node-data';
+import { createLinks, createNodes } from './generated-funds';
 
 export interface TestDiagram {
   diagram: go.Diagram;

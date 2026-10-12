@@ -1,37 +1,12 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { UrlSegment, provideRouter, withComponentInputBinding } from '@angular/router';
+import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { editorAddress, routes } from './app.routes';
+import { routes } from './app.routes';
 import { DiagramList } from './diagram-list/diagram-list';
 import { DiagramPage } from './diagram-page/diagram-page';
 import { NewBatch } from './new-batch/new-batch';
-
-const segments = (path: string): UrlSegment[] =>
-  path
-    .split('/')
-    .filter(Boolean)
-    .map((part) => new UrlSegment(part, {}));
-
-describe('editorAddress', () => {
-  it('takes the address of the app itself', () => {
-    expect(editorAddress(segments('/'))).toEqual({ consumed: [] });
-  });
-
-  it('takes the address of a stored diagram, and gives its id', () => {
-    const match = editorAddress(segments('/diagrams/17'))!;
-
-    expect(match.consumed.map((segment) => segment.path)).toEqual(['diagrams', '17']);
-    expect(match.posParams!['id'].path).toBe('17');
-  });
-
-  it('leaves every other address alone', () => {
-    for (const path of ['/diagrams', '/diagrams/17/edit', '/batches/new', '/funds/17']) {
-      expect(editorAddress(segments(path)), path).toBeNull();
-    }
-  });
-});
 
 describe('the addresses of the app', () => {
   let harness: RouterTestingHarness;
@@ -52,11 +27,19 @@ describe('the addresses of the app', () => {
     harness = await RouterTestingHarness.create();
   });
 
-  it('shows the editor at /, without the id of a stored diagram', async () => {
-    const page = await shown('/');
+  it('starts with the list of diagrams', async () => {
+    expect(await shown('/')).toBeInstanceOf(DiagramList);
+    expect(TestBed.inject(Router).url).toBe('/diagrams');
+    TestBed.inject(HttpTestingController).expectOne('/api/diagrams?page=1');
+  });
+
+  it('shows the editor with an empty canvas at /diagrams/new, without asking the backend', async () => {
+    const page = await shown('/diagrams/new');
+    harness.detectChanges();
 
     expect(page).toBeInstanceOf(DiagramPage);
-    expect((page as DiagramPage).id()).toBeUndefined();
+    expect((page as DiagramPage).id()).toBe('new');
+    TestBed.inject(HttpTestingController).verify();
   });
 
   it('shows the list of diagrams at /diagrams, with the page of the address', async () => {
@@ -75,10 +58,8 @@ describe('the addresses of the app', () => {
     expect(await shown('/batches/new?nodeId=3')).toBeInstanceOf(NewBatch);
   });
 
-  it('leads any other address to the editor', async () => {
-    const page = await shown('/nothing/here/at/all');
-
-    expect(page).toBeInstanceOf(DiagramPage);
-    expect((page as DiagramPage).id()).toBeUndefined();
+  it('leads any other address to the list of diagrams', async () => {
+    expect(await shown('/nothing/here/at/all')).toBeInstanceOf(DiagramList);
+    expect(TestBed.inject(Router).url).toBe('/diagrams');
   });
 });

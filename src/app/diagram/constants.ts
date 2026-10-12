@@ -87,29 +87,10 @@ export const DIMMED_OPACITY = 0.15;
 
 // ----- What a diagram starts with -----
 
-/** How many funds the generated diagrams of the Data dropdown have. */
-export const NODE_COUNTS: readonly number[] = [30, 100, 200, 500, 1000, 2000];
-/** The diagram the app opens with: its id in the Data dropdown. */
-export const DEFAULT_DATASET = '30';
-/** The id of the dataset with nothing in it, for building a diagram from scratch. */
-export const BLANK_DATASET = 'blank';
-/**
- * What the Data dropdown shows while the diagram is one of the database, opened
- * from the list of diagrams. Not a dataset of the app: its data comes from the backend.
- */
-export const STORED_DATASET = 'stored';
 /** The layout a diagram is first shown in. */
 export const DEFAULT_LAYOUT: LayoutType = 'top-bottom';
 /** The line type a diagram is first shown with: orthogonal, rounded, routed around nodes. */
 export const DEFAULT_LINK_TYPE: LinkType = 'avoid';
-
-/**
- * How many co-investments the generated diagrams have per fund, on top of the
- * one main investor each fund has. Half a co-investment per fund is about what
- * real fund structures show, and it keeps the lines few enough to be followed.
- * For a denser diagram to load-test with, raise this number.
- */
-export const CO_INVESTMENTS_PER_FUND = 0.5;
 
 /**
  * Free space left between two nodes by every layout: wide enough for several
@@ -211,7 +192,7 @@ export const FAILURE_NOTICE =
   'That action could not be completed and was undone. You can keep working on the diagram.';
 /** Shown above the diagram when data could not be opened completely. */
 export const LOAD_FAILURE_NOTICE =
-  'That diagram could not be opened. An empty one was opened instead; choose other data to go on.';
+  'That diagram could not be opened. An empty one was opened instead; choose another from the list of all diagrams.';
 /** Shown above an empty diagram when the diagram of the address is not in the database. */
 export const NO_SUCH_DIAGRAM_NOTICE =
   'There is no diagram at this address. It may have been deleted; choose another from the list of all diagrams.';

@@ -70,13 +70,17 @@ describe('DiagramPage with a diagram of the database', () => {
   const busy = () => service(OperationRunner).busy();
   const page = () => harness.routeNativeElement as HTMLElement;
   const notice = () => page().querySelector('.failure span')?.textContent ?? null;
-  const dataDropdown = () => page().querySelector<HTMLSelectElement>('select[aria-label=Data]')!;
+  const button = (label: string) =>
+    page().querySelector<HTMLButtonElement>(`header button[aria-label="${label}"]`)!;
 
   /** Lets GoJS finish what it would do before the next frame, and Angular redraw. */
   const settle = async (): Promise<void> => {
     for (let i = 0; i < 3; i++) diagram().maybeUpdate();
     await harness.fixture.whenStable();
     diagram().maybeUpdate();
+    // The buttons are enabled again only once the page has been drawn anew.
+    await harness.fixture.whenStable();
+    harness.detectChanges();
   };
   /** Goes to an address; a request that the page sends there is still open afterwards. */
   const goTo = async (url: string): Promise<void> => {
@@ -230,20 +234,69 @@ describe('DiagramPage with a diagram of the database', () => {
       expect(service(DiagramState).refusedName()).toBe('Meridian: holdings (2026)');
     });
 
-    it('says in the Data dropdown that the diagram is from the database', async () => {
+    it('has no dropdown to pick data from: a diagram is chosen in the list', async () => {
       await openStored();
 
-      const chosen = dataDropdown().selectedOptions[0];
-      expect(chosen.textContent!.trim()).toBe('From the database');
+      expect(page().querySelector('select[aria-label=Data]')).toBeNull();
+      const dropdowns = [...page().querySelectorAll('header select')];
+      expect(dropdowns.map((dropdown) => dropdown.getAttribute('aria-label'))).toEqual(['Actions']);
     });
+  });
 
-    it('does not offer "From the database" for the app\'s own data', async () => {
-      await goTo('/');
+  describe('a new diagram', () => {
+    it('is an empty canvas at /diagrams/new, for which the backend is not asked', async () => {
+      await goTo('/diagrams/new');
       await settle();
 
-      const options = [...dataDropdown().options].map((option) => option.textContent!.trim());
-      expect(options).not.toContain('From the database');
-      expect(model().nodeDataArray.length).toBe(30);
+      expect(model().nodeDataArray.length).toBe(0);
+      expect(busy()).toBe(false);
+      expect(notice()).toBeNull();
+      expect(service(DiagramState).name()).toBe('');
+      // afterEach checks that nothing was asked of the backend.
+    });
+
+    it('is started with "New diagram": the canvas empties at once, in the same editor', async () => {
+      await openStored();
+      const before = editor();
+
+      button('New diagram').click();
+      expect(model().nodeDataArray.length).toBe(0);
+      await vi.waitFor(() => expect(router.url).toBe('/diagrams/new'));
+      harness.detectChanges();
+      await settle();
+
+      expect(editor()).toBe(before);
+      expect(editor().id()).toBe('new');
+      expect(model().nodeDataArray.length).toBe(0);
+      expect(busy()).toBe(false);
+      expect(service(DiagramState).name()).toBe('');
+    });
+
+    it('is emptied again by "Reset diagram", without asking the backend', async () => {
+      await goTo('/diagrams/new');
+      await settle();
+      await service(DiagramActions).addNode();
+      await settle();
+      expect(model().nodeDataArray.length).toBe(1);
+
+      button('Reset diagram').click();
+      await settle();
+
+      expect(model().nodeDataArray.length).toBe(0);
+      expect(model().undoManager.canUndo()).toBe(false);
+    });
+
+    it('stays where it is on "New diagram", and is emptied', async () => {
+      await goTo('/diagrams/new');
+      await settle();
+      await service(DiagramActions).addNode();
+      await settle();
+
+      button('New diagram').click();
+      await settle();
+
+      expect(router.url).toBe('/diagrams/new');
+      expect(model().nodeDataArray.length).toBe(0);
     });
   });
 
@@ -307,25 +360,11 @@ describe('DiagramPage with a diagram of the database', () => {
       expect(model().undoManager.canUndo()).toBe(false);
     });
 
-    it('goes to the address of the app when its own data is picked, in the same editor', async () => {
-      await openStored();
-      const before = editor();
-
-      dataDropdown().value = 'fund-structure';
-      dataDropdown().dispatchEvent(new Event('change'));
-      await settle();
-
-      expect(router.url).toBe('/');
-      expect(editor()).toBe(before);
-      expect(model().nodeDataArray.length).toBe(24);
-      expect(service(DiagramState).name()).toBe('Sample fund structure');
-      expect(dataDropdown().selectedOptions[0].textContent!.trim()).toBe('Sample fund structure');
-    });
-
     it('reads the diagram again when the Back button returns to its address', async () => {
       await openStored();
-      dataDropdown().value = 'fund-structure';
-      dataDropdown().dispatchEvent(new Event('change'));
+      button('New diagram').click();
+      await vi.waitFor(() => expect(router.url).toBe('/diagrams/new'));
+      harness.detectChanges();
       await settle();
 
       await goTo('/diagrams/5');
@@ -333,33 +372,55 @@ describe('DiagramPage with a diagram of the database', () => {
       await settle();
 
       expect(model().nodeDataArray.length).toBe(3);
-      expect(dataDropdown().selectedOptions[0].textContent!.trim()).toBe('From the database');
+      expect(service(DiagramState).name()).toBe('Meridian holdings');
     });
 
-    it('shows the data the app opens with when Forward leaves the address of a stored diagram', async () => {
+    it('opens the other diagram when the address changes to it, in the same editor', async () => {
       await openStored();
       const before = editor();
 
-      await goTo('/');
+      await goTo('/diagrams/6');
+      // The canvas is empty and locked while the other diagram is on its way.
+      expect(model().nodeDataArray.length).toBe(0);
+      expect(busy()).toBe(true);
+      const other = storedDiagram({ name: 'Another diagram' });
+      other.nodes.pop();
+      other.links = other.links.filter((link) => link.from !== 3 && link.to !== 3);
+      request('6').flush(other);
       await settle();
 
       expect(editor()).toBe(before);
-      expect(model().nodeDataArray.length).toBe(30);
-      expect(dataDropdown().value).toBe('30');
+      expect(model().nodeDataArray.length).toBe(2);
+      expect(service(DiagramState).name()).toBe('Another diagram');
+      expect(model().undoManager.canUndo()).toBe(false);
     });
 
-    it('drops a diagram that arrives after other data was picked', async () => {
+    it('drops a diagram that arrives after a new diagram was started', async () => {
       await goTo('/diagrams/5');
       const late = request('5');
 
-      dataDropdown().disabled = false;
-      dataDropdown().value = 'fund-structure';
-      dataDropdown().dispatchEvent(new Event('change'));
+      // The button is disabled while the diagram is on its way; this is what it does.
+      (editor() as unknown as { startNew(): void }).startNew();
       late.flush(storedDiagram());
+      await vi.waitFor(() => expect(router.url).toBe('/diagrams/new'));
+      harness.detectChanges();
       await settle();
 
-      expect(model().nodeDataArray.length).toBe(24);
+      expect(model().nodeDataArray.length).toBe(0);
       expect(busy()).toBe(false);
+    });
+
+    it('drops a diagram that arrives after the address moved on to another', async () => {
+      await goTo('/diagrams/5');
+      const late = request('5');
+
+      await goTo('/diagrams/6');
+      late.flush(storedDiagram());
+      const other = storedDiagram({ name: 'Another diagram' });
+      request('6').flush(other);
+      await settle();
+
+      expect(service(DiagramState).name()).toBe('Another diagram');
     });
   });
 

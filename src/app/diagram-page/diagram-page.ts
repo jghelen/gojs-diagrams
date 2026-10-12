@@ -16,9 +16,8 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Router } from '@angular/router';
 import * as go from 'gojs/release/go';
 import { DiagramsApi, nodesAndLinksOf } from '../api/diagrams-api';
+import { NEW_DIAGRAM_ID, NEW_DIAGRAM_URL } from '../diagram-list/diagram-list';
 import {
-  BLANK_DATASET,
-  DEFAULT_DATASET,
   DEFAULT_LAYOUT,
   DEFAULT_LINK_TYPE,
   DIAGRAM_NOT_READ_NOTICE,
@@ -27,10 +26,8 @@ import {
   NO_SUCH_DIAGRAM_NOTICE,
   QUICK_LAYOUTS,
   SLOW_LAYOUTS_FROM,
-  STORED_DATASET,
   StyleFieldId,
 } from '../diagram/constants';
-import { findDataset } from '../diagram/datasets';
 import { checkedDiagramName } from '../diagram/diagram-name';
 import {
   NodeModel,
@@ -77,8 +74,9 @@ interface OpenedSettings {
 
 /**
  * The page. It creates the diagram, loads data into it, and keeps everything
- * around it up to date. The data is the one picked in the Data dropdown, or,
- * at the address /diagrams/<id>, that diagram of the database.
+ * around it up to date. The data comes from the database: the address
+ * /diagrams/<id> says which diagram. At /diagrams/new the page starts a new,
+ * empty one.
  *
  * What the user sees and does is in its parts:
  *
@@ -151,12 +149,10 @@ export class DiagramPage {
 
   /**
    * From the address /diagrams/<id>: the id of the diagram of the database to
-   * show. Not set at the address "/", where the Data dropdown says what is shown.
+   * show. "new", as in /diagrams/new, stands for a new diagram: an empty canvas.
    */
   readonly id = input<string>();
 
-  /** Id of the dataset the diagram was loaded with. */
-  protected readonly datasetId = signal(DEFAULT_DATASET);
   /** What to tell the user after an action failed; null when the last action went well. */
   protected readonly failure = this.runner.failure;
   /** True while the side panel lies over the right edge of the canvas; the overview then makes room. */
@@ -194,7 +190,6 @@ export class DiagramPage {
   constructor() {
     afterNextRender(() => {
       this.addressId = this.id();
-      if (this.addressId !== undefined) this.datasetId.set(STORED_DATASET);
       this.init();
     });
     // The address can change while the page stays: see followAddress.
@@ -224,7 +219,8 @@ export class DiagramPage {
 
   // ----- Starting up -----
 
-  private init(): void {
+  /** Sets up the diagram and opens what the address says, or nothing when `empty` is set. */
+  private init(empty = false): void {
     this.diagram = createDiagram(this.host().nativeElement, {
       // A second click on the same info icon puts its card away again.
       onLinkInfo: (link) => this.linkCard.show(link),
@@ -265,7 +261,8 @@ export class DiagramPage {
 
     this.listenToDiagram();
     this.watchForErrors();
-    this.open(this.datasetId());
+    if (empty) this.loadEmpty();
+    else this.open();
     this.refresh();
   }
 
@@ -351,53 +348,68 @@ export class DiagramPage {
     this.overview.div = null;
     this.diagram.div = null;
 
-    this.datasetId.set(BLANK_DATASET);
+    // Nothing that is still on its way from the backend is to arrive in the new one.
+    this.openings++;
+    this.waitingForStored = false;
     this.state.layoutType.set(DEFAULT_LAYOUT);
     this.state.linkType.set(DEFAULT_LINK_TYPE);
     this.runner.clearLog();
-    this.init();
+    this.init(true);
     this.failure.set(LOAD_FAILURE_NOTICE);
   }
 
   // ----- Loading data -----
 
-  /** Loads the dataset with this id from scratch, discarding the undo history. */
-  protected reset(datasetId: string): void {
-    this.datasetId.set(datasetId);
-    this.open(datasetId);
+  /**
+   * "Reset diagram": opens the diagram of the address again, as it is in the
+   * database. All changes and the undo history are discarded.
+   */
+  protected reset(): void {
+    this.open();
     this.runner.clearLog();
     this.refresh();
-    // The app's own data has no address: that of a stored diagram no longer fits.
-    if (datasetId !== STORED_DATASET && this.id() !== undefined)
-      void this.router.navigateByUrl('/');
-  }
-
-  /** Opens the dataset with this id, or the diagram of the address for STORED_DATASET. */
-  private open(datasetId: string): void {
-    // Whatever was on its way from the backend is no longer wanted.
-    this.openings++;
-    this.waitingForStored = false;
-    if (datasetId === STORED_DATASET) {
-      void this.openStored();
-      return;
-    }
-    const dataset = findDataset(datasetId);
-    // A loaded diagram starts out named after its data; a new one has to be given a name.
-    this.loadModel(dataset.create(), { name: datasetId === BLANK_DATASET ? '' : dataset.label });
   }
 
   /**
-   * Opens the diagram of the address from the database: with its own layout
-   * type, line type and settings, and its nodes where they were stored.
+   * "New diagram": an empty canvas to build a diagram on, at the address of a
+   * new diagram. The canvas is emptied at once; the address follows.
+   */
+  protected startNew(): void {
+    // The page has acted on the new address already when it arrives: see followAddress.
+    this.addressId = NEW_DIAGRAM_ID;
+    this.openings++;
+    this.waitingForStored = false;
+    this.loadEmpty();
+    this.runner.clearLog();
+    this.refresh();
+    if (this.id() !== NEW_DIAGRAM_ID) void this.router.navigateByUrl(NEW_DIAGRAM_URL);
+  }
+
+  /** Opens what the address says: the diagram with its id, or an empty canvas for a new one. */
+  private open(): void {
+    // Whatever was on its way from the backend is no longer wanted.
+    this.openings++;
+    this.waitingForStored = false;
+    const id = this.addressId;
+    if (id === undefined || id === NEW_DIAGRAM_ID) this.loadEmpty();
+    else void this.openStored(id);
+  }
+
+  /** An empty canvas. A diagram that starts on it has to be given a name. */
+  private loadEmpty(): void {
+    this.loadModel({ nodes: [], links: [] }, { name: '' });
+  }
+
+  /**
+   * Opens a diagram of the database: with its own layout type, line type and
+   * settings, and its nodes where they were stored.
    *
    * The canvas is empty and everything is disabled until the diagram is here.
    * If it does not come, the canvas stays empty and the page says why.
    */
-  private async openStored(): Promise<void> {
-    const id = this.id();
+  private async openStored(id: string): Promise<void> {
     const opening = this.openings;
-    this.loadModel({ nodes: [], links: [] }, { name: '' });
-    if (id === undefined) return;
+    this.loadEmpty();
     this.waitingForStored = true;
     try {
       const stored = await this.api.read(id);
@@ -419,17 +431,16 @@ export class DiagramPage {
   }
 
   /**
-   * The address changed while the page stayed, which the browser's Back and
-   * Forward buttons do between "/" and "/diagrams/<id>": show what the new
-   * address says. A change of address that the page made itself, after sample
-   * data was picked, finds the diagram already as it should be.
+   * The address changed while the page stayed, as it does from one diagram to
+   * another, with the browser's Back and Forward buttons for instance: show
+   * what the new address says. A change of address that the page made itself,
+   * for a new diagram, finds the canvas already empty.
    */
   private followAddress(id: string | undefined): void {
     // Not started yet: starting up opens what the address says.
     if (!this.diagram || id === this.addressId) return;
     this.addressId = id;
-    if (id !== undefined) this.reset(STORED_DATASET);
-    else if (this.datasetId() === STORED_DATASET) this.reset(DEFAULT_DATASET);
+    this.reset();
   }
 
   /**

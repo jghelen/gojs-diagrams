@@ -4,7 +4,7 @@
 # tables, and the legal entity types the app starts with.
 #
 #   backend/db/setup.sh                 an empty database
-#   backend/db/setup.sh --with-sample   the same, plus 45 diagrams to look at
+#   backend/db/setup.sh --with-sample   the same, plus the editor's test diagrams
 #
 # Where the PostgreSQL server is, and who you are, comes from the usual
 # variables; these are the values used when they are not set:
@@ -26,11 +26,12 @@ if [ -z "${PGPASSWORD:-}" ]; then
   export PGPASSWORD
 fi
 
-createdb "$database"
+# UTF-8, whatever the server's own default is: names may have letters of any
+# alphabet, and the search by title tells their capitals from their small letters.
+createdb --encoding=UTF8 --template=template0 "$database"
 psql --quiet --set ON_ERROR_STOP=1 --dbname "$database" --file 001_schema.sql --file 002_seed.sql
 if [ "${1:-}" = "--with-sample" ]; then
-  psql --quiet --set ON_ERROR_STOP=1 --dbname "$database" \
-    --file 003_sample_diagram.sql --file 004_more_diagrams.sql
+  psql --quiet --set ON_ERROR_STOP=1 --dbname "$database" --file 003_sample_diagrams.sql
 fi
 
 echo "Database \"$database\" is ready on $PGHOST:$PGPORT."

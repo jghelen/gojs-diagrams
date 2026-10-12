@@ -43,6 +43,23 @@ th {
   white-space: nowrap;
 }
 
+/* The row below the headings, with the box that searches the titles. */
+.filters td {
+  padding: 6px 12px;
+  background: var(--surface);
+}
+
+.filters input {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 360px;
+}
+
+/* The rows of the list before, while the next list is on its way. */
+table[aria-busy='true'] tbody {
+  opacity: 0.6;
+}
+
 /* The dates take the room they need; the title takes the rest. */
 td:first-child {
   width: 100%;
@@ -98,12 +115,16 @@ a.step:hover {
   opacity: 0.5;
 }
 
-.notice {
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  font-size: 14px;
+/* A message in place of the rows. */
+td.notice {
+  padding: 16px 12px;
+  white-space: normal;
+  color: var(--muted);
+}
+
+td.notice a {
+  font-weight: normal;
+  text-decoration: underline;
 }
 
 .notice p {

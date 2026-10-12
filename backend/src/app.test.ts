@@ -128,7 +128,7 @@ describe('GET /api/diagrams', () => {
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type') ?? '', /^application\/json/);
     assert.deepEqual(await response.json(), await listDiagrams(1));
-    assert.deepEqual(listDiagrams.mock.calls[0].arguments, [1]);
+    assert.deepEqual(listDiagrams.mock.calls[0].arguments, [1, '']);
   });
 
   it('answers with the page that was asked for', async () => {
@@ -138,7 +138,46 @@ describe('GET /api/diagrams', () => {
     const body = (await response.json()) as DiagramListPage;
     assert.equal(body.page, 3);
     assert.equal(body.items[0].name, 'Diagram 3');
-    assert.deepEqual(listDiagrams.mock.calls[0].arguments, [3]);
+    assert.deepEqual(listDiagrams.mock.calls[0].arguments, [3, '']);
+  });
+
+  it('hands the search text on, without the spaces around it', async () => {
+    const search = encodeURIComponent('  Fund 50% ');
+
+    const response = await fetch(`${address}/api/diagrams?search=${search}`);
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(listDiagrams.mock.calls[0].arguments, [1, 'Fund 50%']);
+  });
+
+  it('takes a search and a page together', async () => {
+    await fetch(`${address}/api/diagrams?search=meridian&page=2`);
+
+    assert.deepEqual(listDiagrams.mock.calls[0].arguments, [2, 'meridian']);
+  });
+
+  it('treats a search of spaces only as no search', async () => {
+    await fetch(`${address}/api/diagrams?search=%20%20`);
+
+    assert.deepEqual(listDiagrams.mock.calls[0].arguments, [1, '']);
+  });
+
+  it('answers 400 to a search that is too long or given twice, without asking the database', async () => {
+    for (const query of [`search=${'a'.repeat(201)}`, 'search=a&search=b']) {
+      const response = await fetch(`${address}/api/diagrams?${query}`);
+
+      assert.equal(response.status, 400, query);
+      assert.deepEqual(await response.json(), {
+        error: 'The search is one text of at most 200 characters.',
+      });
+    }
+    assert.equal(listDiagrams.mock.callCount(), 0);
+  });
+
+  it('takes a search of exactly 200 characters', async () => {
+    const response = await fetch(`${address}/api/diagrams?search=${'a'.repeat(200)}`);
+
+    assert.equal(response.status, 200);
   });
 
   for (const page of ['abc', '0', '-1', '1.5', '02', '', '1&page=2', '9999999999']) {

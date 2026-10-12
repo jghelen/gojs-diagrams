@@ -22,7 +22,8 @@ describe('listDiagrams, from a database', () => {
   }
 
   before(async () => {
-    await inServer(`create database ${database}`);
+    // As backend/db/setup.sh creates it.
+    await inServer(`create database ${database} encoding 'UTF8' template template0`);
     pool = createPool({ ...process.env, PGDATABASE: database });
     await pool.query(await readFile(new URL('../db/001_schema.sql', import.meta.url), 'utf8'));
   });
@@ -111,8 +112,71 @@ describe('listDiagrams, from a database', () => {
     assert.equal(new Set(ids).size, 45);
   });
 
+  describe('with a search text', () => {
+    before(async () => {
+      await pool.query(`
+        insert into diagram (name) values
+          ('Meridian holdings'), ('MERIDIAN Credit'), ('Atlas 100% owned'), ('Atlas 100 owned'),
+          ('Harbor_Feeder'), ('Harbor Feeder'), ('Šuma Holdings')`);
+    });
+
+    const found = async (search: string, page = 1) => {
+      const list = await listDiagrams(pool, page, search);
+      return { names: list.items.map((item) => item.name).sort(), total: list.total };
+    };
+
+    it('gives the diagrams that have the text anywhere in their name', async () => {
+      assert.deepEqual(await found('eridian'), {
+        names: ['MERIDIAN Credit', 'Meridian holdings'],
+        total: 2,
+      });
+    });
+
+    it('does not mind capitals, in the text or in the name', async () => {
+      assert.deepEqual((await found('HOLDINGS')).names, ['Meridian holdings', 'Šuma Holdings']);
+      assert.deepEqual((await found('šuma')).names, ['Šuma Holdings']);
+    });
+
+    it('takes "%" and "_" as the characters they are, not as "anything"', async () => {
+      assert.deepEqual((await found('100%')).names, ['Atlas 100% owned']);
+      assert.deepEqual((await found('r_F')).names, ['Harbor_Feeder']);
+      assert.deepEqual((await found('%')).names, ['Atlas 100% owned']);
+    });
+
+    it('gives nothing, and a total of none, when no name has the text', async () => {
+      assert.deepEqual(await listDiagrams(pool, 1, 'no such diagram'), {
+        items: [],
+        page: 1,
+        pageSize: 20,
+        total: 0,
+        totalPages: 0,
+      });
+    });
+
+    it('counts and cuts into pages what was found, not the whole list', async () => {
+      // "Diagram 1" to "Diagram 45".
+      const first = await listDiagrams(pool, 1, 'diagram ');
+      const third = await listDiagrams(pool, 3, 'diagram ');
+
+      assert.equal(first.items.length, 20);
+      assert.equal(third.items.length, 5);
+      assert.deepEqual([first.total, first.totalPages], [45, 3]);
+      assert.ok([...first.items, ...third.items].every((item) => item.name.startsWith('Diagram ')));
+    });
+
+    it('gives every diagram for an empty text', async () => {
+      assert.equal((await listDiagrams(pool, 1, '')).total, 52);
+      assert.equal((await listDiagrams(pool, 1)).total, 52);
+    });
+
+    it('is not led astray by text that looks like SQL', async () => {
+      assert.deepEqual(await found(`' or 1=1 --`), { names: [], total: 0 });
+      assert.equal((await listDiagrams(pool, 1)).total, 52);
+    });
+  });
+
   it('gives no items for a page after the last, and still the totals', async () => {
-    assert.deepEqual(await listDiagrams(pool, 4), {
+    assert.deepEqual(await listDiagrams(pool, 4, 'diagram '), {
       items: [],
       page: 4,
       pageSize: 20,

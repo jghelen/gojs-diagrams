@@ -21,10 +21,14 @@ Everything that has to hold for the **Styles** button in the top bar and the dia
 
 ## How to read this file
 
+**"Open" a diagram** means: click **All diagrams** in the top bar and click the title of the
+diagram in the list. The diagrams named here are the sample diagrams of the database
+(`backend/db/setup.sh --with-sample`); the backend has to be running.
+
 **Starting point of every case**, unless the case says otherwise:
 
-1. Open the app and press **Reset diagram** (the reload icon in the top bar) with **30 generated
-   funds** chosen. Every node is then a light gray rectangle that shows its name only.
+1. Open the app, which starts with the list of diagrams, and click **30 generated funds LE 30**
+   there. Every node is then a light gray rectangle that shows its name only.
 2. Switch the **developer tools** on (the `</>` icon at the right end of the top bar). Some cases
    read the **benchmark statistics** below the canvas and the **History** panel on the right.
 
@@ -45,15 +49,15 @@ means no automated test covers it. Files are under `src/app/`:
 
 ## 1. The Styles button
 
-| ID       | Case                             | Steps                                                                   | Expected result                                                                      | Automated   |
-| -------- | -------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ----------- |
-| STYLE-01 | Where it is                      | Look at the right end of the top bar.                                   | **Styles**, with a palette icon, is the first of the controls there, before Actions. | page        |
-| STYLE-02 | Hover text                       | Hold the mouse over the button.                                         | "Set color and shape per legal entity field".                                        | page        |
-| STYLE-03 | Disabled on an empty diagram     | Press **New diagram**.                                                  | The button is disabled. Its hover text reads "Styles: add a node first".             | page        |
-| STYLE-04 | Enabled with the first node      | After STYLE-03 press **Add node**.                                      | The button is enabled.                                                               | page        |
-| STYLE-05 | Disabled again without nodes     | After STYLE-04 press **Undo**. Then **Add node** again and delete it.   | Disabled after the Undo, and disabled again after the node is deleted.               | page        |
-| STYLE-06 | Disabled while a diagram loads   | Choose **200 generated funds** and watch the button while nodes appear. | Disabled until all nodes are shown, then enabled.                                    | page        |
-| STYLE-07 | Disabled while an operation runs | Enter 30 and press **× randomize all**; watch the button.               | Disabled while the bulk edit runs, enabled afterwards.                               | Manual only |
+| ID       | Case                             | Steps                                                                        | Expected result                                                                      | Automated   |
+| -------- | -------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ----------- |
+| STYLE-01 | Where it is                      | Look at the right end of the top bar.                                        | **Styles**, with a palette icon, is the first of the controls there, before Actions. | page        |
+| STYLE-02 | Hover text                       | Hold the mouse over the button.                                              | "Set color and shape per legal entity field".                                        | page        |
+| STYLE-03 | Disabled on an empty diagram     | Press **New diagram**.                                                       | The button is disabled. Its hover text reads "Styles: add a node first".             | page        |
+| STYLE-04 | Enabled with the first node      | After STYLE-03 press **Add node**.                                           | The button is enabled.                                                               | page        |
+| STYLE-05 | Disabled again without nodes     | After STYLE-04 press **Undo**. Then **Add node** again and delete it.        | Disabled after the Undo, and disabled again after the node is deleted.               | page        |
+| STYLE-06 | Disabled while a diagram loads   | Open **200 generated funds LE 200** and watch the button while nodes appear. | Disabled until all nodes are shown, then enabled.                                    | page        |
+| STYLE-07 | Disabled while an operation runs | Enter 30 and press **× randomize all**; watch the button.                    | Disabled while the bulk edit runs, enabled afterwards.                               | Manual only |
 
 ## 2. Opening and closing the dialog
 
@@ -91,7 +95,7 @@ means no automated test covers it. Files are under `src/app/`:
 | STYLE-34 | Picture after a style            | Apply a yellow diamond to "Feeder fund". Open Styles again.                                            | The row of "Feeder fund" shows a yellow diamond; the other rows still show gray rectangles.                                          | styles       |
 | STYLE-35 | Mixed looks                      | Close the dialog. Click one node of a type with several nodes and give it another colour. Open Styles. | The picture of that type has a dashed outline, which says that its nodes do not all look the same.                                   | styles       |
 | STYLE-36 | The list stays inside the dialog | Choose the field in a diagram with many types, or make the window low.                                 | The list scrolls inside the dialog when it does not fit; the dialog does not grow beyond the window, and its buttons stay reachable. | Manual only  |
-| STYLE-37 | Other data, other list           | Choose **Sample fund structure** and open Styles, choose the field.                                    | The list holds the types of that diagram with their own counts, 24 in sum.                                                           | page         |
+| STYLE-37 | Other data, other list           | Open **Sample fund structure LE 24** and open Styles, choose the field.                                | The list holds the types of that diagram with their own counts, 24 in sum.                                                           | page         |
 
 ## 5. Ticking values
 
@@ -208,7 +212,7 @@ The cases for undo as a whole are in [undo.md](undo.md); these are the ones abou
 
 | ID        | Case                           | Steps                                                                                                                                               | Expected result                                                                                                             | Automated   |
 | --------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| STYLE-120 | Other data starts unstyled     | Style nodes and show the field. Choose **100 generated funds**.                                                                                     | Every node is a gray rectangle with its name only. Styles opens on "Select a field".                                        | page        |
+| STYLE-120 | Other data starts unstyled     | Style nodes and show the field. Open **100 generated funds LE 100**.                                                                                | Every node is a gray rectangle with its name only. Styles opens on "Select a field".                                        | page        |
 | STYLE-121 | Reset diagram starts unstyled  | Style nodes and show the field. Press **Reset diagram**.                                                                                            | Same as STYLE-120 for the same data.                                                                                        | page        |
 | STYLE-122 | A style is not a rule          | Give "Private equity" a colour. Press **Add node** (new nodes are Private equity).                                                                  | The new node is a light gray rectangle: a style is given to the nodes that exist when Apply is pressed.                     | Manual only |
 | STYLE-123 | A new node shows the field     | With the field shown, press **Add node**.                                                                                                           | The new node shows its legal entity type under its name like the others.                                                    | factory     |
@@ -217,7 +221,7 @@ The cases for undo as a whole are in [undo.md](undo.md); these are the ones abou
 | STYLE-126 | Deleted nodes                  | Delete two nodes of one type. Open Styles, choose the field.                                                                                        | The count of that type is two less.                                                                                         | styles      |
 | STYLE-127 | The Shape tool and Styles      | Give a type the Diamond shape with Styles. Click two of its nodes (with two selected, no tree is highlighted); look at **Shape** in the tool strip. | The Shape tool shows the diamond. Changing the shape there changes the two selected nodes only, not the rest of their type. | page        |
 | STYLE-128 | Styles in the exported picture | Style nodes, show the field. **Actions** → Export PNG.                                                                                              | The picture shows the colours, the shapes and the legal entity types as on screen.                                          | Manual only |
-| STYLE-129 | Styles on a big diagram        | Choose **2000 generated funds**. Open Styles, choose the field, Select all, pick a colour and a shape, **Apply**.                                   | All 2000 nodes take the style. The dialog closes at once; the page responds again within a few seconds.                     | Manual only |
+| STYLE-129 | Styles on a big diagram        | Open **2000 generated funds LE 2000**. Open Styles, choose the field, Select all, pick a colour and a shape, **Apply**.                             | All 2000 nodes take the style. The dialog closes at once; the page responds again within a few seconds.                     | Manual only |
 | STYLE-130 | Closing the tab                | Apply a style and try to close the browser tab.                                                                                                     | The browser asks whether to leave, because the diagram has a change.                                                        | page        |
 
 ## Known limits

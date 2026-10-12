@@ -1,6 +1,6 @@
 <app-page-header
-  [datasetId]="datasetId()"
-  (loadDataset)="reset($event)"
+  (resetDiagram)="reset()"
+  (newDiagram)="startNew()"
   (openStyles)="openStyles()"
   (exportPng)="exportPng()"
   (printDiagram)="print()"

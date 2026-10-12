@@ -268,9 +268,7 @@ asks for the password once (if you do not know it, see
 backend/db/setup.sh
 ```
 
-With something to look at: the app's "Sample fund structure" of 24 funds as one diagram, four
-user-defined fields with a few values, and 44 more diagrams that each show some of the same funds
-(45 diagrams make three pages of the list):
+With something to look at, namely the diagrams the editor is tested with:
 
 ```bash
 backend/db/setup.sh --with-sample
@@ -290,13 +288,41 @@ To start over, drop the database and run the script again:
 dropdb --host localhost --port 5433 --username postgres fund_diagrams
 ```
 
-| File                                                                   | What it does                                                                                                   |
-| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| [backend/db/001_schema.sql](backend/db/001_schema.sql)                 | The eight tables, their rules and their indexes                                                                |
-| [backend/db/002_seed.sql](backend/db/002_seed.sql)                     | The eight legal entity types                                                                                   |
-| [backend/db/003_sample_diagram.sql](backend/db/003_sample_diagram.sql) | Optional: one diagram and four fields, for a database still empty                                              |
-| [backend/db/004_more_diagrams.sql](backend/db/004_more_diagrams.sql)   | Optional, after the sample: 44 more diagrams of the same funds, to try the list of diagrams and its pages with |
-| [backend/db/setup.sh](backend/db/setup.sh)                             | Creates the database and runs the files above                                                                  |
+| File                                                                     | What it does                                                                                |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| [backend/db/001_schema.sql](backend/db/001_schema.sql)                   | The eight tables, their rules and their indexes                                             |
+| [backend/db/002_seed.sql](backend/db/002_seed.sql)                       | The eight legal entity types                                                                |
+| [backend/db/003_sample_diagrams.sql](backend/db/003_sample_diagrams.sql) | Optional: the eight diagrams below and four user-defined fields, for a database still empty |
+| [backend/db/setup.sh](backend/db/setup.sh)                               | Creates the database and runs the files above                                               |
+
+### The sample diagrams
+
+| Diagram                      | Funds | Relationships |
+| ---------------------------- | ----- | ------------- |
+| Sample fund structure LE 24  | 24    | 26            |
+| 30 generated funds LE 30     | 30    | 44            |
+| 100 generated funds LE 100   | 100   | 149           |
+| 200 generated funds LE 200   | 200   | 299           |
+| 500 generated funds LE 500   | 500   | 749           |
+| 1000 generated funds LE 1000 | 1000  | 1499          |
+| 2000 generated funds LE 2000 | 2000  | 2999          |
+| Empty diagram LE 0           | 0     | 0             |
+
+- **LE** in a name is the number of legal entities of the diagram. It is written "LE 30", without
+  a colon: the name of a diagram is letters, digits and spaces only, and the editor would take a
+  colon out again and say that the name was not valid.
+- Every diagram has funds of its own, 3854 legal entities in all. So in this sample no fund is in
+  two diagrams, although the tables allow it.
+- The funds of "Sample fund structure" have positions, the ones the editor's layout gives them.
+  The generated funds have none, so the editor arranges those diagrams when it opens them.
+- The four user-defined fields (Jurisdiction, Inception date, Assets under management in EUR m,
+  Regulated) have values on a few of the sample funds.
+- The file is generated from the data the editor's tests work on (`src/testing/datasets.ts`).
+  The editor itself has no data: what it shows comes from here.
+
+The database is created with the encoding UTF-8, whatever the server's default is: names may have
+letters of any alphabet, and the search by title relies on it to match capitals and small letters
+in all of them.
 
 ## Connecting from DataGrip
 
@@ -454,8 +480,11 @@ order by d.name;
 The files were run on PostgreSQL 14.1, in a throwaway server that was removed afterwards.
 
 - All files run without error, also through the setup script, with and without the sample.
-- The app's sample fund structure (24 funds, 26 relationships) was put in as one diagram and read
-  back with the queries above: names, types, shapes, colours, comments, positions, lines, kinds and
+- The eight sample diagrams were put in and read back through the backend: each has as many funds
+  as its name says, its own funds, and its relationships; the largest, of 2000 funds and 2999
+  relationships, reads in one go.
+- The app's sample fund structure (24 funds, 26 relationships) was read back with the queries
+  above: names, types, shapes, colours, comments, positions, lines, kinds and
   percentages were identical to what the app holds.
 - The same entity was placed in a second diagram with another shape, colour and position; both
   diagrams read back correctly, and an entity in no diagram stayed in `legal_entity`.
@@ -479,7 +508,7 @@ The files were run on PostgreSQL 14.1, in a throwaway server that was removed af
   relationships.
 - The position `840.4155888772582, 240.75846260198898` came back exactly as stored.
 - User-defined fields: an entity with four fields of the four types, an entity with an empty
-  optional field, and twenty entities with no field at all read back correctly. Refused: a number
+  optional field, and entities with no field at all read back correctly. Refused: a number
   in a text field; text in a date field; a required field left empty, and emptying one; two values
   at once; the same field twice on one entity; a text of spaces only; two fields of the same name
   in other capitals; a field without a name; an unknown type; changing the type of a field that has

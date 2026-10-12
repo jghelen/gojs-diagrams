@@ -1,14 +1,18 @@
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Type } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter } from '@angular/router';
+import { routes } from '../app.routes';
 import * as go from 'gojs/release/go';
 import { DEFAULT_COLOR, DEFAULT_SHAPE, DEVELOPER_TOOLS_KEY } from '../diagram/constants';
-import { DATASETS, Dataset } from '../diagram/datasets';
 import { NodeModel } from '../diagram/diagram-factory';
-import { createLinks, createNodes, LinkData, NodeData } from '../diagram/node-data';
+import { LinkData, NodeData } from '../diagram/node-data';
+import { BLANK_DATASET, DEFAULT_DATASET } from '../../testing/datasets';
+import { createLinks, createNodes } from '../../testing/generated-funds';
+import { addressIdOf, answerDataset, storedDataset } from '../../testing/stored-diagrams';
+import { StoredDiagram } from '../api/diagrams-api';
 import { BenchmarkStatistics } from './components/benchmark-statistics/benchmark-statistics';
 import { DiagramInfoBar } from './components/diagram-info-bar/diagram-info-bar';
 import { NodeDialogs } from './components/node-dialogs/node-dialogs';
@@ -25,10 +29,43 @@ import { DiagramPage } from './diagram-page';
 import { SelectionState } from './selection-state/selection-state';
 
 /**
- * The page asks for the backend and for the router, for the diagrams of the
- * database. These tests use neither: no request is answered, no address followed.
+ * The page shows the diagrams of the database, which it asks the backend for.
+ * Here the test datasets stand in for the database: see `startPage` and the
+ * `reset` of the bench.
  */
-const BACKEND_AND_ROUTER = [provideRouter([]), provideHttpClient(), provideHttpClientTesting()];
+const BACKEND_AND_ROUTER = [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()];
+
+/** The page at the address of this dataset, with the dataset already arrived from the backend. */
+async function startPage(datasetId = DEFAULT_DATASET): Promise<ComponentFixture<DiagramPage>> {
+  const fixture = TestBed.createComponent(DiagramPage);
+  fixture.componentRef.setInput('id', addressIdOf(datasetId));
+  fixture.detectChanges();
+  if (datasetId !== BLANK_DATASET) answerDataset(TestBed.inject(HttpTestingController), datasetId);
+  await fixture.whenStable();
+  return fixture;
+}
+
+/**
+ * Opens another dataset in the page, the way going to its address does, or
+ * reads the one that is shown again, the way "Reset diagram" does. The backend
+ * answers at once; the diagram is there after the next `settle`.
+ */
+function openDataset(
+  fixture: ComponentFixture<DiagramPage>,
+  datasetId: string,
+  stored?: StoredDiagram,
+): void {
+  const id = addressIdOf(datasetId);
+  if (fixture.componentInstance.id() === id) {
+    (fixture.componentInstance as unknown as { reset(): void }).reset();
+  } else {
+    fixture.componentRef.setInput('id', id);
+    fixture.detectChanges();
+  }
+  if (datasetId !== BLANK_DATASET) {
+    answerDataset(TestBed.inject(HttpTestingController), datasetId, stored);
+  }
+}
 
 /**
  * What these tests drive: members of the page, of its parts and of its services,
@@ -37,7 +74,6 @@ const BACKEND_AND_ROUTER = [provideRouter([]), provideHttpClient(), provideHttpC
 interface Bench {
   diagram: go.Diagram;
   busy(): boolean;
-  datasetId(): string;
   layoutType(): string;
   linkType(): string;
   stats(): { nodes: number; links: number; historyLength: number; historyIndex: number } | null;
@@ -62,7 +98,8 @@ interface Bench {
   zoomIn(): void;
   zoomOut(): void;
   zoomToFit(): void;
-  reset(datasetId: string): void;
+  /** Opens this test dataset, or reads it again when it is the one shown: see `openDataset`. */
+  reset(datasetId: string, stored?: StoredDiagram): void;
   removeSelectedLinks(): Promise<void>;
   removeLinksOfSelectedNodes(): Promise<void>;
   deleteSelection(): Promise<void> | void;
@@ -117,6 +154,9 @@ const SERVICES: Type<unknown>[] = [DiagramActions, DiagramState, OperationRunner
 function benchOf(fixture: ComponentFixture<DiagramPage>): Bench {
   const root = fixture.debugElement;
   const owners: object[] = [
+    {
+      reset: (datasetId: string, stored?: StoredDiagram) => openDataset(fixture, datasetId, stored),
+    },
     fixture.componentInstance,
     ...PARTS.map((part) => root.query(By.directive(part)).componentInstance as object),
     ...SERVICES.map((service) => root.injector.get(service) as object),
@@ -150,6 +190,8 @@ describe('DiagramPage', () => {
     )!;
   /** Lets GoJS finish what it would do before the next frame, and Angular redraw. */
   const settle = async () => {
+    // A diagram that the backend has just handed out is in the page after this.
+    await fixture.whenStable();
     for (let i = 0; i < 3; i++) diagram.maybeUpdate();
     await fixture.whenStable();
     // The percentages were placed in the meantime; in a browser the next frame draws them.
@@ -168,9 +210,7 @@ describe('DiagramPage', () => {
     // tools shown, as if that had been chosen on an earlier visit.
     localStorage.setItem(DEVELOPER_TOOLS_KEY, 'true');
     TestBed.configureTestingModule({ imports: [DiagramPage], providers: BACKEND_AND_ROUTER });
-    fixture = TestBed.createComponent(DiagramPage);
-    fixture.detectChanges();
-    await fixture.whenStable();
+    fixture = await startPage();
     bench = benchOf(fixture);
     diagram = bench.diagram;
     page = fixture.nativeElement as HTMLElement;
@@ -184,7 +224,6 @@ describe('DiagramPage', () => {
   describe('loading', () => {
     it('opens with the 30-node diagram, laid out top to bottom with lines that avoid nodes', () => {
       expect(bench.busy()).toBe(false);
-      expect(bench.datasetId()).toBe('30');
       expect(bench.stats()).toMatchObject({ nodes: 30, historyLength: 0, historyIndex: -1 });
       expect(bench.layoutType()).toBe('top-bottom');
       expect(bench.linkType()).toBe('avoid');
@@ -198,14 +237,36 @@ describe('DiagramPage', () => {
       }
     });
 
-    it('loads another dataset from scratch on reset, keeping layout and line type', async () => {
+    it('opens another diagram from scratch, in the layout it was stored with', async () => {
       await bench.changeLayout('grid');
       bench.reset('fund-structure');
       await settle();
       expect(bench.stats()).toMatchObject({ nodes: 24, historyLength: 0 });
-      expect(bench.layoutType()).toBe('grid');
+      // Not the grid that the diagram before it was put in.
+      expect(bench.layoutType()).toBe('top-bottom');
       expect(bench.log()).toEqual([]);
       expect(bench.stateCheck().ok).toBe(true);
+    });
+
+    it('shows a diagram in the layout and with the lines it was stored with', async () => {
+      bench.reset('100', storedDataset('100', { layoutType: 'grid', linkType: 'curved' }));
+      await settle();
+      expect(bench.stats()).toMatchObject({ nodes: 100, historyLength: 0 });
+      expect(bench.layoutType()).toBe('grid');
+      expect(bench.linkType()).toBe('curved');
+      expect(model().modelData).toMatchObject({ layoutType: 'grid', linkType: 'curved' });
+      expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
+    });
+
+    it('reads the diagram again on reset, back in its stored layout and without the changes', async () => {
+      await bench.changeLayout('grid');
+      await bench.randomizeAll();
+      bench.reset('30');
+      await settle();
+      expect(bench.stats()).toMatchObject({ nodes: 30, historyLength: 0 });
+      expect(bench.layoutType()).toBe('top-bottom');
+      expect(bench.log()).toEqual([]);
+      expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
     });
   });
 
@@ -815,11 +876,12 @@ describe('DiagramPage', () => {
       expect(diagram.links.first()!.routing).toBe(go.Routing.AvoidsNodes);
     });
 
-    it('leaves layout and line type to the tool strip: the header only has the data dropdown', () => {
+    it('leaves layout and line type to the tool strip: the only dropdown of the header is Actions', () => {
       const dropdowns = Array.from(page.querySelectorAll('header select')).map((select) =>
         select.getAttribute('aria-label'),
       );
-      expect(dropdowns).toEqual(['Data', 'Actions']);
+      // No dropdown for data either: a diagram is chosen in the list of all diagrams.
+      expect(dropdowns).toEqual(['Actions']);
     });
 
     it('does nothing when asked for the layout it already has', async () => {
@@ -1886,12 +1948,13 @@ describe('DiagramPage', () => {
     describe('number of legal entities', () => {
       const count = () => page.querySelector<HTMLElement>('header .node-count')!;
 
-      it('stands right after the Data dropdown, as "LE: 30"', () => {
+      it('stands right after the link to all diagrams, as "LE: 30"', () => {
         expect(count().textContent!.trim()).toBe('LE: 30');
         // The hover text says what the short label stands for.
         expect(count().title).toBe('Number of legal entities on the diagram');
-        const before = count().previousElementSibling!.querySelector('select')!;
-        expect(before.getAttribute('aria-label')).toBe('Data');
+        const before = count().previousElementSibling!;
+        expect(before.textContent!.trim()).toBe('All diagrams');
+        expect(before.getAttribute('href')).toBe('/diagrams');
       });
 
       it('follows the data that is opened', async () => {
@@ -1935,12 +1998,16 @@ describe('DiagramPage', () => {
       const resetButton = page.querySelector<HTMLButtonElement>(
         'header button[aria-label="Reset diagram"]',
       )!;
-      expect(resetButton.title).toBe('Reset diagram');
+      expect(resetButton.title).toBe(
+        'Reset diagram: read it from the database again and drop the changes',
+      );
       expect(resetButton.textContent?.trim()).toBe('');
       expect(resetButton.querySelector('svg')).not.toBeNull();
 
       await bench.randomizeAll();
       resetButton.click();
+      // The diagram is asked of the backend again.
+      answerDataset(TestBed.inject(HttpTestingController), '30');
       await settle();
       expect(bench.stats()).toMatchObject({ nodes: 30, historyLength: 0 });
       expect(bench.stateCheck().ok).toBe(true);
@@ -2094,22 +2161,16 @@ describe('DiagramPage', () => {
     });
 
     describe('in a diagram that is opened', () => {
-      /** Data whose name does not keep to the rule, as a database may hold from earlier days. */
-      const stored: Dataset = {
-        id: 'from-database',
-        label: 'Meridian SICAV: structure 2026/Q3 (draft)',
-        create: () => ({ nodes: createNodes(5), links: createLinks(5) }),
-      };
-      const datasets = DATASETS as Dataset[];
-
-      beforeEach(async () => {
-        datasets.push(stored);
-        bench.reset('from-database');
-        await settle();
+      /** A diagram whose name does not keep to the rule, as a database may hold from earlier days. */
+      const stored = (): StoredDiagram => ({
+        ...storedDataset('30', { name: 'Meridian SICAV: structure 2026/Q3 (draft)' }),
+        nodes: createNodes(5).map((node) => ({ ...node, fields: [] })),
+        links: createLinks(5),
       });
 
-      afterEach(() => {
-        datasets.splice(datasets.indexOf(stored), 1);
+      beforeEach(async () => {
+        bench.reset('77', stored());
+        await settle();
       });
 
       it('are removed before the name is shown, and before it is stored', () => {
@@ -2165,7 +2226,7 @@ describe('DiagramPage', () => {
         expect(notes()).toEqual([]);
         expect(name().value).toBe('30 generated funds');
 
-        bench.reset('from-database');
+        bench.reset('77', stored());
         await settle();
         expect(notes()).toHaveLength(1);
       });
@@ -2409,22 +2470,20 @@ describe('DiagramPage', () => {
       expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
     }, 60_000);
 
-    it('are not opened in a layout that is slow there, even if a smaller diagram used it', async () => {
-      await bench.changeLayout('circle');
-      bench.reset('100');
+    it('are not opened in a layout that is slow there, although they were stored with it', async () => {
+      bench.reset('100', storedDataset('100', { layoutType: 'circle' }));
       await settle();
       // A hundred funds in a circle are no trouble.
       expect(bench.layoutType()).toBe('circle');
 
-      bench.reset('500');
+      bench.reset('500', storedDataset('500', { layoutType: 'circle' }));
       await settle();
       expect(bench.layoutType()).toBe('top-bottom');
       expect(model().modelData.layoutType).toBe('top-bottom');
     }, 60_000);
 
-    it('keep a quick layout that was chosen before', async () => {
-      await bench.changeLayout('grid');
-      bench.reset('500');
+    it('keep a quick layout that they were stored with', async () => {
+      bench.reset('500', storedDataset('500', { layoutType: 'grid' }));
       await settle();
       expect(bench.layoutType()).toBe('grid');
     }, 60_000);
@@ -2463,7 +2522,6 @@ describe('DiagramPage', () => {
       newButton().click();
       await settle();
       expect(bench.busy()).toBe(false);
-      expect(bench.datasetId()).toBe('blank');
       expect(bench.stats()).toMatchObject({ nodes: 0, links: 0, historyLength: 0 });
       expect(bench.stateCheck().ok).toBe(true);
       expect(bench.log()).toEqual([]);
@@ -2762,13 +2820,9 @@ describe('DiagramPage', () => {
       // A new diagram, empty, unlocked, and back in the default layout.
       expect(current()).not.toBe(broken);
       expect(bench.busy()).toBe(false);
-      expect(bench.datasetId()).toBe('blank');
       expect(bench.stats()).toMatchObject({ nodes: 0, historyLength: 0 });
       expect(bench.layoutType()).toBe('top-bottom');
       expect(notice()!.textContent).toContain('could not be opened');
-      const data = page.querySelector<HTMLSelectElement>('header select')!;
-      expect(data.disabled).toBe(false);
-      expect(data.value).toBe('blank');
       expect(page.querySelectorAll('.diagram canvas').length).toBe(1);
 
       // Opening other data works again, and takes the notice away.
@@ -2851,9 +2905,7 @@ describe('DiagramPage', () => {
 
     beforeEach(async () => {
       localStorage.clear();
-      plain = TestBed.createComponent(DiagramPage);
-      plain.detectChanges();
-      await plain.whenStable();
+      plain = await startPage();
       plainPage = plain.nativeElement as HTMLElement;
       plainBench = benchOf(plain);
       plainBench.diagram.viewSize = new go.Size(1000, 700);
@@ -2929,9 +2981,7 @@ describe('DiagramPage', () => {
     it('are remembered for the next visit', async () => {
       toolsSwitch().click();
       await calm();
-      const again = TestBed.createComponent(DiagramPage);
-      again.detectChanges();
-      await again.whenStable();
+      const again = await startPage();
       const againPage = again.nativeElement as HTMLElement;
       expect(againPage.querySelector('.log table')).not.toBeNull();
       expect(againPage.querySelector('.side h2')!.textContent).toBe('History');
@@ -3026,9 +3076,7 @@ describe('DiagramPage', () => {
 
     beforeEach(async () => {
       localStorage.clear();
-      plain = TestBed.createComponent(DiagramPage);
-      plain.detectChanges();
-      await plain.whenStable();
+      plain = await startPage();
       plainPage = plain.nativeElement as HTMLElement;
       plainDiagram = benchOf(plain).diagram;
       plainDiagram.viewSize = new go.Size(1000, 700);
@@ -3175,9 +3223,7 @@ describe('DiagramPage', () => {
     it('stay closed the next time the page is opened', async () => {
       toggle().click();
       await settle();
-      const again = TestBed.createComponent(DiagramPage);
-      again.detectChanges();
-      await again.whenStable();
+      const again = await startPage();
       expect((again.nativeElement as HTMLElement).querySelector('.log table')).toBeNull();
       again.destroy();
     });

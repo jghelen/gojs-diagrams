@@ -1,19 +1,7 @@
-import {
-  EDITABLE_FIELDS,
-  LinkData,
-  createLinks,
-  createNodes,
-  formatOwnership,
-  randomPatch,
-} from './node-data';
-import {
-  COLORS,
-  DEFAULT_COLOR,
-  DEFAULT_SHAPE,
-  LEGAL_ENTITY_TYPES,
-  NODE_COUNTS,
-  SHAPES,
-} from './constants';
+import { NODE_COUNTS } from '../../testing/datasets';
+import { createLinks, createNodes } from '../../testing/generated-funds';
+import { EDITABLE_FIELDS, LinkData, formatOwnership, randomPatch } from './node-data';
+import { COLORS, DEFAULT_COLOR, DEFAULT_SHAPE, LEGAL_ENTITY_TYPES, SHAPES } from './constants';
 
 const hierarchy = (links: LinkData[]) => links.filter((link) => link.category === 'hierarchy');
 const relations = (links: LinkData[]) => links.filter((link) => link.category === 'relation');

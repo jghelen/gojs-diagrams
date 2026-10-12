@@ -66,7 +66,9 @@ export class SidePanel {
   protected readonly maxBulkRuns = computed(() => {
     const nodes = this.stats()?.nodes;
     // Until the diagram has been read for the first time, nothing limits the suggestion.
-    if (nodes === undefined) return DEFAULT_BULK_RUNS;
+    // Nor does an empty canvas, which is what the page shows while a diagram is
+    // on its way from the database: the number in the box is to survive that.
+    if (!nodes) return DEFAULT_BULK_RUNS;
     return Math.max(1, Math.min(nodes, Math.floor(BULK_EDIT_BUDGET / nodes)));
   });
   /**

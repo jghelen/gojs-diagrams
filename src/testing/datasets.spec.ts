@@ -1,6 +1,6 @@
-import { DATASETS, findDataset } from './datasets';
-import { BLANK_DATASET, DEFAULT_DATASET, LEGAL_ENTITY_TYPES } from './constants';
-import { LinkData } from './node-data';
+import { LEGAL_ENTITY_TYPES } from '../app/diagram/constants';
+import { LinkData } from '../app/diagram/node-data';
+import { BLANK_DATASET, DATASETS, DEFAULT_DATASET, findDataset } from './datasets';
 
 describe('datasets', () => {
   it('offers the sample fund structure and the generated sizes', () => {

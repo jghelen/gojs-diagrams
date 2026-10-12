@@ -2,9 +2,16 @@ import { formatDate } from '@angular/common';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
 import { DiagramListPage, DiagramSummary } from '../api/diagrams-api';
-import { DIAGRAM_LIST_URL, DiagramList, diagramUrl } from './diagram-list';
+import {
+  DIAGRAM_LIST_URL,
+  DiagramList,
+  NEW_DIAGRAM_URL,
+  SEARCH_DELAY_MS,
+  diagramUrl,
+} from './diagram-list';
 
 /** The diagrams `from` to `to` of a list, numbered from 1. */
 function summaries(from: number, to: number): DiagramSummary[] {
@@ -32,6 +39,7 @@ describe('addresses of the diagrams', () => {
   it('has the list at /diagrams and a diagram below it', () => {
     expect(DIAGRAM_LIST_URL).toBe('/diagrams');
     expect(diagramUrl(17)).toBe('/diagrams/17');
+    expect(NEW_DIAGRAM_URL).toBe('/diagrams/new');
   });
 });
 
@@ -40,26 +48,33 @@ describe('DiagramList page', () => {
   let page: HTMLElement;
   let backend: HttpTestingController;
 
-  /** Shows the list at this `page` of the address; the request to the backend is still open. */
-  const open = (pageInAddress?: string): void => {
+  /** Shows the list at this `page` and `search` of the address; the request to the backend is still open. */
+  const open = (pageInAddress?: string, searchInAddress?: string): void => {
     fixture = TestBed.createComponent(DiagramList);
     if (pageInAddress !== undefined) fixture.componentRef.setInput('page', pageInAddress);
+    if (searchInAddress !== undefined) fixture.componentRef.setInput('search', searchInAddress);
     fixture.detectChanges();
     page = fixture.nativeElement as HTMLElement;
   };
-  /** The one request the page has sent, which has to be for this page of the list. */
-  const requestFor = (pageNumber: number) =>
+  /** The one request the page has sent, which has to be for this page of the list and this search. */
+  const requestFor = (pageNumber: number, search: string | null = null) =>
     backend.expectOne(
       (request) =>
         request.method === 'GET' &&
         request.url === '/api/diagrams' &&
-        request.params.get('page') === String(pageNumber),
+        request.params.get('page') === String(pageNumber) &&
+        request.params.get('search') === search,
     );
   /** Answers the open request for this page with a page of the list of 45. */
-  const answer = async (pageNumber: number, body = pageOf45(pageNumber)): Promise<void> => {
-    requestFor(pageNumber).flush(body);
+  const answer = async (
+    pageNumber: number,
+    body = pageOf45(pageNumber),
+    search: string | null = null,
+  ): Promise<void> => {
+    requestFor(pageNumber, search).flush(body);
     await fixture.whenStable();
   };
+  const rows = () => page.querySelectorAll('tbody tr td a[title]').length;
   const texts = (selector: string): string[] =>
     [...page.querySelectorAll(selector)].map((element) => element.textContent!.trim());
   const text = (selector: string): string =>
@@ -80,7 +95,7 @@ describe('DiagramList page', () => {
       open();
 
       expect(text('[role=status]')).toBe('Reading the diagrams…');
-      expect(page.querySelector('table')).toBeNull();
+      expect(rows()).toBe(0);
       await answer(1);
       expect(page.querySelector('[role=status]')).toBeNull();
     });
@@ -207,7 +222,7 @@ describe('DiagramList page', () => {
       await answer(1, { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 });
 
       expect(text('.notice')).toBe('There are no diagrams yet.');
-      expect(page.querySelector('table')).toBeNull();
+      expect(rows()).toBe(0);
       expect(page.querySelector('.pages')).toBeNull();
     });
 
@@ -217,7 +232,8 @@ describe('DiagramList page', () => {
 
       expect(text('.notice')).toContain('There is no page 9: the list has 3 pages.');
       expect(page.querySelector('.notice a')!.getAttribute('href')).toBe('/diagrams');
-      expect(page.querySelector('table')).toBeNull();
+      expect(rows()).toBe(0);
+      expect(page.querySelector('.pages')).toBeNull();
     });
   });
 
@@ -234,7 +250,8 @@ describe('DiagramList page', () => {
       expect(text('[role=alert] p')).toBe(
         'The list of diagrams could not be read. Check that the backend is running.',
       );
-      expect(page.querySelector('table')).toBeNull();
+      expect(rows()).toBe(0);
+      expect(page.querySelector('.pages')).toBeNull();
     });
 
     it('reads the list again on "Try again"', async () => {
@@ -250,11 +267,341 @@ describe('DiagramList page', () => {
     });
   });
 
-  it('leads to the editor from its header', async () => {
+  describe('searching by title, from the address', () => {
+    const none: DiagramListPage = { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 };
+
+    it('has a search box below the heading "Title"', async () => {
+      open();
+      await answer(1);
+
+      const box = page.querySelector<HTMLInputElement>(
+        'thead tr:nth-child(2) td:first-child input',
+      )!;
+      expect(box.type).toBe('search');
+      expect(box.getAttribute('aria-label')).toBe('Search by title');
+      expect(box.placeholder).toBe('Search by title');
+      expect(box.value).toBe('');
+      // The headings stay the three they were.
+      expect(texts('thead th')).toEqual(['Title', 'Created at', 'Updated at']);
+    });
+
+    it('shows the box before the list has arrived, and when it cannot be read', async () => {
+      open();
+      expect(page.querySelector('input[type=search]')).not.toBeNull();
+
+      requestFor(1).flush({ error: 'x' }, { status: 500, statusText: 'Server Error' });
+      await fixture.whenStable();
+      expect(page.querySelector('input[type=search]')).not.toBeNull();
+    });
+
+    it('asks the backend for the diagrams with the text of the address in their title', async () => {
+      open(undefined, 'structure 4');
+      await answer(
+        1,
+        { items: summaries(40, 45), page: 1, pageSize: 20, total: 6, totalPages: 1 },
+        'structure 4',
+      );
+
+      expect(page.querySelector<HTMLInputElement>('input[type=search]')!.value).toBe('structure 4');
+      expect(rows()).toBe(6);
+      expect(text('.where')).toBe('Page 1 of 1 · diagrams 1 to 6 of 6');
+    });
+
+    it('asks for the page of the address within what was found', async () => {
+      open('2', 'fund');
+      await answer(2, pageOf45(2), 'fund');
+
+      expect(text('.where')).toBe('Page 2 of 3 · diagrams 21 to 40 of 45');
+    });
+
+    it('leaves the spaces around the text out of the search', async () => {
+      open(undefined, '  fund  ');
+      await answer(1, pageOf45(1), 'fund');
+
+      expect(rows()).toBe(20);
+    });
+
+    it('does not search for a text of spaces only', async () => {
+      open(undefined, '   ');
+      await answer(1);
+
+      expect(rows()).toBe(20);
+    });
+
+    it('says so when no title has the text', async () => {
+      open(undefined, 'no such thing');
+      await answer(1, none, 'no such thing');
+
+      expect(text('.notice')).toBe('No diagram has “no such thing” in its title.');
+      expect(rows()).toBe(0);
+      expect(page.querySelector('.pages')).toBeNull();
+      // The box is still there, to search for something else.
+      expect(page.querySelector('input[type=search]')).not.toBeNull();
+    });
+
+    it('keeps the rows on screen while the next search is on its way', async () => {
+      open();
+      await answer(1);
+
+      fixture.componentRef.setInput('search', 'meridian');
+      fixture.detectChanges();
+
+      expect(rows()).toBe(20);
+      expect(page.querySelector('[role=status]')).toBeNull();
+      expect(page.querySelector('table')!.getAttribute('aria-busy')).toBe('true');
+      await answer(1, { ...none, items: summaries(7, 7), total: 1, totalPages: 1 }, 'meridian');
+      expect(rows()).toBe(1);
+      expect(page.querySelector('table')!.getAttribute('aria-busy')).toBe('false');
+    });
+
+    it('follows the address when the search in it changes, as after the Back button', async () => {
+      open(undefined, 'fund');
+      await answer(1, pageOf45(1), 'fund');
+
+      fixture.componentRef.setInput('search', undefined);
+      fixture.detectChanges();
+      await answer(1);
+
+      expect(page.querySelector<HTMLInputElement>('input[type=search]')!.value).toBe('');
+    });
+  });
+
+  it('offers to start a new diagram from its header', async () => {
     open();
     await answer(1);
 
     expect(text('.bar h1')).toBe('Fund structure diagrams');
-    expect(page.querySelector('.bar a')!.getAttribute('href')).toBe('/');
+    expect(text('.bar a')).toBe('New diagram');
+    expect(page.querySelector('.bar a')!.getAttribute('href')).toBe('/diagrams/new');
+  });
+});
+
+describe('DiagramList page, typing a search', () => {
+  let harness: RouterTestingHarness;
+  let backend: HttpTestingController;
+  let router: Router;
+
+  const page = () => harness.routeNativeElement as HTMLElement;
+  const box = () => page().querySelector<HTMLInputElement>('input[type=search]')!;
+  const found: DiagramListPage = {
+    items: summaries(1, 2),
+    page: 1,
+    pageSize: 20,
+    total: 2,
+    totalPages: 1,
+  };
+  /** Answers the one open request, which has to be for this page and this search. */
+  const answer = async (pageNumber: number, search: string | null, body = found): Promise<void> => {
+    backend
+      .expectOne(
+        (request) =>
+          request.url === '/api/diagrams' &&
+          request.params.get('page') === String(pageNumber) &&
+          request.params.get('search') === search,
+      )
+      .flush(body);
+    await harness.fixture.whenStable();
+  };
+  const goTo = async (url: string): Promise<void> => {
+    await harness.navigateByUrl(url);
+    harness.detectChanges();
+  };
+  /** What a key in the search box does: the box has this text afterwards. */
+  const type = (text: string): void => {
+    box().value = text;
+    box().dispatchEvent(new Event('input'));
+  };
+  const pressEnter = (): void => {
+    box().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+  };
+  /** Waits until the address is this one, and lets the page follow it. */
+  const addressIs = async (url: string): Promise<void> => {
+    await vi.waitFor(() => expect(router.url).toBe(url));
+    harness.detectChanges();
+  };
+  /** Lets the time after the last key pass. */
+  const pause = (ms = SEARCH_DELAY_MS): void => {
+    vi.advanceTimersByTime(ms);
+  };
+
+  beforeEach(async () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(
+          [
+            { path: 'diagrams', component: DiagramList },
+            { path: '**', component: DiagramList },
+          ],
+          withComponentInputBinding(),
+        ),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+      ],
+    });
+    backend = TestBed.inject(HttpTestingController);
+    router = TestBed.inject(Router);
+    harness = await RouterTestingHarness.create();
+    await goTo('/diagrams');
+    await answer(1, null, pageOf45(1));
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    backend.verify();
+  });
+
+  it('searches a moment after the last key, not with every key', async () => {
+    type('m');
+    pause(SEARCH_DELAY_MS - 1);
+    type('me');
+    pause(SEARCH_DELAY_MS - 1);
+    type('mer');
+    pause(SEARCH_DELAY_MS - 1);
+
+    // Nothing was asked of the backend yet, and the address is as it was.
+    backend.expectNone(() => true);
+    expect(router.url).toBe('/diagrams');
+
+    pause(1);
+    vi.useRealTimers();
+    await addressIs('/diagrams?search=mer');
+    await answer(1, 'mer');
+
+    expect(page().querySelectorAll('tbody td a[title]').length).toBe(2);
+    expect(box().value).toBe('mer');
+  });
+
+  it('searches at once on Enter', async () => {
+    type('meridian');
+    pressEnter();
+    vi.useRealTimers();
+
+    await addressIs('/diagrams?search=meridian');
+    await answer(1, 'meridian');
+    // The moment after the key does not search a second time.
+    backend.expectNone(() => true);
+  });
+
+  it('starts at the first page of what it finds', async () => {
+    vi.useRealTimers();
+    await goTo('/diagrams?page=3');
+    await answer(3, null, pageOf45(3));
+
+    type('fund');
+    pressEnter();
+
+    await addressIs('/diagrams?search=fund');
+    await answer(1, 'fund', pageOf45(1));
+  });
+
+  it('keeps the search when going to the next and the previous page', async () => {
+    type('fund');
+    pressEnter();
+    vi.useRealTimers();
+    await addressIs('/diagrams?search=fund');
+    await answer(1, 'fund', pageOf45(1));
+
+    const next = page().querySelector<HTMLAnchorElement>('.pages a.step')!;
+    expect(next.getAttribute('href')).toBe('/diagrams?search=fund&page=2');
+    next.click();
+    await addressIs('/diagrams?search=fund&page=2');
+    await answer(2, 'fund', pageOf45(2));
+
+    const [previous] = page().querySelectorAll<HTMLAnchorElement>('.pages a.step');
+    expect(previous.getAttribute('href')).toBe('/diagrams?search=fund&page=1');
+    expect(box().value).toBe('fund');
+  });
+
+  it('leads back to the first page of the search from a page that does not exist', async () => {
+    vi.useRealTimers();
+    await goTo('/diagrams?search=fund&page=9');
+    await answer(9, 'fund', pageOf45(9));
+
+    expect(page().querySelector('.notice a')!.getAttribute('href')).toBe('/diagrams?search=fund');
+  });
+
+  it('shows every diagram again when the box is emptied', async () => {
+    type('fund');
+    pressEnter();
+    vi.useRealTimers();
+    await addressIs('/diagrams?search=fund');
+    await answer(1, 'fund');
+
+    type('');
+    pressEnter();
+
+    await addressIs('/diagrams');
+    await answer(1, null, pageOf45(1));
+    expect(page().querySelectorAll('tbody td a[title]').length).toBe(20);
+  });
+
+  it('searches without the spaces around the text, and leaves them in the box', async () => {
+    type('  fund ');
+    pressEnter();
+    vi.useRealTimers();
+
+    await addressIs('/diagrams?search=fund');
+    await answer(1, 'fund');
+    // The space at the end is where the next word goes.
+    expect(box().value).toBe('  fund ');
+  });
+
+  it('does not search again for the text that is already shown', async () => {
+    type('fund');
+    pressEnter();
+    vi.useRealTimers();
+    await addressIs('/diagrams?search=fund');
+    await answer(1, 'fund');
+
+    type('fund ');
+    pressEnter();
+    type('   ');
+    type('fund');
+    pressEnter();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    backend.expectNone(() => true);
+    expect(router.url).toBe('/diagrams?search=fund');
+  });
+
+  it('takes the place of the address before it, so that Back leaves the list', async () => {
+    const navigate = vi.spyOn(router, 'navigate');
+
+    type('fund');
+    pressEnter();
+    vi.useRealTimers();
+    await addressIs('/diagrams?search=fund');
+    await answer(1, 'fund');
+
+    expect(navigate).toHaveBeenCalledWith(['/diagrams'], {
+      queryParams: { search: 'fund' },
+      replaceUrl: true,
+    });
+  });
+
+  it('writes a text with special characters into the address so that it comes back whole', async () => {
+    type('50% & more?');
+    pressEnter();
+    vi.useRealTimers();
+
+    await vi.waitFor(() => expect(router.url).toContain('search='));
+    harness.detectChanges();
+    await answer(1, '50% & more?', { ...found, items: [], total: 0, totalPages: 0 });
+
+    expect(page().querySelector('.notice')!.textContent).toContain(
+      'No diagram has “50% & more?” in its title.',
+    );
+  });
+
+  it('does not search after the page was left', async () => {
+    type('fund');
+    vi.useRealTimers();
+    const navigate = vi.spyOn(router, 'navigate');
+
+    harness.fixture.destroy();
+    await new Promise((resolve) => setTimeout(resolve, SEARCH_DELAY_MS + 50));
+
+    expect(navigate).not.toHaveBeenCalled();
   });
 });

@@ -10,6 +10,6 @@ pool.on('error', (error) => console.error('A database connection was lost:', err
 
 const app = createApp({
   readDiagram: (id) => readDiagram(pool, id),
-  listDiagrams: (page) => listDiagrams(pool, page),
+  listDiagrams: (page, search) => listDiagrams(pool, page, search),
 });
 app.listen(port, () => console.log(`The backend listens on http://localhost:${port}`));
