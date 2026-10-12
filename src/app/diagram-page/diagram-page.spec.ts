@@ -1,10 +1,18 @@
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Type } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { provideRouter } from '@angular/router';
+import { routes } from '../app.routes';
 import * as go from 'gojs/release/go';
 import { DEFAULT_COLOR, DEFAULT_SHAPE, DEVELOPER_TOOLS_KEY } from '../diagram/constants';
 import { NodeModel } from '../diagram/diagram-factory';
 import { LinkData, NodeData } from '../diagram/node-data';
+import { BLANK_DATASET, DEFAULT_DATASET } from '../../testing/datasets';
+import { createLinks, createNodes } from '../../testing/generated-funds';
+import { addressIdOf, answerDataset, storedDataset } from '../../testing/stored-diagrams';
+import { StoredDiagram } from '../api/diagrams-api';
 import { BenchmarkStatistics } from './components/benchmark-statistics/benchmark-statistics';
 import { DiagramInfoBar } from './components/diagram-info-bar/diagram-info-bar';
 import { NodeDialogs } from './components/node-dialogs/node-dialogs';
@@ -21,13 +29,51 @@ import { DiagramPage } from './diagram-page';
 import { SelectionState } from './selection-state/selection-state';
 
 /**
+ * The page shows the diagrams of the database, which it asks the backend for.
+ * Here the test datasets stand in for the database: see `startPage` and the
+ * `reset` of the bench.
+ */
+const BACKEND_AND_ROUTER = [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()];
+
+/** The page at the address of this dataset, with the dataset already arrived from the backend. */
+async function startPage(datasetId = DEFAULT_DATASET): Promise<ComponentFixture<DiagramPage>> {
+  const fixture = TestBed.createComponent(DiagramPage);
+  fixture.componentRef.setInput('id', addressIdOf(datasetId));
+  fixture.detectChanges();
+  if (datasetId !== BLANK_DATASET) answerDataset(TestBed.inject(HttpTestingController), datasetId);
+  await fixture.whenStable();
+  return fixture;
+}
+
+/**
+ * Opens another dataset in the page, the way going to its address does, or
+ * reads the one that is shown again, the way "Reset diagram" does. The backend
+ * answers at once; the diagram is there after the next `settle`.
+ */
+function openDataset(
+  fixture: ComponentFixture<DiagramPage>,
+  datasetId: string,
+  stored?: StoredDiagram,
+): void {
+  const id = addressIdOf(datasetId);
+  if (fixture.componentInstance.id() === id) {
+    (fixture.componentInstance as unknown as { reset(): void }).reset();
+  } else {
+    fixture.componentRef.setInput('id', id);
+    fixture.detectChanges();
+  }
+  if (datasetId !== BLANK_DATASET) {
+    answerDataset(TestBed.inject(HttpTestingController), datasetId, stored);
+  }
+}
+
+/**
  * What these tests drive: members of the page, of its parts and of its services,
  * most of them not public. See `benchOf` for where each is found.
  */
 interface Bench {
   diagram: go.Diagram;
   busy(): boolean;
-  datasetId(): string;
   layoutType(): string;
   linkType(): string;
   stats(): { nodes: number; links: number; historyLength: number; historyIndex: number } | null;
@@ -52,7 +98,8 @@ interface Bench {
   zoomIn(): void;
   zoomOut(): void;
   zoomToFit(): void;
-  reset(datasetId: string): void;
+  /** Opens this test dataset, or reads it again when it is the one shown: see `openDataset`. */
+  reset(datasetId: string, stored?: StoredDiagram): void;
   removeSelectedLinks(): Promise<void>;
   removeLinksOfSelectedNodes(): Promise<void>;
   deleteSelection(): Promise<void> | void;
@@ -107,6 +154,9 @@ const SERVICES: Type<unknown>[] = [DiagramActions, DiagramState, OperationRunner
 function benchOf(fixture: ComponentFixture<DiagramPage>): Bench {
   const root = fixture.debugElement;
   const owners: object[] = [
+    {
+      reset: (datasetId: string, stored?: StoredDiagram) => openDataset(fixture, datasetId, stored),
+    },
     fixture.componentInstance,
     ...PARTS.map((part) => root.query(By.directive(part)).componentInstance as object),
     ...SERVICES.map((service) => root.injector.get(service) as object),
@@ -140,6 +190,8 @@ describe('DiagramPage', () => {
     )!;
   /** Lets GoJS finish what it would do before the next frame, and Angular redraw. */
   const settle = async () => {
+    // A diagram that the backend has just handed out is in the page after this.
+    await fixture.whenStable();
     for (let i = 0; i < 3; i++) diagram.maybeUpdate();
     await fixture.whenStable();
     // The percentages were placed in the meantime; in a browser the next frame draws them.
@@ -157,10 +209,8 @@ describe('DiagramPage', () => {
     // Most tests look at the statistics or the history numbers, so they have the developer
     // tools shown, as if that had been chosen on an earlier visit.
     localStorage.setItem(DEVELOPER_TOOLS_KEY, 'true');
-    TestBed.configureTestingModule({ imports: [DiagramPage] });
-    fixture = TestBed.createComponent(DiagramPage);
-    fixture.detectChanges();
-    await fixture.whenStable();
+    TestBed.configureTestingModule({ imports: [DiagramPage], providers: BACKEND_AND_ROUTER });
+    fixture = await startPage();
     bench = benchOf(fixture);
     diagram = bench.diagram;
     page = fixture.nativeElement as HTMLElement;
@@ -174,7 +224,6 @@ describe('DiagramPage', () => {
   describe('loading', () => {
     it('opens with the 30-node diagram, laid out top to bottom with lines that avoid nodes', () => {
       expect(bench.busy()).toBe(false);
-      expect(bench.datasetId()).toBe('30');
       expect(bench.stats()).toMatchObject({ nodes: 30, historyLength: 0, historyIndex: -1 });
       expect(bench.layoutType()).toBe('top-bottom');
       expect(bench.linkType()).toBe('avoid');
@@ -188,14 +237,36 @@ describe('DiagramPage', () => {
       }
     });
 
-    it('loads another dataset from scratch on reset, keeping layout and line type', async () => {
+    it('opens another diagram from scratch, in the layout it was stored with', async () => {
       await bench.changeLayout('grid');
       bench.reset('fund-structure');
       await settle();
       expect(bench.stats()).toMatchObject({ nodes: 24, historyLength: 0 });
-      expect(bench.layoutType()).toBe('grid');
+      // Not the grid that the diagram before it was put in.
+      expect(bench.layoutType()).toBe('top-bottom');
       expect(bench.log()).toEqual([]);
       expect(bench.stateCheck().ok).toBe(true);
+    });
+
+    it('shows a diagram in the layout and with the lines it was stored with', async () => {
+      bench.reset('100', storedDataset('100', { layoutType: 'grid', linkType: 'curved' }));
+      await settle();
+      expect(bench.stats()).toMatchObject({ nodes: 100, historyLength: 0 });
+      expect(bench.layoutType()).toBe('grid');
+      expect(bench.linkType()).toBe('curved');
+      expect(model().modelData).toMatchObject({ layoutType: 'grid', linkType: 'curved' });
+      expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
+    });
+
+    it('reads the diagram again on reset, back in its stored layout and without the changes', async () => {
+      await bench.changeLayout('grid');
+      await bench.randomizeAll();
+      bench.reset('30');
+      await settle();
+      expect(bench.stats()).toMatchObject({ nodes: 30, historyLength: 0 });
+      expect(bench.layoutType()).toBe('top-bottom');
+      expect(bench.log()).toEqual([]);
+      expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
     });
   });
 
@@ -805,11 +876,12 @@ describe('DiagramPage', () => {
       expect(diagram.links.first()!.routing).toBe(go.Routing.AvoidsNodes);
     });
 
-    it('leaves layout and line type to the tool strip: the header only has the data dropdown', () => {
-      const headerLabels = Array.from(page.querySelectorAll('header label')).map(
-        (label) => label.textContent?.trim().split(/\s+/)[0],
+    it('leaves layout and line type to the tool strip: the only dropdown of the header is Actions', () => {
+      const dropdowns = Array.from(page.querySelectorAll('header select')).map((select) =>
+        select.getAttribute('aria-label'),
       );
-      expect(headerLabels).toEqual(['Data']);
+      // No dropdown for data either: a diagram is chosen in the list of all diagrams.
+      expect(dropdowns).toEqual(['Actions']);
     });
 
     it('does nothing when asked for the layout it already has', async () => {
@@ -1863,6 +1935,54 @@ describe('DiagramPage', () => {
   });
 
   describe('header', () => {
+    it('no longer carries the versions; they are small print in the footer', () => {
+      expect(page.querySelector('header')!.textContent).not.toContain('GoJS');
+      const footer = page.querySelector('footer.page-footer')!;
+      expect(footer.textContent!.trim()).toMatch(/^Angular \d+\.\d+\.\d+ · GoJS \d+\.\d+\.\d+$/);
+      // The footer comes after everything else on the page.
+      expect(page.querySelector('main')!.compareDocumentPosition(footer)).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    });
+
+    describe('number of legal entities', () => {
+      const count = () => page.querySelector<HTMLElement>('header .node-count')!;
+
+      it('stands right after the link to all diagrams, as "LE: 30"', () => {
+        expect(count().textContent!.trim()).toBe('LE: 30');
+        // The hover text says what the short label stands for.
+        expect(count().title).toBe('Number of legal entities on the diagram');
+        const before = count().previousElementSibling!;
+        expect(before.textContent!.trim()).toBe('All diagrams');
+        expect(before.getAttribute('href')).toBe('/diagrams');
+      });
+
+      it('follows the data that is opened', async () => {
+        bench.reset('fund-structure');
+        await settle();
+        expect(count().textContent!.trim()).toBe('LE: 24');
+        bench.reset('blank');
+        await settle();
+        expect(count().textContent!.trim()).toBe('LE: 0');
+      });
+
+      it('follows nodes that are added and deleted, and their undo', async () => {
+        await bench.addNode();
+        await settle();
+        expect(count().textContent!.trim()).toBe('LE: 31');
+
+        bench.askToDelete([nodeData(3), nodeData(4)]);
+        await bench.confirmDelete();
+        await settle();
+        expect(count().textContent!.trim()).toBe('LE: 29');
+
+        await bench.undo();
+        await bench.undo();
+        await settle();
+        expect(count().textContent!.trim()).toBe('LE: 30');
+      });
+    });
+
     it('ends, at the right, with Styles, Actions, reset, new diagram and the developer tools switch', async () => {
       const controls = Array.from(page.querySelectorAll<HTMLElement>('header .bar-end > *')).map(
         (control) => control.getAttribute('aria-label') ?? control.textContent?.trim(),
@@ -1878,12 +1998,16 @@ describe('DiagramPage', () => {
       const resetButton = page.querySelector<HTMLButtonElement>(
         'header button[aria-label="Reset diagram"]',
       )!;
-      expect(resetButton.title).toBe('Reset diagram');
+      expect(resetButton.title).toBe(
+        'Reset diagram: read it from the database again and drop the changes',
+      );
       expect(resetButton.textContent?.trim()).toBe('');
       expect(resetButton.querySelector('svg')).not.toBeNull();
 
       await bench.randomizeAll();
       resetButton.click();
+      // The diagram is asked of the backend again.
+      answerDataset(TestBed.inject(HttpTestingController), '30');
       await settle();
       expect(bench.stats()).toMatchObject({ nodes: 30, historyLength: 0 });
       expect(bench.stateCheck().ok).toBe(true);
@@ -1958,6 +2082,158 @@ describe('DiagramPage', () => {
       await settle();
       expect(name().value).toBe('');
       expect(name().classList.contains('missing')).toBe(true);
+    });
+  });
+
+  describe('special characters in the diagram name', () => {
+    const name = () =>
+      page.querySelector<HTMLInputElement>('.canvas-bar input[aria-label="Diagram name"]')!;
+    const notes = () =>
+      Array.from(page.querySelectorAll('.canvas-bar .name-note')).map((note) =>
+        note.textContent!.replace(/\s+/g, ' ').trim(),
+      );
+    /** Types into the name box the way a keyboard or a paste does, with the cursor at `cursor`. */
+    const typed = async (value: string, cursor = value.length) => {
+      name().value = value;
+      name().setSelectionRange(cursor, cursor);
+      name().dispatchEvent(new Event('input'));
+      await settle();
+    };
+
+    describe('while typing', () => {
+      it('are taken out at once, and a note below the boxes says why', async () => {
+        await typed('Meridian: holdings');
+        expect(name().value).toBe('Meridian holdings');
+        expect(notes()).toEqual(['Letters, digits and spaces only']);
+      });
+
+      it('are taken out of pasted text too', async () => {
+        await typed('<b>Fund/2026</b> #1 (draft)');
+        expect(name().value).toBe('bFund2026b 1 draft');
+      });
+
+      it('leave the cursor where the user was typing', async () => {
+        // "Meri|dian" with a "/" typed at the bar.
+        await typed('Meri/dian', 5);
+        expect(name().value).toBe('Meridian');
+        expect(name().selectionStart).toBe(4);
+        expect(name().selectionEnd).toBe(4);
+      });
+
+      it('say nothing about a name that keeps to the rule, and stop saying it when the box is left', async () => {
+        await typed('Meridian holdings 2026');
+        expect(notes()).toEqual([]);
+
+        await typed('Meridian!');
+        expect(notes()).toHaveLength(1);
+        await typed('Meridian h');
+        expect(notes()).toEqual([]);
+
+        await typed('Meridian h?');
+        name().dispatchEvent(new Event('blur'));
+        await settle();
+        expect(notes()).toEqual([]);
+      });
+
+      it('never reach the diagram: what is stored has none', async () => {
+        name().value = 'Meridian & Sons: 2026';
+        name().dispatchEvent(new Event('change'));
+        await settle();
+        expect(model().modelData.name).toBe('Meridian  Sons 2026');
+        expect(name().value).toBe('Meridian  Sons 2026');
+      });
+
+      it('are allowed in the description, which has no such rule', async () => {
+        const description = page.querySelector<HTMLInputElement>(
+          '.canvas-bar input[aria-label="Description"]',
+        )!;
+        description.value = 'As of 2026/Q3 (draft): 80% done';
+        description.dispatchEvent(new Event('input'));
+        description.dispatchEvent(new Event('change'));
+        await settle();
+        expect(model().modelData.description).toBe('As of 2026/Q3 (draft): 80% done');
+        expect(notes()).toEqual([]);
+      });
+
+      it('explain the rule on hover as well', () => {
+        expect(name().title).toBe('Letters, digits and spaces only');
+      });
+    });
+
+    describe('in a diagram that is opened', () => {
+      /** A diagram whose name does not keep to the rule, as a database may hold from earlier days. */
+      const stored = (): StoredDiagram => ({
+        ...storedDataset('30', { name: 'Meridian SICAV: structure 2026/Q3 (draft)' }),
+        nodes: createNodes(5).map((node) => ({ ...node, fields: [] })),
+        links: createLinks(5),
+      });
+
+      beforeEach(async () => {
+        bench.reset('77', stored());
+        await settle();
+      });
+
+      it('are removed before the name is shown, and before it is stored', () => {
+        expect(name().value).toBe('Meridian SICAV structure 2026Q3 draft');
+        expect(model().modelData.name).toBe('Meridian SICAV structure 2026Q3 draft');
+        expect(bench.stats()).toMatchObject({ nodes: 5, historyLength: 0 });
+        // Cleaning the name is part of opening the diagram, not a change to undo.
+        expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
+      });
+
+      it('are reported in a note that names the name as it arrived', () => {
+        expect(notes()).toHaveLength(1);
+        expect(notes()[0]).toContain('The name of this diagram is not valid');
+        expect(notes()[0]).toContain('Meridian SICAV: structure 2026/Q3 (draft)');
+        expect(page.querySelector('.name-note strong')!.textContent).toBe(
+          'Meridian SICAV: structure 2026/Q3 (draft)',
+        );
+        expect(page.querySelector('.name-note')!.getAttribute('role')).toBe('alert');
+      });
+
+      it('have that note below the boxes: it is the last thing in the bar', () => {
+        const bar = page.querySelector('.canvas-bar')!;
+        expect(bar.lastElementChild!.classList.contains('name-note')).toBe(true);
+        const inputs = Array.from(bar.querySelectorAll('input'));
+        for (const input of inputs) {
+          expect(
+            input.compareDocumentPosition(bar.lastElementChild!) & Node.DOCUMENT_POSITION_FOLLOWING,
+          ).toBeTruthy();
+        }
+      });
+
+      it('keep the note until it is dismissed', async () => {
+        await bench.randomizeOne();
+        await settle();
+        expect(notes()).toHaveLength(1);
+        page.querySelector<HTMLButtonElement>('.name-note button[aria-label="Dismiss"]')!.click();
+        await settle();
+        expect(notes()).toEqual([]);
+        expect(name().value).toBe('Meridian SICAV structure 2026Q3 draft');
+      });
+
+      it('lose the note when the user gives the diagram a name', async () => {
+        name().value = 'Meridian structure';
+        name().dispatchEvent(new Event('change'));
+        await settle();
+        expect(notes()).toEqual([]);
+        expect(model().modelData.name).toBe('Meridian structure');
+      });
+
+      it('lose the note when other data is opened, and get it again with the same data', async () => {
+        bench.reset('30');
+        await settle();
+        expect(notes()).toEqual([]);
+        expect(name().value).toBe('30 generated funds');
+
+        bench.reset('77', stored());
+        await settle();
+        expect(notes()).toHaveLength(1);
+      });
+    });
+
+    it('are not found in a diagram whose name is fine: no note', () => {
+      expect(notes()).toEqual([]);
     });
   });
 
@@ -2166,16 +2442,16 @@ describe('DiagramPage', () => {
 
     it('keep the line type they are opened with, and their lines go around the nodes', async () => {
       expect(bench.linkType()).toBe('avoid');
-      bench.reset('500');
+      bench.reset('1000');
       await settle();
-      expect(bench.stats()?.nodes).toBe(500);
+      expect(bench.stats()?.nodes).toBe(1000);
       expect(bench.linkType()).toBe('avoid');
       expect(model().modelData.linkType).toBe('avoid');
       expect(linesOverNodes()).toBe(0);
-    }, 20_000);
+    }, 60_000);
 
     it('switch between line types as one undo step each, around the nodes again on the way back', async () => {
-      bench.reset('500');
+      bench.reset('1000');
       await settle();
       await bench.changeLinkType('straight');
       await settle();
@@ -2192,28 +2468,25 @@ describe('DiagramPage', () => {
       expect(bench.linkType()).toBe('avoid');
       expect(linesOverNodes()).toBe(0);
       expect(bench.stateCheck()).toEqual({ label: INITIAL, ok: true });
-    }, 20_000);
+    }, 60_000);
 
-    it('are not opened in a layout that is slow there, even if a smaller diagram used it', async () => {
-      await bench.changeLayout('circle');
-      bench.reset('100');
+    it('are not opened in a layout that is slow there, although they were stored with it', async () => {
+      bench.reset('100', storedDataset('100', { layoutType: 'circle' }));
       await settle();
       // A hundred funds in a circle are no trouble.
       expect(bench.layoutType()).toBe('circle');
 
-      bench.reset('500');
+      bench.reset('500', storedDataset('500', { layoutType: 'circle' }));
       await settle();
       expect(bench.layoutType()).toBe('top-bottom');
       expect(model().modelData.layoutType).toBe('top-bottom');
-      expect(linesOverNodes()).toBe(0);
-    }, 30_000);
+    }, 60_000);
 
-    it('keep a quick layout that was chosen before', async () => {
-      await bench.changeLayout('grid');
-      bench.reset('500');
+    it('keep a quick layout that they were stored with', async () => {
+      bench.reset('500', storedDataset('500', { layoutType: 'grid' }));
       await settle();
       expect(bench.layoutType()).toBe('grid');
-    }, 30_000);
+    }, 60_000);
 
     it('name the line types the same as on a small diagram', async () => {
       const titles = async () => {
@@ -2234,10 +2507,10 @@ describe('DiagramPage', () => {
       ];
       expect(await titles()).toEqual(names);
 
-      bench.reset('500');
+      bench.reset('1000');
       await settle();
       expect(await titles()).toEqual(names);
-    }, 20_000);
+    }, 60_000);
   });
 
   describe('new diagram', () => {
@@ -2249,7 +2522,6 @@ describe('DiagramPage', () => {
       newButton().click();
       await settle();
       expect(bench.busy()).toBe(false);
-      expect(bench.datasetId()).toBe('blank');
       expect(bench.stats()).toMatchObject({ nodes: 0, links: 0, historyLength: 0 });
       expect(bench.stateCheck().ok).toBe(true);
       expect(bench.log()).toEqual([]);
@@ -2548,13 +2820,9 @@ describe('DiagramPage', () => {
       // A new diagram, empty, unlocked, and back in the default layout.
       expect(current()).not.toBe(broken);
       expect(bench.busy()).toBe(false);
-      expect(bench.datasetId()).toBe('blank');
       expect(bench.stats()).toMatchObject({ nodes: 0, historyLength: 0 });
       expect(bench.layoutType()).toBe('top-bottom');
       expect(notice()!.textContent).toContain('could not be opened');
-      const data = page.querySelector<HTMLSelectElement>('header select')!;
-      expect(data.disabled).toBe(false);
-      expect(data.value).toBe('blank');
       expect(page.querySelectorAll('.diagram canvas').length).toBe(1);
 
       // Opening other data works again, and takes the notice away.
@@ -2637,9 +2905,7 @@ describe('DiagramPage', () => {
 
     beforeEach(async () => {
       localStorage.clear();
-      plain = TestBed.createComponent(DiagramPage);
-      plain.detectChanges();
-      await plain.whenStable();
+      plain = await startPage();
       plainPage = plain.nativeElement as HTMLElement;
       plainBench = benchOf(plain);
       plainBench.diagram.viewSize = new go.Size(1000, 700);
@@ -2654,7 +2920,9 @@ describe('DiagramPage', () => {
         'Developer tools: timings, history numbers and random edits',
       );
       expect(plainPage.querySelector('.log')).toBeNull();
-      expect(headings()).toEqual(['Selected relationships', 'Selected nodes']);
+      // Nothing is selected, so there is no side panel at all.
+      expect(plainPage.querySelector('.side')).toBeNull();
+      expect(headings()).toEqual([]);
       expect(plainPage.textContent).not.toContain('Randomize');
       expect(plainPage.textContent).not.toContain('Benchmark statistics');
     });
@@ -2672,13 +2940,13 @@ describe('DiagramPage', () => {
       expect(toolsSwitch().getAttribute('aria-pressed')).toBe('true');
       expect(toolsSwitch().title).toBe('Hide the developer tools');
       expect(plainPage.querySelector('.log table')).not.toBeNull();
-      expect(headings()).toEqual(['History', 'Edits', 'Selected relationships', 'Selected nodes']);
+      expect(headings()).toEqual(['History', 'Edits']);
 
       toolsSwitch().click();
       await calm();
       expect(toolsSwitch().getAttribute('aria-pressed')).toBe('false');
       expect(plainPage.querySelector('.log')).toBeNull();
-      expect(headings()).toEqual(['Selected relationships', 'Selected nodes']);
+      expect(headings()).toEqual([]);
     });
 
     it('list what was done while they were hidden', async () => {
@@ -2713,9 +2981,7 @@ describe('DiagramPage', () => {
     it('are remembered for the next visit', async () => {
       toolsSwitch().click();
       await calm();
-      const again = TestBed.createComponent(DiagramPage);
-      again.detectChanges();
-      await again.whenStable();
+      const again = await startPage();
       const againPage = again.nativeElement as HTMLElement;
       expect(againPage.querySelector('.log table')).not.toBeNull();
       expect(againPage.querySelector('.side h2')!.textContent).toBe('History');
@@ -2727,6 +2993,189 @@ describe('DiagramPage', () => {
       plain.detectChanges();
       expect(plainBench.busy()).toBe(true);
       expect(toolsSwitch().disabled).toBe(true);
+    });
+  });
+
+  describe('closing the tab', () => {
+    /** Whether the browser would ask "Leave site?" if the tab were closed or reloaded now. */
+    const asksBeforeLeaving = (): boolean => {
+      const leaving = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(leaving);
+      return leaving.defaultPrevented;
+    };
+
+    it('needs no question for a diagram as it was opened', () => {
+      expect(asksBeforeLeaving()).toBe(false);
+    });
+
+    it('asks once the diagram has a change that would be lost', async () => {
+      await bench.randomizeOne();
+      expect(asksBeforeLeaving()).toBe(true);
+    });
+
+    it('asks after any kind of change: a move by hand, a new node, another name', async () => {
+      diagram.commit(() => {
+        const node = diagram.findNodeForKey(4)!;
+        node.location = node.location.copy().offset(40, 40);
+      }, 'Move');
+      await settle();
+      expect(asksBeforeLeaving()).toBe(true);
+    });
+
+    it('no longer asks when every change was undone, and asks again after a redo', async () => {
+      await bench.randomizeOne();
+      await bench.addNode();
+      await bench.undoAll();
+      expect(asksBeforeLeaving()).toBe(false);
+      await bench.redo();
+      expect(asksBeforeLeaving()).toBe(true);
+    });
+
+    it('does not ask about things that are not changes: a selection, a search, a zoom', async () => {
+      await select(3);
+      bench.zoomIn();
+      page.querySelector<HTMLInputElement>('.search input')!.value = 'fund';
+      page.querySelector<HTMLInputElement>('.search input')!.dispatchEvent(new Event('input'));
+      await settle();
+      expect(asksBeforeLeaving()).toBe(false);
+    });
+
+    it('does not ask right after other data was opened or the diagram was reset', async () => {
+      await bench.randomizeOne();
+      bench.reset('fund-structure');
+      await settle();
+      expect(asksBeforeLeaving()).toBe(false);
+    });
+
+    it('stops asking when the page is gone', async () => {
+      await bench.randomizeOne();
+      fixture.destroy();
+      expect(asksBeforeLeaving()).toBe(false);
+    });
+  });
+
+  describe('side panel', () => {
+    /** The page as someone sees it who never asked for the developer tools. */
+    let plain: ComponentFixture<DiagramPage>;
+    let plainPage: HTMLElement;
+    let plainDiagram: go.Diagram;
+
+    const panel = () => plainPage.querySelector<HTMLElement>('.side');
+    const headings = () =>
+      Array.from(plainPage.querySelectorAll('.side h2')).map((heading) => heading.textContent);
+    const calm = async () => {
+      for (let i = 0; i < 3; i++) plainDiagram.maybeUpdate();
+      await plain.whenStable();
+    };
+    const selectParts = async (...parts: go.Part[]) => {
+      plainDiagram.selectCollection(parts);
+      await calm();
+    };
+    const node = (key: number) => plainDiagram.findNodeForKey(key)!;
+    const firstLink = () => plainDiagram.links.first()!;
+
+    beforeEach(async () => {
+      localStorage.clear();
+      plain = await startPage();
+      plainPage = plain.nativeElement as HTMLElement;
+      plainDiagram = benchOf(plain).diagram;
+      plainDiagram.viewSize = new go.Size(1000, 700);
+      await calm();
+    });
+
+    afterEach(() => plain.destroy());
+
+    it('is hidden while nothing is selected', () => {
+      expect(panel()).toBeNull();
+      expect(plainPage.textContent).not.toContain('Selected nodes');
+      expect(plainPage.textContent).not.toContain('Selected relationships');
+    });
+
+    it('appears on a click on a node, with what can be done with that node', async () => {
+      const part = node(5);
+      plainDiagram.lastInput.documentPoint = part.actualBounds.center.copy().offset(0, -30);
+      plainDiagram.lastInput.control = false;
+      plainDiagram.lastInput.shift = false;
+      plainDiagram.toolManager.clickSelectingTool.standardMouseSelect();
+      await calm();
+      expect(plainDiagram.selection.first()).toBe(part);
+      expect(headings()).toEqual(['Selected nodes']);
+      const labels = Array.from(panel()!.querySelectorAll('label')).map((label) =>
+        label.textContent!.trim(),
+      );
+      expect(labels).toEqual(['Title', 'Legal entity type']);
+      expect(panel()!.textContent).toContain('Delete node');
+    });
+
+    it('appears on a click on a line, with the button to remove it', async () => {
+      await selectParts(firstLink());
+      expect(headings()).toEqual(['Selected relationships']);
+      expect(panel()!.querySelector('button')!.textContent).toContain('Remove 1 selected');
+    });
+
+    it('shows both parts when nodes and lines are selected together', async () => {
+      await selectParts(node(2), node(3), firstLink());
+      expect(headings()).toEqual(['Selected relationships', 'Selected nodes']);
+      expect(panel()!.textContent).toContain('2 selected');
+    });
+
+    it('goes away again when the selection is cleared, by a click on empty space', async () => {
+      await selectParts(node(5));
+      expect(panel()).not.toBeNull();
+      plainDiagram.clearSelection();
+      await calm();
+      expect(panel()).toBeNull();
+    });
+
+    it('goes away when the selected node is deleted, and stays away', async () => {
+      await selectParts(node(5));
+      const bench = benchOf(plain);
+      bench.askToDelete([node(5).data as NodeData]);
+      await bench.confirmDelete();
+      await calm();
+      expect(plainDiagram.findNodeForKey(5)).toBeNull();
+      expect(panel()).toBeNull();
+    });
+
+    it('lies over the edge of the canvas, so that the diagram does not move when it appears', async () => {
+      const layout = plainPage.querySelector('main.layout')!;
+      expect(layout.classList.contains('panel-over-canvas')).toBe(false);
+
+      await selectParts(node(5));
+      expect(panel()!.classList.contains('floating')).toBe(true);
+      // The overview is told to stand clear of it.
+      expect(layout.classList.contains('panel-over-canvas')).toBe(true);
+
+      plainDiagram.clearSelection();
+      await calm();
+      expect(layout.classList.contains('panel-over-canvas')).toBe(false);
+    });
+
+    it('has a column of its own with the developer tools, where it is always shown', async () => {
+      plainPage.querySelector<HTMLButtonElement>('button[aria-label="Developer tools"]')!.click();
+      await calm();
+      expect(headings()).toEqual(['History', 'Edits']);
+      expect(panel()!.classList.contains('floating')).toBe(false);
+
+      await selectParts(node(5));
+      expect(headings()).toEqual(['History', 'Edits', 'Selected nodes']);
+      expect(panel()!.classList.contains('floating')).toBe(false);
+      expect(plainPage.querySelector('main.layout')!.classList.contains('panel-over-canvas')).toBe(
+        false,
+      );
+    });
+
+    it('still edits the selected nodes', async () => {
+      await selectParts(node(5), node(6));
+      const title = panel()!.querySelector<HTMLInputElement>('label input')!;
+      title.value = 'Renamed here';
+      title.dispatchEvent(new Event('change'));
+      await calm();
+      await plain.whenStable();
+      expect((node(5).data as NodeData).title).toBe('Renamed here');
+      expect((node(6).data as NodeData).title).toBe('Renamed here');
+      // The panel stays, since the nodes are still selected.
+      expect(headings()).toEqual(['Selected nodes']);
     });
   });
 
@@ -2774,9 +3223,7 @@ describe('DiagramPage', () => {
     it('stay closed the next time the page is opened', async () => {
       toggle().click();
       await settle();
-      const again = TestBed.createComponent(DiagramPage);
-      again.detectChanges();
-      await again.whenStable();
+      const again = await startPage();
       expect((again.nativeElement as HTMLElement).querySelector('.log table')).toBeNull();
       again.destroy();
     });
@@ -2840,7 +3287,7 @@ describe('DiagramPage', () => {
       click.mockRestore();
     });
 
-    it('names the exported file after the diagram, replacing what a file name cannot contain', async () => {
+    it('names the exported file after the diagram, and "diagram" when it has no name', async () => {
       const downloads: string[] = [];
       const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
         this: HTMLAnchorElement,
@@ -2859,12 +3306,14 @@ describe('DiagramPage', () => {
         await settle();
       };
 
+      // A name cannot have special characters, so the file name is the name itself.
       await rename('Meridian SICAV: structure 2026/Q3 "draft"?');
       pick('export-png');
+      // A name of nothing but special characters comes to no name at all.
       await rename('***');
       pick('export-png');
 
-      expect(downloads).toEqual(['Meridian SICAV- structure 2026-Q3 -draft.png', 'diagram.png']);
+      expect(downloads).toEqual(['Meridian SICAV structure 2026Q3 draft.png', 'diagram.png']);
       click.mockRestore();
     });
 

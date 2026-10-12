@@ -21,7 +21,8 @@ import {
   syncLinkCards,
   textColorFor,
 } from './diagram-factory';
-import { createLinks, createNodes, formatOwnership, LinkData, NodeData } from './node-data';
+import { createLinks, createNodes } from '../../testing/generated-funds';
+import { formatOwnership, LinkData, NodeData } from './node-data';
 import { DEFAULT_COLOR, DEFAULT_SHAPE, SHAPES } from './constants';
 
 const NODE_SIZE = { width: 173.5, height: 97.5 };
@@ -431,7 +432,7 @@ describe('relationship lines', () => {
     const small = createTestDiagram({ count: 30, linkType: 'avoid' });
     for (const link of linksOf(small.diagram)) expect(link.routing).toBe(go.Routing.AvoidsNodes);
 
-    const big = createTestDiagram({ count: 500, linkType: 'straight' });
+    const big = createTestDiagram({ count: 1000, linkType: 'straight' });
     for (const type of ['avoid', 'orthogonal'] as const) {
       big.model.commit((m) => m.set(m.modelData, 'linkType', type), 'change line type');
       for (const link of linksOf(big.diagram)) {
@@ -560,7 +561,7 @@ describe('relationship lines', () => {
       }
     });
 
-    it('are only set apart for the right-angled line types, on diagrams of fewer than 500 funds', () => {
+    it('are only set apart for the right-angled line types, on diagrams of fewer than 1000 funds', () => {
       const router = (test: TestDiagram) => {
         let found: go.Router | null = null;
         test.diagram.routers.each((candidate) => {
@@ -576,7 +577,7 @@ describe('relationship lines', () => {
         const test = createTestDiagram({ linkType });
         expect(router(test).canRoute(test.diagram)).toBe(false);
       }
-      const big = createTestDiagram({ count: 500, linkType: 'straight' });
+      const big = createTestDiagram({ count: 1000, linkType: 'straight' });
       big.model.commit((m) => m.set(m.modelData, 'linkType', 'avoid'), 'change line type');
       expect(router(big).canRoute(big.diagram)).toBe(false);
     });
@@ -1172,7 +1173,7 @@ describe('relationship lines', () => {
 });
 
 describe('relationship lines on a big diagram', () => {
-  it.each([500, 1000])(
+  it.each([1000, 2000])(
     'go around the nodes of %i funds, in every layout that keeps rows',
     (count) => {
       for (const layout of ['top-bottom', 'bottom-top', 'grid'] as const) {
@@ -1185,7 +1186,7 @@ describe('relationship lines on a big diagram', () => {
   );
 
   it('are still right-angled, and still attach around the middle of a top or bottom side', () => {
-    const { diagram } = createTestDiagram({ count: 500, linkType: 'avoid' });
+    const { diagram } = createTestDiagram({ count: 1000, linkType: 'avoid' });
     for (const link of linksOf(diagram)) {
       for (let i = 1; i < link.pointsCount; i++) {
         const [a, b] = [link.getPoint(i - 1), link.getPoint(i)];
@@ -1203,7 +1204,7 @@ describe('relationship lines on a big diagram', () => {
   });
 
   it('stand side by side at a node with several of them, each at a place of its own', () => {
-    const { diagram } = createTestDiagram({ count: 500, linkType: 'avoid' });
+    const { diagram } = createTestDiagram({ count: 1000, linkType: 'avoid' });
     let shared = 0;
     for (const node of nodesOf(diagram)) {
       const places = new Map<string, number>();
@@ -1227,7 +1228,7 @@ describe('relationship lines on a big diagram', () => {
   });
 
   it('take a new way when a node is moved into theirs', () => {
-    const test = createTestDiagram({ count: 500, linkType: 'avoid' });
+    const test = createTestDiagram({ count: 1000, linkType: 'avoid' });
     expect(countLinksOverNodes(test.diagram)).toBe(0);
     const [first, second] = nodesOf(test.diagram);
     test.diagram.commit(() => {
@@ -1243,10 +1244,10 @@ describe('relationship lines on a big diagram', () => {
     for (const layout of ['top-bottom', 'force'] as const) {
       const test = createTestDiagram({ count: 100, linkType: 'avoid', layout });
       const mapped = vi.spyOn(test.diagram, 'getPositions');
-      test.diagram.layout = createLayout(layout, 500);
+      test.diagram.layout = createLayout(layout, 1000);
       test.history.load(
         createModel(
-          { nodes: createNodes(500), links: createLinks(500) },
+          { nodes: createNodes(1000), links: createLinks(1000) },
           {
             layoutType: layout,
             linkType: 'avoid',
@@ -1258,13 +1259,13 @@ describe('relationship lines on a big diagram', () => {
         ),
       );
       test.settle();
-      expect(test.diagram.nodes.count).toBe(500);
+      expect(test.diagram.nodes.count).toBe(1000);
       expect(mapped).not.toHaveBeenCalled();
     }
   });
 
   it('are still routed around the nodes by GoJS when a small diagram is opened after a big one', () => {
-    const test = createTestDiagram({ count: 500, linkType: 'avoid' });
+    const test = createTestDiagram({ count: 1000, linkType: 'avoid' });
     test.diagram.layout = createLayout('top-bottom', 30);
     test.history.load(
       createModel(
@@ -1284,8 +1285,15 @@ describe('relationship lines on a big diagram', () => {
     expect(countLinksOverNodes(test.diagram)).toBeLessThanOrEqual(1);
   });
 
+  it('are routed by GoJS itself up to 999 funds, as on a small diagram', () => {
+    const { diagram } = createTestDiagram({ count: 500, linkType: 'avoid' });
+    for (const link of linksOf(diagram)) expect(link.routing).toBe(go.Routing.AvoidsNodes);
+    // GoJS now and then finds no way around the nodes for a line.
+    expect(countLinksOverNodes(diagram)).toBeLessThanOrEqual(3);
+  }, 60_000);
+
   it('leave straight and curved lines alone', () => {
-    const { diagram } = createTestDiagram({ count: 500, linkType: 'straight' });
+    const { diagram } = createTestDiagram({ count: 1000, linkType: 'straight' });
     for (const link of linksOf(diagram)) expect(link.pointsCount).toBeLessThanOrEqual(4);
     expect(countLinksOverNodes(diagram)).toBeGreaterThan(0);
   });

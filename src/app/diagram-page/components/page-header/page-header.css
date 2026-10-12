@@ -18,9 +18,19 @@ h1 {
   font-size: 16px;
 }
 
-.versions {
-  color: var(--muted);
-  font-size: 12px;
+/* The way to the list of all diagrams. */
+.all-diagrams {
+  font-size: 13px;
+  color: #1d4ed8;
+  white-space: nowrap;
+}
+
+/* How many legal entities the diagram has: dark blue and bold. */
+.node-count {
+  color: #1e3a8a;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* Styles, Actions, reset, new and the developer tools stay together at the right end of the bar, also when it wraps. */

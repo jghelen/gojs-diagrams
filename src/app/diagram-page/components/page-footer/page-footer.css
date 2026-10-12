@@ -1,0 +1,14 @@
+/* Not a box of its own: the page lays out what is inside. */
+:host {
+  display: contents;
+}
+
+/* Small print at the bottom of the page. */
+.page-footer {
+  padding: 3px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+}

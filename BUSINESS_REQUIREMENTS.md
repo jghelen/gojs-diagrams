@@ -44,16 +44,17 @@ the business: **does undo/redo stay fast and reliable on large structures** (up 
 
 ## 3. Screen overview
 
-| Area                          | Content                                                                                                                            |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Header, left                  | **Data** dropdown: which diagram to open                                                                                           |
-| Header, right                 | **Styles**, **Actions** menu, **Reset diagram** (reload icon), **New diagram**, **Developer tools** switch                         |
-| Bar above the canvas          | Diagram **name**, **description**, and **search**                                                                                  |
-| Left navigation on the canvas | Add node, Undo, Redo, Zoom in, Zoom out, Zoom to fit, Layout, Lines, Shape, Auto arrange, Expand all, Collapse all (in that order) |
-| Canvas                        | The diagram                                                                                                                        |
-| Overview, bottom right        | A small picture of the whole diagram for moving around                                                                             |
-| Side panel, right             | Selected relationships, selected nodes; with the developer tools also History and bulk edits                                       |
-| Below the canvas              | With the developer tools only: timing table (see [14](#14-performance-measurement))                                                |
+| Area                          | Content                                                                                                                                                                |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Header, left                  | **All diagrams**: the way to the list of diagrams (see [4.5](#45-the-list-of-diagrams)); next to it **LE: n**, the number of legal entities                            |
+| Header, right                 | **Styles**, **Actions** menu, **Reset diagram** (reload icon), **New diagram**, **Developer tools** switch                                                             |
+| Bar above the canvas          | Diagram **name**, **description**, and **search**                                                                                                                      |
+| Left navigation on the canvas | Add node, Undo, Redo, Zoom in, Zoom out, Zoom to fit, Layout, Lines, Shape, Auto arrange, Expand all, Collapse all (in that order)                                     |
+| Canvas                        | The diagram                                                                                                                                                            |
+| Overview, bottom right        | A small picture of the whole diagram for moving around                                                                                                                 |
+| Footer                        | In small print: the versions of Angular and GoJS the application is built with                                                                                         |
+| Side panel, right             | Hidden until a node or a line is selected; then selected nodes and selected relationships. With the developer tools always shown, starting with History and bulk edits |
+| Below the canvas              | With the developer tools only: timing table (see [14](#14-performance-measurement))                                                                                    |
 
 Every icon without a text label shows its name when the user hovers over it.
 
@@ -61,11 +62,17 @@ Every icon without a text label shows its name when the user hovers over it.
 
 ### 4.1 Opening a diagram
 
-- **BR-4.1** The application opens with the diagram of 30 generated funds.
-- **BR-4.2** The **Data** dropdown offers: a sample fund structure (24 funds: a fund of funds and
-  what it holds, four levels deep), generated diagrams of 30, 100, 200, 500, 1000 and 2000 funds,
-  and an empty diagram.
-- **BR-4.2a** Every dataset reads like real holdings of investment funds. A line runs from the
+- **BR-4.1** Every diagram comes from the database. The application has no data of its own and
+  starts with the list of diagrams (see [4.5](#45-the-list-of-diagrams)), where a diagram is
+  chosen. There is no dropdown to pick data from.
+- **BR-4.1a** The header shows **LE:** and the number of legal entities (nodes) in the diagram, in
+  dark blue and bold. It follows every change: another diagram, added and deleted nodes, undo and
+  redo.
+- **BR-4.2** The sample diagrams of the database are: a sample fund structure (24 funds: a fund of
+  funds and what it holds, four levels deep), generated diagrams of 30, 100, 200, 500, 1000 and
+  2000 funds, and an empty diagram. Each carries its number of legal entities in its name, as in
+  "30 generated funds LE 30".
+- **BR-4.2a** Every sample diagram reads like real holdings of investment funds. A line runs from the
   fund that invests to the fund it invests in; its percentage is the part of that fund the
   investor owns. Names and percentages are invented; no real fund is shown.
 - **BR-4.2b** The rules the data follows:
@@ -79,9 +86,9 @@ Every icon without a text label shows its name when the user hovers over it.
   8. percentages have two decimals, and for some lines there is no data.
 - **BR-4.3** Every fund in a newly opened diagram is a very light gray square with a dark gray
   border.
-- **BR-4.4** A diagram opens laid out top to bottom, with lines that go around the nodes, whatever
-  its size. Opening other data keeps the layout and the line type that were chosen, except for a
-  layout that would be slow on the new data (BR-9.2b).
+- **BR-4.4** A diagram opens in the layout and with the line type it was stored with; the sample
+  diagrams are laid out top to bottom, with lines that go around the nodes, whatever their size.
+  The exception is a layout that would be slow on a diagram of that size (BR-9.2b).
 
 ### 4.2 Loading animation
 
@@ -100,19 +107,86 @@ Every icon without a text label shows its name when the user hovers over it.
 - **BR-4.10a** A new diagram has no name; the user has to give it one. Until then the name box is
   empty, marked in red, and says "Diagram name (required)".
 - **BR-4.11** Changing the name or the description is one undo step each.
+- **BR-4.11a** The name of a diagram consists of letters, digits and spaces only. Letters of any
+  alphabet are letters. Special characters (punctuation, symbols, emoji) are not allowed.
+- **BR-4.11b** A special character typed or pasted into the name box is not taken over: it does
+  not appear, the cursor stays in place, and a note below the boxes says "Letters, digits and
+  spaces only". The note goes when the name is fine again or the box is left.
+- **BR-4.11c** A diagram that is opened with a name containing special characters, for instance
+  one loaded from a database, is shown and kept with those characters removed. A note below the
+  name box says that the name was not valid and shows the name as it arrived. It stays until the
+  user dismisses it, changes the name, or opens another diagram. This cleaning is not an undo step.
+- **BR-4.11d** The description may contain any characters.
 
 ### 4.4 Reset and new diagram
 
-- **BR-4.12** **Reset diagram** reloads the chosen data as it was at the start. All changes and
-  the undo history are discarded. The chosen layout and line type are kept.
+- **BR-4.12** **Reset diagram** fetches the diagram from the database again. All changes and the
+  undo history are discarded, also a layout and a line type chosen in the meantime. On a new
+  diagram it empties the canvas again.
 - **BR-4.13** **New diagram** opens an empty canvas so a structure can be built from scratch with
-  Add node and hand-drawn relationships.
+  Add node and hand-drawn relationships. It is offered in the editor and in the list of diagrams,
+  and has an address of its own. A new diagram cannot be stored yet.
 - **BR-4.14** While the diagram is empty, the actions that need content (the three zooms, Layout,
   Lines, Auto arrange) are disabled. Add node stays available.
 - **BR-4.15** While the diagram has no nodes, the **Styles** button and the **Actions** menu
   (Export PNG, Print) are disabled too: there is nothing to style, export or print. Both become
   available with the first node, and are disabled again when the last node is deleted or its
   adding is undone. Reset diagram and New diagram stay available.
+
+### 4.5 The list of diagrams
+
+- **BR-4.16** A page lists all diagrams that are stored in the database, as a table with the
+  columns **Title**, **Created at** and **Updated at**. It is reached with **All diagrams** in
+  the header, and has an address of its own.
+- **BR-4.17** The diagram that was changed last is listed first.
+- **BR-4.18** The table shows 20 diagrams per page. Only the page that is shown is fetched: the
+  list is cut into pages by the backend, not in the browser.
+- **BR-4.19** Below the table the user can go to the previous and to the next page, and reads
+  which page of how many is shown and which diagrams of how many. On the first page there is no
+  previous page to go to, on the last no next.
+- **BR-4.20** The page that is shown is part of the address, so the browser's Back button, a
+  reload and a bookmark lead to the same page.
+- **BR-4.21** The dates are shown in the user's own time, to the minute.
+- **BR-4.22** While the list is being fetched the page says so. If it cannot be fetched, the page
+  says that and offers to try again. A database without diagrams gives the message that there
+  are none yet; a page beyond the last one gives a message and the way back to the first.
+
+- **BR-4.22a** The list can be searched by title. A search box stands below the heading
+  **Title**. The list then shows the diagrams that have the typed text anywhere in their title;
+  capitals and small letters are not told apart, and spaces around the text do not count.
+- **BR-4.22b** The search covers all diagrams of the database, not only the page that is shown.
+  It is done by the backend, like the pages.
+- **BR-4.22c** The list follows the typing by itself, a moment after the last key, and at once
+  on Enter. The search box keeps the cursor while the list changes.
+- **BR-4.22d** A search starts at the first page of what it found. Previous and Next stay within
+  what was found, and the count below the table is of what was found.
+- **BR-4.22e** The search text is part of the address, so Back, a reload, a bookmark and the
+  return from an opened diagram show the same search again.
+- **BR-4.22f** If no title has the text, the page says so and names the text. Emptying the box
+  shows all diagrams again.
+
+### 4.6 Opening a stored diagram
+
+- **BR-4.23** The title of a diagram in the list is a link. It opens that diagram in the editor,
+  in the same browser tab. Every stored diagram has an address of its own.
+- **BR-4.24** Until the diagram has arrived, the canvas is empty and all controls are disabled.
+- **BR-4.25** A stored diagram is shown as it was stored: name, description, layout type, line
+  type, expanded relationship cards and the field under the names; every fund with its colour,
+  shape and comment, at its stored position. If funds have no stored position, the chosen layout
+  arranges the diagram.
+- **BR-4.26** A relationship between two funds is the same in every diagram: it is drawn in every
+  diagram that contains both funds. A diagram can also have lines that exist in that diagram
+  only; they are drawn like relationships drawn by hand and are not relationships of the funds.
+- **BR-4.27** A stored name with characters that a name may not have is shown without them, with
+  the note of BR-4.11c.
+- **BR-4.28** **Reset diagram** fetches the stored diagram again and discards all changes (BR-4.12).
+  Going from one diagram to another, with the browser's Back and Forward buttons for instance,
+  opens the other diagram in the same way.
+- **BR-4.29** If the diagram does not exist, or cannot be fetched, the canvas stays empty and
+  usable, and a note above it says which of the two happened.
+- **BR-4.30** Leaving a diagram that has changes for another page of the application asks for
+  confirmation first, because the changes would be lost. A diagram without changes is left
+  without a question.
 
 ## 5. Nodes (funds)
 
@@ -171,6 +245,12 @@ Every icon without a text label shows its name when the user hovers over it.
 
 ### 5.7 Editing nodes
 
+- **BR-5.17a** The side panel is hidden while nothing is selected. It is shown when a node or a
+  relationship is clicked, with the part for nodes, the part for relationships, or both, according
+  to what is selected, and hidden again when the selection is cleared.
+- **BR-5.17b** The panel then lies over the right edge of the canvas and the diagram keeps its
+  place; the overview moves out from under it. With the developer tools shown the panel is always
+  there and has a column of its own.
 - **BR-5.18** With one or more nodes selected, the side panel edits title, legal entity type and colour.
   The change applies to all selected nodes at once and is one undo step.
 - **BR-5.18a** The shape of the selected nodes is set from the **Shape** item of the left
@@ -259,8 +339,8 @@ Every icon without a text label shows its name when the user hovers over it.
   fund or at different funds: each is moved to a free place beside its line.
 - **BR-6.7b** A percentage does not lie on a fund, where the fund would hide it. Where the place
   next to the arrowhead is taken or lies on a fund, the percentage goes to the other side of the
-  line or further back along the line, following its bends. On diagrams of 500 funds or more,
-  where lines cross funds, a few percentages may find no such place; they still never cover each
+  line or further back along the line, following its bends. Where lines cross funds
+  (see BR-9.6b), a few percentages may find no such place; they still never cover each
   other.
 - **BR-6.7c** The same diagram always shows its percentages in the same places.
 
@@ -297,7 +377,7 @@ Every icon without a text label shows its name when the user hovers over it.
   on a diagram of a single node, while none of the nodes is joined to another, and while the only
   relationships are hand-drawn ones, which have no card. Their hover text then says so.
 - **BR-6.10g** The cards grow and shrink with the zoom, like the nodes. They stay shown while the
-  diagram is edited, and when the layout is switched or arranged again. Opening other data
+  diagram is edited, and when the layout is switched or arranged again. Opening another diagram
   starts collapsed.
 
 ### 6.4 Drawing a relationship
@@ -408,11 +488,12 @@ diagram has no nodes (BR-4.15).
   on hover: Orthogonal rounded, Orthogonal square, Straight, Curved.
 - **BR-9.6** Straight and curved lines cannot go around nodes; their names say "(crosses
   nodes)". The two orthogonal types route lines around nodes on diagrams of every size.
-- **BR-9.6b** Going around nodes on a diagram of 500 funds or more needs funds that stand in rows,
+- **BR-9.6b** Going around nodes on a diagram of 1000 funds or more needs funds that stand in rows,
   as in every layout but Force-directed. In that layout lines of such a diagram may cross funds.
 - **BR-9.6a** Switching the line type must never freeze the screen, whatever the size of the
-  diagram. On a diagram of 500 funds or more the lines are therefore routed by a faster method
-  than on smaller ones; the result looks the same.
+  diagram. On a diagram of 1000 funds or more the lines are therefore routed by a faster method
+  than on smaller ones; the result looks the same. Below that size, routing around nodes can take
+  several seconds on the bigger diagrams (about 500 funds), during which the page does not respond.
 - **BR-9.7** Switching the line type is one undo step.
 - **BR-9.8** Only one of the columns (Layout, Lines, Shape) is open at a time. A column opens
   beside the navigation and always stays inside the canvas.
@@ -446,7 +527,7 @@ diagram has no nodes (BR-4.15).
 - **BR-10.7** Clicking any other node removes the focus from the search match.
 - **BR-10.8** Clearing the search box removes the outline and the count.
 - **BR-10.9** Searching is display only and is never an undo step.
-- **BR-10.10** Reset diagram, opening other data and New diagram empty the search box and remove
+- **BR-10.10** Reset diagram, opening another diagram and New diagram empty the search box and remove
   the count and the outline.
 
 ## 11. Undo and redo
@@ -463,6 +544,10 @@ diagram has no nodes (BR-4.15).
   snapshot"). The same check is made after redoing everything.
 - **BR-11.4a** That check compares everything down to the last digit, including where every node
   stands. A node is put back to exactly the place it had, not to one that merely looks the same.
+- **BR-11.4b** While the diagram has changes that could be undone, closing or reloading the browser
+  tab, or leaving the page, must be confirmed: the browser asks whether to leave and lose the
+  changes. No question is asked for a diagram as it was opened, or once every change is undone.
+  The question is the browser's own dialog; its text cannot be set by the application.
 - **BR-11.5** Things that only change what is shown are not undo steps: selection, highlight,
   search, zoom, scrolling, the loading animation.
 - **BR-11.5a** Undoing the first action after a diagram was opened must leave the diagram fully
@@ -470,7 +555,7 @@ diagram has no nodes (BR-4.15).
   undo step.)
 - **BR-11.6** Making a new change after an undo discards the steps that were undone, as in any
   editor.
-- **BR-11.7** Opening other data, Reset diagram and New diagram start with an empty history.
+- **BR-11.7** Opening another diagram, Reset diagram and New diagram start with an empty history.
 
 ## 12. Export and print
 
@@ -482,11 +567,15 @@ while the diagram has no nodes (BR-4.15).
 - **BR-12.2** The picture is sharp: it is drawn at twice the diagram's size so that small text
   remains readable.
 - **BR-12.3** The picture shows the diagram as it is, without selection outlines or dimming.
-- **BR-12.3a** The downloaded file is named after the diagram, with the ending `.png`. Characters
+- **BR-12.3a** The downloaded file is named after the diagram, with the ending `.png`. A name has no
+  special characters to begin with (BR-4.11a); should one get there all the same, characters
   that a file name cannot contain (such as `/ \ : * ? " < > |`) and other special characters are
   replaced by a dash, so that the download always works. Letters of any alphabet, digits, spaces
   and `. _ - ( )` are kept. If nothing usable is left, the file is called `diagram.png`.
 - **BR-12.4** **Print** opens the browser's print dialog with a picture of the whole diagram.
+- **BR-12.4a** The printed sheet shows the picture only, whole and on a single sheet. The address
+  of the page, the date and time, the title and the page number, which a browser adds in the margin
+  of a printout, are not printed.
 - **BR-12.5** **Save** and **Save As** are listed but disabled.
 
 ## 13. Confirmations and buttons
@@ -503,7 +592,7 @@ while the diagram has no nodes (BR-4.15).
   further actions, undo, redo and Reset diagram keep working.
 - **BR-13.6** If data cannot be opened because of an unexpected error, the page must not stay
   locked. An empty diagram is opened instead, in the default layout and line type, a notice above
-  the canvas says that the diagram could not be opened, and the user can open other data at once.
+  the canvas says that the diagram could not be opened, and the user can open another diagram at once.
 
 ## 14. Performance measurement
 
@@ -555,10 +644,10 @@ called the **developer tools**.
 
 ## 15. Not available yet
 
-| Item                             | Status                                                                 |
-| -------------------------------- | ---------------------------------------------------------------------- |
-| Save, Save As                    | Listed in the Actions menu, disabled. Diagrams are not stored anywhere |
-| Up and down arrows on a node     | Shown, without an action. The intended behaviour is to be defined      |
-| Add Batch target page            | A placeholder page that shows the fund's id                            |
-| Undo all / Redo all in one click | Not offered on screen; the user steps with Undo and Redo               |
-| Real fund data                   | The diagrams are a fixed sample and generated test data                |
+| Item                             | Status                                                                                                           |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Save, Save As                    | Listed in the Actions menu, disabled. Stored diagrams can be listed and opened, but changes are not written back |
+| Up and down arrows on a node     | Shown, without an action. The intended behaviour is to be defined                                                |
+| Add Batch target page            | A placeholder page that shows the fund's id                                                                      |
+| Undo all / Redo all in one click | Not offered on screen; the user steps with Undo and Redo                                                         |
+| Real fund data                   | The database holds sample diagrams: a fixed sample and generated test data                                       |

@@ -99,7 +99,8 @@
           "options": {
             "prebundle": {
               "exclude": ["gojs", "gojs-extensions"]
-            }
+            },
+            "proxyConfig": "proxy.conf.json"
           }
         },
         "lint": {

@@ -454,6 +454,17 @@ describe('DiagramActions', () => {
       expect(lastOp().op).toBe('Collapse all');
     });
 
+    it('never gives the diagram a name with special characters, whoever asks', async () => {
+      await actions.setDiagramInfo('name', 'Meridian: holdings/2026?');
+      expect(test.model.modelData.name).toBe('Meridian holdings2026');
+      // Asking for the same name with other special characters changes nothing.
+      await actions.setDiagramInfo('name', 'Meridian holdings2026!!!');
+      expect(test.history.length).toBe(1);
+      // The description is free text.
+      await actions.setDiagramInfo('description', 'As of 2026/Q3 (draft)');
+      expect(test.model.modelData.description).toBe('As of 2026/Q3 (draft)');
+    });
+
     it('renames and describes the diagram', async () => {
       await actions.setDiagramInfo('name', 'Meridian holdings');
       await actions.setDiagramInfo('description', 'As of the third quarter');

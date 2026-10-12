@@ -19,8 +19,9 @@ const DEFAULT_BULK_RUNS = 50;
 
 /**
  * The panel on the right: what can be done with the selected relationships and
- * nodes. With the developer tools shown, it starts with the numbers of the undo
- * history and the random edits of the benchmark.
+ * nodes. It appears when a node or a line is clicked and goes away when nothing
+ * is selected any more. With the developer tools shown it is always there, and
+ * starts with the numbers of the undo history and the random edits of the benchmark.
  */
 @Component({
   selector: 'app-side-panel',
@@ -45,6 +46,19 @@ export class SidePanel {
   protected readonly selectedLinks = this.selection.selectedLinks;
   protected readonly linksOfSelectedNodes = this.selection.linksOfSelectedNodes;
 
+  /** The panel is on screen while something is selected, and always with the developer tools. */
+  protected readonly shown = computed(
+    () => this.developerTools.shown() || this.selected() !== null || this.selectedLinks() > 0,
+  );
+  /**
+   * Whether the panel lies over the right edge of the canvas instead of taking
+   * a column of the page. It does when it comes and goes with the selection: a
+   * column that appeared on a click would make the canvas narrower, and the
+   * diagram would jump away from under the mouse. With the developer tools the
+   * panel is always there and has a column of its own.
+   */
+  protected readonly floating = computed(() => !this.developerTools.shown());
+
   /**
    * Most runs the bulk edit accepts: the number of nodes in the diagram, and
    * fewer on big diagrams, where that many runs would block the page for minutes.
@@ -52,7 +66,9 @@ export class SidePanel {
   protected readonly maxBulkRuns = computed(() => {
     const nodes = this.stats()?.nodes;
     // Until the diagram has been read for the first time, nothing limits the suggestion.
-    if (nodes === undefined) return DEFAULT_BULK_RUNS;
+    // Nor does an empty canvas, which is what the page shows while a diagram is
+    // on its way from the database: the number in the box is to survive that.
+    if (!nodes) return DEFAULT_BULK_RUNS;
     return Math.max(1, Math.min(nodes, Math.floor(BULK_EDIT_BUDGET / nodes)));
   });
   /**

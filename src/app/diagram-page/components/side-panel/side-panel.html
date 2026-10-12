@@ -1,149 +1,144 @@
-<aside class="side">
-  <!-- For measuring, not for editing: shown with the developer tools only. -->
-  @if (developerTools.shown()) {
-    <section>
-      <h2>History</h2>
-      <p
-        class="state"
-        [class.ok]="stateCheck().ok === true"
-        [class.bad]="stateCheck().ok === false"
-      >
-        {{ stateCheck().label }}
-      </p>
-      @if (stats(); as s) {
-        <dl>
-          <dt>Nodes</dt>
-          <dd>{{ s.nodes }}</dd>
-          <dt>Links</dt>
-          <dd>{{ s.links }}</dd>
-          <dt>Transactions in history</dt>
-          <dd>{{ s.historyLength }}</dd>
-          <dt>History index</dt>
-          <dd>{{ s.historyIndex }}</dd>
-          <dt>Recorded changes</dt>
-          <dd>{{ s.changedEvents }}</dd>
-          @if (s.heapMb !== null) {
-            <dt>JS heap</dt>
-            <dd>{{ s.heapMb.toFixed(1) }} MB</dd>
-          }
-        </dl>
-      }
-    </section>
+<!--
+  Shown only while it has something to say: a selection to work on, or, with the
+  developer tools, the numbers and random edits of the benchmark.
+-->
+@if (shown()) {
+  <aside class="side" [class.floating]="floating()" aria-label="Selection">
+    <!-- For measuring, not for editing: shown with the developer tools only. -->
+    @if (developerTools.shown()) {
+      <section>
+        <h2>History</h2>
+        <p
+          class="state"
+          [class.ok]="stateCheck().ok === true"
+          [class.bad]="stateCheck().ok === false"
+        >
+          {{ stateCheck().label }}
+        </p>
+        @if (stats(); as s) {
+          <dl>
+            <dt>Nodes</dt>
+            <dd>{{ s.nodes }}</dd>
+            <dt>Links</dt>
+            <dd>{{ s.links }}</dd>
+            <dt>Transactions in history</dt>
+            <dd>{{ s.historyLength }}</dd>
+            <dt>History index</dt>
+            <dd>{{ s.historyIndex }}</dd>
+            <dt>Recorded changes</dt>
+            <dd>{{ s.changedEvents }}</dd>
+            @if (s.heapMb !== null) {
+              <dt>JS heap</dt>
+              <dd>{{ s.heapMb.toFixed(1) }} MB</dd>
+            }
+          </dl>
+        }
+      </section>
 
-    <section>
-      <h2>Edits</h2>
-      <div class="buttons">
-        <button type="button" [disabled]="busy()" (click)="randomizeOne()">Randomize 1 node</button>
-        <button type="button" [disabled]="busy()" (click)="randomizeAll()">Randomize all</button>
-      </div>
-      <div class="bulk">
-        <input
-          #bulkInput
-          type="number"
-          min="1"
-          step="1"
-          aria-label="Number of bulk transactions"
-          [max]="maxBulkRuns()"
-          [value]="bulkRuns()"
-          [disabled]="busy()"
-          (change)="setBulkRuns(bulkInput)"
-        />
-        <button type="button" [disabled]="busy()" (click)="runBulk()">× randomize all</button>
-      </div>
-      <p class="hint">
-        <strong>Randomize all</strong> changes all four fields on every node and switches to another
-        layout, as one transaction. Each run of the bulk edit is one transaction that changes all
-        four fields on every node and moves it a little. Runs: 1 to {{ maxBulkRuns() }}; other
-        entries are corrected.
-      </p>
-    </section>
-  }
-
-  <section>
-    <h2>Selected relationships</h2>
-    @if (selectedLinks() > 0) {
-      <button type="button" class="wide" [disabled]="busy()" (click)="removeSelectedLinks()">
-        Remove {{ selectedLinks() }} selected (Delete)
-      </button>
-    } @else {
-      <p class="hint">
-        Click lines to select them, then press Delete or use the button that appears here. Removing
-        is undoable. To add a relationship, drag from the edge of a node to another node; lines
-        added this way are dotted.
-      </p>
-    }
-  </section>
-
-  <section>
-    <h2>Selected nodes</h2>
-    @if (selected(); as sel) {
-      <p class="hint selection">
-        {{ sel.count }} selected. A change here applies to all of them and is one undo step.
-      </p>
-      <label>
-        Title
-        <input
-          type="text"
-          [value]="sel.title ?? ''"
-          [placeholder]="sel.title === null ? 'Mixed' : ''"
-          (change)="editSelected('title', $any($event.target).value)"
-        />
-      </label>
-      <label>
-        Legal entity type
-        <input
-          type="text"
-          [value]="sel.legalEntityType ?? ''"
-          [placeholder]="sel.legalEntityType === null ? 'Mixed' : ''"
-          (change)="editSelected('legalEntityType', $any($event.target).value)"
-        />
-      </label>
-      <div class="field">
-        Color{{ sel.color === null ? ' (mixed)' : '' }}
-        <div class="swatches">
-          @for (color of colors; track color) {
-            <button
-              type="button"
-              class="swatch"
-              [class.current]="color === sel.color"
-              [style.background]="color"
-              [attr.aria-label]="'Set color ' + color"
-              [disabled]="busy()"
-              (click)="editSelected('color', color)"
-            ></button>
-          }
-          <input
-            type="color"
-            title="Custom color: applied when the color picker is closed"
-            aria-label="Custom color"
-            [value]="sel.color ?? '#ffffff'"
-            (change)="editSelected('color', $any($event.target).value)"
-          />
+      <section>
+        <h2>Edits</h2>
+        <div class="buttons">
+          <button type="button" [disabled]="busy()" (click)="randomizeOne()">
+            Randomize 1 node
+          </button>
+          <button type="button" [disabled]="busy()" (click)="randomizeAll()">Randomize all</button>
         </div>
-      </div>
-      <button
-        type="button"
-        class="wide"
-        [disabled]="busy() || linksOfSelectedNodes() === 0"
-        (click)="removeLinksOfSelectedNodes()"
-      >
-        Remove their {{ linksOfSelectedNodes() }} relationships
-      </button>
-      <button
-        type="button"
-        class="wide danger delete"
-        [disabled]="busy()"
-        (click)="deleteNodes.emit()"
-      >
-        Delete {{ sel.count === 1 ? 'node' : sel.count + ' nodes' }} (Delete)
-      </button>
-    } @else {
-      <p class="hint">
-        Click nodes to select them: each click adds a node, clicking it again takes it out, and
-        clicking empty space clears the selection. Ctrl/Cmd+A selects all, and pressing on the
-        background for a moment before dragging draws a selection box. While exactly one node is
-        selected, its tree is highlighted.
-      </p>
+        <div class="bulk">
+          <input
+            #bulkInput
+            type="number"
+            min="1"
+            step="1"
+            aria-label="Number of bulk transactions"
+            [max]="maxBulkRuns()"
+            [value]="bulkRuns()"
+            [disabled]="busy()"
+            (change)="setBulkRuns(bulkInput)"
+          />
+          <button type="button" [disabled]="busy()" (click)="runBulk()">× randomize all</button>
+        </div>
+        <p class="hint">
+          <strong>Randomize all</strong> changes all four fields on every node and switches to
+          another layout, as one transaction. Each run of the bulk edit is one transaction that
+          changes all four fields on every node and moves it a little. Runs: 1 to
+          {{ maxBulkRuns() }}; other entries are corrected.
+        </p>
+      </section>
     }
-  </section>
-</aside>
+
+    @if (selectedLinks() > 0) {
+      <section>
+        <h2>Selected relationships</h2>
+        <button type="button" class="wide" [disabled]="busy()" (click)="removeSelectedLinks()">
+          Remove {{ selectedLinks() }} selected (Delete)
+        </button>
+      </section>
+    }
+
+    @if (selected(); as sel) {
+      <section>
+        <h2>Selected nodes</h2>
+        <p class="hint selection">
+          {{ sel.count }} selected. A change here applies to all of them and is one undo step.
+        </p>
+        <label>
+          Title
+          <input
+            type="text"
+            [value]="sel.title ?? ''"
+            [placeholder]="sel.title === null ? 'Mixed' : ''"
+            (change)="editSelected('title', $any($event.target).value)"
+          />
+        </label>
+        <label>
+          Legal entity type
+          <input
+            type="text"
+            [value]="sel.legalEntityType ?? ''"
+            [placeholder]="sel.legalEntityType === null ? 'Mixed' : ''"
+            (change)="editSelected('legalEntityType', $any($event.target).value)"
+          />
+        </label>
+        <div class="field">
+          Color{{ sel.color === null ? ' (mixed)' : '' }}
+          <div class="swatches">
+            @for (color of colors; track color) {
+              <button
+                type="button"
+                class="swatch"
+                [class.current]="color === sel.color"
+                [style.background]="color"
+                [attr.aria-label]="'Set color ' + color"
+                [disabled]="busy()"
+                (click)="editSelected('color', color)"
+              ></button>
+            }
+            <input
+              type="color"
+              title="Custom color: applied when the color picker is closed"
+              aria-label="Custom color"
+              [value]="sel.color ?? '#ffffff'"
+              (change)="editSelected('color', $any($event.target).value)"
+            />
+          </div>
+        </div>
+        <button
+          type="button"
+          class="wide"
+          [disabled]="busy() || linksOfSelectedNodes() === 0"
+          (click)="removeLinksOfSelectedNodes()"
+        >
+          Remove their {{ linksOfSelectedNodes() }} relationships
+        </button>
+        <button
+          type="button"
+          class="wide danger delete"
+          [disabled]="busy()"
+          (click)="deleteNodes.emit()"
+        >
+          Delete {{ sel.count === 1 ? 'node' : sel.count + ' nodes' }} (Delete)
+        </button>
+      </section>
+    }
+  </aside>
+}

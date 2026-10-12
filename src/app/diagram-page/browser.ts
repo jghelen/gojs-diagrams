@@ -17,6 +17,11 @@ export function writeFlag(key: string, value: boolean): void {
   }
 }
 
+/** Asks the user a yes/no question in the browser's own dialog; true for yes. */
+export function confirmWithUser(question: string): boolean {
+  return window.confirm(question);
+}
+
 /** Opens `url` the way a link with target="_blank" does: in a new tab, never a popup window. */
 export function openInNewTab(url: string): void {
   const link = document.createElement('a');

@@ -8,8 +8,11 @@
     required
     [class.missing]="diagramName() === ''"
     [attr.aria-invalid]="diagramName() === ''"
+    [title]="nameRule"
     [value]="diagramName()"
     [disabled]="busy()"
+    (input)="keepNameClean(nameInput)"
+    (blur)="nameRuleShown.set(false)"
     (change)="setDiagramInfo('name', nameInput)"
   />
   <input
@@ -54,4 +57,19 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
     </button>
   </div>
+  <!-- Notes about the name, below the boxes. -->
+  @if (nameRuleShown()) {
+    <!-- A character was typed or pasted that a name may not contain. -->
+    <p class="name-note" role="alert">{{ nameRule }}</p>
+  }
+  @if (refusedName(); as refused) {
+    <!-- The diagram was opened with a name that does not keep to the rule. -->
+    <p class="name-note" role="alert">
+      The name of this diagram is not valid: <strong>{{ refused }}</strong
+      >. Its special characters were removed. A name may have letters, digits and spaces only.
+      <button type="button" aria-label="Dismiss" title="Dismiss" (click)="dismissRefusedName()">
+        ×
+      </button>
+    </p>
+  }
 </div>

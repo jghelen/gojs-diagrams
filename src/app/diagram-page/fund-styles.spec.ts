@@ -1,4 +1,4 @@
-import { createNodes } from '../diagram/node-data';
+import { createNodes } from '../../testing/generated-funds';
 import { FundStyles } from './fund-styles';
 
 describe('FundStyles', () => {

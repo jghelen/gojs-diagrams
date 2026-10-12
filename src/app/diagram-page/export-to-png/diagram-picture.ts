@@ -1,7 +1,7 @@
 import * as go from 'gojs/release/go';
-import { IMAGE_MAX_SIDE, IMAGE_SCALE } from '../diagram/constants';
-import { picturedParts } from '../diagram/diagram-factory';
-import { downloadFileName } from '../diagram/file-name';
+import { IMAGE_MAX_SIDE, IMAGE_SCALE } from '../../diagram/constants';
+import { picturedParts } from '../../diagram/diagram-factory';
+import { downloadFileName } from '../../diagram/file-name';
 
 /**
  * How the diagram is turned into a picture: all of it, not just what is on

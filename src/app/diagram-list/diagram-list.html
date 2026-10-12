@@ -1,0 +1,117 @@
+<header class="bar">
+  <h1>Fund structure diagrams</h1>
+  <a [routerLink]="newDiagramUrl" title="Start a new diagram on an empty canvas">New diagram</a>
+</header>
+
+<main>
+  <h2>Diagrams</h2>
+
+  <table [attr.aria-busy]="diagrams.isLoading()">
+    <thead>
+      <tr>
+        <th scope="col">Title</th>
+        <th scope="col">Created at</th>
+        <th scope="col">Updated at</th>
+      </tr>
+      <!-- Below the headings: what narrows the list down. Only the titles can be searched. -->
+      <tr class="filters">
+        <td>
+          <input
+            type="search"
+            aria-label="Search by title"
+            placeholder="Search by title"
+            autocomplete="off"
+            [attr.maxlength]="maxSearchLength"
+            [value]="typed()"
+            (input)="type($any($event.target).value)"
+            (keydown.enter)="searchNow()"
+          />
+        </td>
+        <td></td>
+        <td></td>
+      </tr>
+    </thead>
+    <tbody>
+      @if (diagrams.error()) {
+        <tr>
+          <td class="notice" colspan="3" role="alert">
+            <p>The list of diagrams could not be read. Check that the backend is running.</p>
+            <button type="button" (click)="diagrams.reload()">Try again</button>
+          </td>
+        </tr>
+      } @else if (list(); as list) {
+        @for (diagram of list.items; track diagram.id) {
+          <tr>
+            <td>
+              <a [routerLink]="diagramUrl(diagram.id)" title="Open this diagram">{{
+                diagram.name
+              }}</a>
+            </td>
+            <td>
+              <time [attr.datetime]="diagram.createdAt">{{
+                diagram.createdAt | date: dateFormat
+              }}</time>
+            </td>
+            <td>
+              <time [attr.datetime]="diagram.updatedAt">{{
+                diagram.updatedAt | date: dateFormat
+              }}</time>
+            </td>
+          </tr>
+        } @empty {
+          <tr>
+            <td class="notice" colspan="3">
+              @if (list.total > 0) {
+                There is no page {{ list.page }}: the list has {{ list.totalPages }}
+                {{ list.totalPages === 1 ? 'page' : 'pages' }}.
+                <a [routerLink]="listUrl" [queryParams]="{ page: null }" queryParamsHandling="merge"
+                  >Go to the first page</a
+                >
+              } @else if (list.search) {
+                No diagram has “{{ list.search }}” in its title.
+              } @else {
+                There are no diagrams yet.
+              }
+            </td>
+          </tr>
+        }
+      } @else {
+        <tr>
+          <td class="notice" colspan="3" role="status">Reading the diagrams…</td>
+        </tr>
+      }
+    </tbody>
+  </table>
+
+  @if (!diagrams.error() && list()?.items?.length) {
+    @let shown = list()!;
+    <nav class="pages" aria-label="Pages of the list">
+      @if (shown.page > 1) {
+        <a
+          class="step"
+          [routerLink]="listUrl"
+          [queryParams]="{ page: shown.page - 1 }"
+          queryParamsHandling="merge"
+          >Previous</a
+        >
+      } @else {
+        <span class="step" aria-disabled="true">Previous</span>
+      }
+      <span class="where">
+        Page {{ shown.page }} of {{ shown.totalPages }} · diagrams {{ range().first }} to
+        {{ range().last }} of {{ range().total }}
+      </span>
+      @if (shown.page < shown.totalPages) {
+        <a
+          class="step"
+          [routerLink]="listUrl"
+          [queryParams]="{ page: shown.page + 1 }"
+          queryParamsHandling="merge"
+          >Next</a
+        >
+      } @else {
+        <span class="step" aria-disabled="true">Next</span>
+      }
+    </nav>
+  }
+</main>

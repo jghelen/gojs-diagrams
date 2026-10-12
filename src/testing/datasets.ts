@@ -1,8 +1,19 @@
-import { LinkData, NodeData, createLinks, createNodes } from './node-data';
+import { LinkData, NodeData } from '../app/diagram/node-data';
+import { createLinks, createNodes } from './generated-funds';
 import { createFundStructure } from './sample-data';
-import { BLANK_DATASET, NODE_COUNTS } from './constants';
 
-/** Something the diagram can be loaded with. */
+// The diagrams the tests open: a sample fund structure, generated ones of
+// several sizes, and an empty one. They are also the sample diagrams of the
+// database (backend/db/003_sample_diagrams.sql).
+
+/** How many funds the generated diagrams have. */
+export const NODE_COUNTS: readonly number[] = [30, 100, 200, 500, 1000, 2000];
+/** The diagram most tests start with: 30 generated funds. */
+export const DEFAULT_DATASET = '30';
+/** The id of the dataset with nothing in it. */
+export const BLANK_DATASET = 'blank';
+
+/** A diagram for a test to open. */
 export interface Dataset {
   id: string;
   label: string;

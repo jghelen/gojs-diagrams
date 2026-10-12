@@ -44,6 +44,12 @@ export class DiagramState {
   /** The diagram's name and description, as shown in the bar above the canvas. */
   readonly name = signal('');
   readonly description = signal('');
+  /**
+   * The name the opened diagram arrived with, if it had special characters and
+   * was cleaned for that reason; null if its name was fine, and again once the
+   * user has seen to it. Set by the page when data is opened.
+   */
+  readonly refusedName = signal<string | null>(null);
   /** Whether every relationship shows its card in the diagram ("expand all"). */
   readonly cardsExpanded = signal(false);
   /**

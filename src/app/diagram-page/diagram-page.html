@@ -1,12 +1,12 @@
 <app-page-header
-  [datasetId]="datasetId()"
-  (loadDataset)="reset($event)"
+  (resetDiagram)="reset()"
+  (newDiagram)="startNew()"
   (openStyles)="openStyles()"
   (exportPng)="exportPng()"
   (printDiagram)="print()"
 />
 
-<main class="layout">
+<main class="layout" [class.panel-over-canvas]="panelOverCanvas()">
   <section class="canvas">
     <app-diagram-info-bar />
     <div class="diagram-area">
@@ -33,6 +33,7 @@
 
   <app-side-panel (deleteNodes)="deleteSelectedNodes()" />
 </main>
+<app-page-footer />
 
 <app-node-dialogs />
 <app-styles-dialog />

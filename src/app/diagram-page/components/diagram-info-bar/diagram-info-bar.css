@@ -25,6 +25,27 @@
   background: #fef2f2;
 }
 
+/*
+ * A note about the name, on a line of its own below the boxes: why a character
+ * did not appear, or that the diagram came with a name that was not valid.
+ */
+.name-note {
+  flex: 0 0 100%;
+  margin: 0;
+  color: #991b1b;
+  font-size: 12px;
+}
+
+.name-note button {
+  margin-left: 4px;
+  padding: 0 6px;
+  border-color: transparent;
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
 .diagram-description {
   flex: 1 1 0;
   min-width: 120px;

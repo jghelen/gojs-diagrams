@@ -87,24 +87,10 @@ export const DIMMED_OPACITY = 0.15;
 
 // ----- What a diagram starts with -----
 
-/** How many funds the generated diagrams of the Data dropdown have. */
-export const NODE_COUNTS: readonly number[] = [30, 100, 200, 500, 1000, 2000];
-/** The diagram the app opens with: its id in the Data dropdown. */
-export const DEFAULT_DATASET = '30';
-/** The id of the dataset with nothing in it, for building a diagram from scratch. */
-export const BLANK_DATASET = 'blank';
 /** The layout a diagram is first shown in. */
 export const DEFAULT_LAYOUT: LayoutType = 'top-bottom';
 /** The line type a diagram is first shown with: orthogonal, rounded, routed around nodes. */
 export const DEFAULT_LINK_TYPE: LinkType = 'avoid';
-
-/**
- * How many co-investments the generated diagrams have per fund, on top of the
- * one main investor each fund has. Half a co-investment per fund is about what
- * real fund structures show, and it keeps the lines few enough to be followed.
- * For a denser diagram to load-test with, raise this number.
- */
-export const CO_INVESTMENTS_PER_FUND = 0.5;
 
 /**
  * Free space left between two nodes by every layout: wide enough for several
@@ -133,18 +119,20 @@ export const HOVER_COLOR = '#d4a017';
 // ----- Sizes from which the app behaves differently -----
 
 /**
- * Lines are routed around the nodes on diagrams with fewer nodes than this.
- * Doing that for every line takes about a second at 200 nodes, seven at 500 and
- * minutes beyond that, during which the page does not respond.
+ * On diagrams with fewer nodes than this, GoJS itself routes the lines around
+ * the nodes. That takes about a second at 200 nodes and several seconds at 500,
+ * during which the page does not respond, and minutes beyond 1000. From this
+ * number on the app's own router does it instead, in a fraction of a second
+ * (lane-router.ts).
  */
-export const AVOID_NODES_BELOW = 500;
+export const AVOID_NODES_BELOW = 1000;
 
 /**
  * The layouts that stay quick however big the diagram is. The others (circle,
  * layered, force-directed) take many seconds each from SLOW_LAYOUTS_FROM nodes
  * on. So there "Randomize all" picks its next layout among the quick ones only,
  * and a diagram that big is not opened in a slow layout left over from a smaller
- * one. The user can still choose a slow layout for a big diagram by hand.
+ * one. The user can still choose a slow layout for a big diagram by hand. Test
  */
 export const QUICK_LAYOUTS: readonly LayoutType[] = ['top-bottom', 'bottom-top', 'grid'];
 export const SLOW_LAYOUTS_FROM = 500;
@@ -204,7 +192,15 @@ export const FAILURE_NOTICE =
   'That action could not be completed and was undone. You can keep working on the diagram.';
 /** Shown above the diagram when data could not be opened completely. */
 export const LOAD_FAILURE_NOTICE =
-  'That diagram could not be opened. An empty one was opened instead; choose other data to go on.';
+  'That diagram could not be opened. An empty one was opened instead; choose another from the list of all diagrams.';
+/** Shown above an empty diagram when the diagram of the address is not in the database. */
+export const NO_SUCH_DIAGRAM_NOTICE =
+  'There is no diagram at this address. It may have been deleted; choose another from the list of all diagrams.';
+/** Shown above an empty diagram when the backend did not hand the diagram out. */
+export const DIAGRAM_NOT_READ_NOTICE =
+  'The diagram could not be read from the database. Check that the backend is running, then reset the diagram to try again.';
+/** What the user is asked before leaving a diagram with changes for another page of the app. */
+export const LEAVE_QUESTION = 'Leave this diagram? The changes you made will be lost.';
 /** The name under which the browser remembers whether the developer tools are shown. */
 export const DEVELOPER_TOOLS_KEY = 'gojs-diagrams.developer-tools-shown';
 /** The name under which the browser remembers whether the benchmark statistics are open. */

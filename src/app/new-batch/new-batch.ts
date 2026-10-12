@@ -25,7 +25,7 @@ export function newBatchUrl(nodeId: number): string {
         <p>No node id was given in the address.</p>
       }
       <p class="note">This is a placeholder page. The form for a new batch goes here.</p>
-      <a routerLink="/">Back to the diagram</a>
+      <a routerLink="/diagrams">All diagrams</a>
     </main>
   `,
   styles: `

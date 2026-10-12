@@ -1,16 +1,12 @@
 <header class="bar">
   <h1>Fund structure diagrams</h1>
-  <span class="versions">Angular {{ angularVersion }} · GoJS {{ gojsVersion }}</span>
-  <label>
-    Data
-    <select [disabled]="busy()" (change)="loadDataset.emit($any($event.target).value)">
-      @for (dataset of datasets; track dataset.id) {
-        <option [value]="dataset.id" [selected]="dataset.id === datasetId()">
-          {{ dataset.label }}
-        </option>
-      }
-    </select>
-  </label>
+  <a class="all-diagrams" [routerLink]="listUrl" title="The list of all diagrams of the database"
+    >All diagrams</a
+  >
+  <!-- LE: legal entities, the nodes of the diagram. -->
+  <span class="node-count" title="Number of legal entities on the diagram"
+    >LE: {{ nodeCount() }}</span
+  >
   <div class="bar-end">
     <button
       type="button"
@@ -51,10 +47,10 @@
     <button
       type="button"
       class="icon-button"
-      title="Reset diagram"
+      title="Reset diagram: read it from the database again and drop the changes"
       aria-label="Reset diagram"
       [disabled]="busy()"
-      (click)="loadDataset.emit(datasetId())"
+      (click)="resetDiagram.emit()"
     >
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M20 5v5h-5M19.4 10A8 8 0 1 0 20 13.5" />
@@ -66,7 +62,7 @@
       title="New diagram: start from an empty canvas"
       aria-label="New diagram"
       [disabled]="busy()"
-      (click)="loadDataset.emit(blankDataset)"
+      (click)="newDiagram.emit()"
     >
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path

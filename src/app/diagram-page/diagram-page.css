@@ -1,13 +1,22 @@
 :host {
   display: grid;
-  grid-template-rows: auto 1fr;
+  /* The header, everything else, the footer. */
+  grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100vh;
 }
 
 .layout {
+  /* The side panel lies over this when it comes and goes with the selection. */
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  /* The canvas, and the side panel when it has a column of its own. */
+  grid-template-columns: minmax(0, 1fr) auto;
   min-height: 0;
+}
+
+/* While the side panel lies over the canvas, the overview stands clear of it. */
+.layout.panel-over-canvas .overview {
+  right: 332px;
 }
 
 .canvas {
@@ -88,8 +97,18 @@
     display: none !important;
   }
 
+  /*
+   * The picture fills one sheet, whole, whatever its proportions. The sheet
+   * itself has no margin (see @page in styles.css), so the picture brings its own.
+   */
   .print-only {
     display: block;
-    max-width: 100%;
+    box-sizing: border-box;
+    width: 100%;
+    /* A hair less than the sheet, so that rounding never starts a second, empty sheet. */
+    height: calc(100vh - 1px);
+    padding: 12mm;
+    object-fit: contain;
+    break-inside: avoid;
   }
 }

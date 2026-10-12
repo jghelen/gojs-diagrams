@@ -2,7 +2,7 @@ import * as go from 'gojs/release/go';
 import { TestDiagram, createHistory, createTestDiagram } from '../../testing/diagram-harness';
 import { createModel } from './diagram-factory';
 import { HistoryService, withoutUndo } from './history.service';
-import { createLinks, createNodes } from './node-data';
+import { createLinks, createNodes } from '../../testing/generated-funds';
 
 describe('HistoryService', () => {
   let test: TestDiagram;

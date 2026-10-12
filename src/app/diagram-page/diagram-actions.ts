@@ -10,6 +10,7 @@ import {
   STYLE_FIELDS,
   StyleFieldId,
 } from '../diagram/constants';
+import { withoutSpecialCharacters } from '../diagram/diagram-name';
 import { NodeModel, addNodeInView } from '../diagram/diagram-factory';
 import { HistoryService } from '../diagram/history.service';
 import { LAYOUTS, LayoutType, createLayout } from '../diagram/layouts';
@@ -411,7 +412,9 @@ export class DiagramActions {
   }
 
   /** Gives the diagram a new name or description. */
-  setDiagramInfo(field: 'name' | 'description', value: string): Promise<void> {
+  setDiagramInfo(field: 'name' | 'description', text: string): Promise<void> {
+    // A name has no special characters, whoever asks for it to be set.
+    const value = field === 'name' ? withoutSpecialCharacters(text) : text;
     return this.runner.run(() =>
       this.changing(
         field === 'name' ? 'Rename diagram' : 'Describe diagram',
