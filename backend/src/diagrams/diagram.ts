@@ -69,3 +69,24 @@ export interface Diagram {
   nodes: DiagramNode[];
   links: DiagramLink[];
 }
+
+/** A diagram as a row of the list of all diagrams. */
+export interface DiagramSummary {
+  id: number;
+  name: string;
+  /** Moments in time, as "2026-10-12T17:23:58.700Z". */
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One page of the list of all diagrams. */
+export interface DiagramListPage {
+  items: DiagramSummary[];
+  /** Which page this is, counting from 1. */
+  page: number;
+  /** How many diagrams a page has at most. */
+  pageSize: number;
+  /** How many diagrams there are on all pages together. */
+  total: number;
+  totalPages: number;
+}

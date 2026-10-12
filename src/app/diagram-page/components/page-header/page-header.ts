@@ -1,14 +1,16 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
-import { BLANK_DATASET } from '../../../diagram/constants';
+import { RouterLink } from '@angular/router';
+import { DIAGRAM_LIST_URL } from '../../../diagram-list/diagram-list';
+import { BLANK_DATASET, STORED_DATASET } from '../../../diagram/constants';
 import { DATASETS } from '../../../diagram/datasets';
 import { DeveloperTools } from '../../developer-tools';
 import { DiagramState } from '../../diagram-state/diagram-state';
 import { OperationRunner } from '../../operation-runner/operation-runner';
 
 /**
- * The bar at the top of the page: which data the diagram shows, what can be
- * done with the diagram as a whole (styles, export, print, reset, new), and the
- * switch for the developer tools.
+ * The bar at the top of the page: the way to the list of all diagrams, which
+ * data the diagram shows, what can be done with the diagram as a whole (styles,
+ * export, print, reset, new), and the switch for the developer tools.
  *
  * It only says what was asked for; the page carries it out.
  */
@@ -17,6 +19,7 @@ import { OperationRunner } from '../../operation-runner/operation-runner';
   templateUrl: './page-header.html',
   styleUrl: './page-header.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [RouterLink],
 })
 export class PageHeader {
   /** Id of the dataset the diagram was loaded with. */
@@ -38,6 +41,9 @@ export class PageHeader {
   protected readonly datasets = DATASETS;
   /** The dataset with nothing in it: what "New diagram" loads. */
   protected readonly blankDataset = BLANK_DATASET;
+  /** What the dropdown shows while the diagram is one of the database. */
+  protected readonly storedDataset = STORED_DATASET;
+  protected readonly listUrl = DIAGRAM_LIST_URL;
 
   /** Carries out what was picked in the Actions dropdown and puts the dropdown back. */
   protected runAction(menu: HTMLSelectElement): void {

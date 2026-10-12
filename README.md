@@ -52,20 +52,24 @@ npm start
 
 Then open http://localhost:4200.
 
+That is the editor with its built-in sample data, which needs nothing else. The
+[list of diagrams](#the-list-of-diagrams) at http://localhost:4200/diagrams shows the diagrams of
+the database, and needs the [database](#database) and the [backend](#backend) running as well.
+
 ## User guide
 
 ### The screen
 
-| Area                                  | What it holds                                                                                                                                                                                                                                                        |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Top bar                               | The **Data** dropdown on the left, followed by **LE:** and the number of legal entities (nodes) in the diagram; on the right **Styles**, the **Actions** menu, a reload icon that resets the diagram, a new-diagram icon, and the **developer tools** switch (`</>`) |
-| Bar above the canvas                  | The diagram's **name** and **description**, and the **search** box                                                                                                                                                                                                   |
-| Tool strip (left edge of the canvas)  | Add node, undo, redo, zoom in, zoom out, zoom to fit, layout, lines, shape, auto arrange, expand all, collapse all                                                                                                                                                   |
-| Overview (bottom right of the canvas) | A small picture of the whole diagram; drag its gold box to move around                                                                                                                                                                                               |
-| Canvas (left)                         | The diagram. Scroll to pan, Ctrl/Cmd + wheel (or pinch) to zoom                                                                                                                                                                                                      |
-| Footer                                | In small print: the versions of Angular and GoJS the app is built with                                                                                                                                                                                               |
-| Side panel (right)                    | Hidden until you click a node or a line; then **Selected nodes** and **Selected relationships**. With the developer tools it is always shown and starts with **History** and **Edits**                                                                               |
-| Timing table (below the canvas)       | With the developer tools only: one row per operation, newest first                                                                                                                                                                                                   |
+| Area                                  | What it holds                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Top bar                               | The link **All diagrams** to the [list of diagrams](#the-list-of-diagrams); the **Data** dropdown, followed by **LE:** and the number of legal entities (nodes) in the diagram; on the right **Styles**, the **Actions** menu, a reload icon that resets the diagram, a new-diagram icon, and the **developer tools** switch (`</>`) |
+| Bar above the canvas                  | The diagram's **name** and **description**, and the **search** box                                                                                                                                                                                                                                                                   |
+| Tool strip (left edge of the canvas)  | Add node, undo, redo, zoom in, zoom out, zoom to fit, layout, lines, shape, auto arrange, expand all, collapse all                                                                                                                                                                                                                   |
+| Overview (bottom right of the canvas) | A small picture of the whole diagram; drag its gold box to move around                                                                                                                                                                                                                                                               |
+| Canvas (left)                         | The diagram. Scroll to pan, Ctrl/Cmd + wheel (or pinch) to zoom                                                                                                                                                                                                                                                                      |
+| Footer                                | In small print: the versions of Angular and GoJS the app is built with                                                                                                                                                                                                                                                               |
+| Side panel (right)                    | Hidden until you click a node or a line; then **Selected nodes** and **Selected relationships**. With the developer tools it is always shown and starts with **History** and **Edits**                                                                                                                                               |
+| Timing table (below the canvas)       | With the developer tools only: one row per operation, newest first                                                                                                                                                                                                                                                                   |
 
 ### Developer tools
 
@@ -95,6 +99,45 @@ A diagram that is opened with a name that breaks the rule (one stored in a datab
 is shown with the special characters removed, and a note below the boxes says that the name was
 not valid and which name it was. The note stays until you dismiss it, give the diagram a name, or
 open other data. Opening does not count as a change, so there is nothing to undo.
+
+### The list of diagrams
+
+**All diagrams** in the top bar, or the address `/diagrams`, opens a table of all diagrams of the
+database:
+
+| Column     | What it shows                                                       |
+| ---------- | ------------------------------------------------------------------- |
+| Title      | The name of the diagram. Click it to open the diagram               |
+| Created at | When the diagram was made, as `12 Oct 2026, 17:23` in your own time |
+| Updated at | When it was last changed                                            |
+
+- The diagram changed last is at the top.
+- The table shows **20 diagrams per page**. **Previous** and **Next** below it change the page,
+  and between them stands where you are: "Page 2 of 3 · diagrams 21 to 40 of 45". The backend
+  cuts the list into pages; the app only ever receives the page it shows.
+- The page is part of the address (`/diagrams?page=2`), so Back, a reload and a bookmark keep it.
+- **Open the editor** in the top bar leads to the editor with its sample data.
+- When the backend is not running, the page says that the list could not be read and offers
+  **Try again**.
+
+### Opening a diagram of the database
+
+A click on a title opens that diagram in the editor, in the same tab, at the address
+`/diagrams/<id>`.
+
+- The canvas is empty and the controls are disabled until the diagram has arrived.
+- The diagram comes with its own name, description, layout type, line type, expanded cards and
+  field under the names. Its nodes stand where they were stored; if some have no place yet, the
+  layout arranges all of them.
+- Relationships are drawn between all its funds that have one. Artificial links of the diagram are
+  drawn as hand-drawn lines.
+- The Data dropdown shows **From the database**. Picking other data there loads it in the same
+  editor and takes you to the address `/`; Back returns to the diagram.
+- **Reset diagram** reads the diagram from the database again and drops your changes.
+- If the diagram does not exist, or the backend cannot be reached, the canvas stays empty and a
+  note above it says which of the two it is.
+- Nothing is saved yet. Leaving a changed diagram for the list asks first: "Leave this diagram?
+  The changes you made will be lost."
 
 ### Closing the tab
 
@@ -557,10 +600,12 @@ diamond is much narrower near its tips than a rectangle); longer text is cut off
 
 ### Routes
 
-| Path                       | Page                                                        |
-| -------------------------- | ----------------------------------------------------------- |
-| `/`                        | The diagram                                                 |
-| `/batches/new?nodeId=<id>` | Placeholder "Add batch" page, opened by a node's batch icon |
+| Path                       | Page                                                                     |
+| -------------------------- | ------------------------------------------------------------------------ |
+| `/`                        | The editor, with the data of the Data dropdown                           |
+| `/diagrams?page=<n>`       | The list of the diagrams of the database; without `page`, the first page |
+| `/diagrams/<id>`           | The editor, with that diagram of the database                            |
+| `/batches/new?nodeId=<id>` | Placeholder "Add batch" page, opened by a node's batch icon              |
 
 The address is built in one function, `newBatchUrl` in `src/app/new-batch/new-batch.ts`.
 
@@ -673,6 +718,9 @@ npm run verify
 | `diagram-page/operation-runner/operation-runner.spec.ts`, `diagram-page/diagram-actions.spec.ts`, `diagram-page/diagram-state/diagram-state.spec.ts`                                          | The operation runner (order, timing log, recovery); every action as one undo step, zooming; the settings and history numbers the page shows                                                                                                                                                                                                                                                                                                                               |
 | `diagram-page/selection-state/`, `node-search/`, `link-info-card/` (each with its `.spec.ts`), `diagram-page/fund-styles.spec.ts`, `export-to-png/diagram-picture.spec.ts`, `browser.spec.ts` | Selection and highlight; the search; the relationship card; the styles dialog state; export and print pictures; the browser helpers                                                                                                                                                                                                                                                                                                                                       |
 | `new-batch/new-batch.spec.ts`                                                                                                                                                                 | The batch address and its placeholder page                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `diagram-list/diagram-list.spec.ts`                                                                                                                                                           | The list: what a row shows, the links of the titles, the pages and their Previous and Next, a page that does not exist, an empty list, a backend that does not answer                                                                                                                                                                                                                                                                                                     |
+| `diagram-page/stored-diagram.spec.ts`                                                                                                                                                         | A diagram of the database in the editor: waiting for it, nodes left where they were stored or arranged when they have no place, its settings, a diagram that does not come, Reset, picking other data, Back and Forward, the question before leaving                                                                                                                                                                                                                      |
+| `api/diagrams-api.spec.ts`, `app.routes.spec.ts`                                                                                                                                              | What is asked of the backend and how its diagram becomes the editor's nodes and lines; which page each address shows                                                                                                                                                                                                                                                                                                                                                      |
 
 ### What is not covered
 
@@ -747,6 +795,10 @@ The tests run without a real browser, so some things can only be checked by hand
 | `src/app/diagram/datasets.ts`                                                              | The list behind the **Data** dropdown                                                                                              |
 | `src/app/diagram/shape-tiles.ts`                                                           | The shape pictures used in the Styles dialog                                                                                       |
 | `src/app/diagram/benchmark.ts`                                                             | Timing helpers                                                                                                                     |
+| `src/app/diagram-list/diagram-list.*`                                                      | The list of the diagrams of the database, a page at a time                                                                         |
+| `src/app/api/diagrams-api.ts`                                                              | The app's access to the backend: a page of the list, one diagram                                                                   |
+| `src/app/app.routes.ts`                                                                    | The addresses of the app; the editor's two addresses are one route                                                                 |
+| `proxy.conf.json`                                                                          | Lets the dev server pass `/api` on to the backend                                                                                  |
 | `src/app/new-batch/new-batch.ts`                                                           | The placeholder "Add batch" page and its address                                                                                   |
 | `src/app/app.routes.ts`                                                                    | Routes                                                                                                                             |
 | `src/styles.css`                                                                           | Global styles: the base look of buttons and inputs, and what the parts of the page share (dialogs, hints, colour swatches)         |
@@ -768,7 +820,8 @@ GoJS that the canvas changed size (when the statistics are opened or closed).
 ## Database
 
 The data is meant to live in PostgreSQL 14 or newer. The tables exist and the
-[backend](#backend) reads from them; the app itself does not use them yet. What they are and why is
+[backend](#backend) reads from them, and the app shows them: as a
+[list](#the-list-of-diagrams) and, one at a time, in the editor. Nothing is written yet. What they are and why is
 told in [DATABASE.md](DATABASE.md). In short:
 
 - Every node is a **legal entity**, stored once. It can be placed in several diagrams or in none.
@@ -784,7 +837,7 @@ told in [DATABASE.md](DATABASE.md). In short:
 ### Creating it
 
 With a PostgreSQL server running, one script creates the database `fund_diagrams` with its tables
-and one sample diagram. It asks for the password of the `postgres` user once. The PostgreSQL 14 on
+and 45 sample diagrams. It asks for the password of the `postgres` user once. The PostgreSQL 14 on
 this machine listens on port 5433:
 
 ```bash
@@ -819,7 +872,7 @@ Where it may have been saved, how to set a new one, and how to do without it, is
 
 A small server in `backend/`: Node.js 24 with [Express](https://expressjs.com) and the PostgreSQL
 driver `pg`, written in TypeScript. Node runs the `.ts` files as they are, so there is no build
-step. It has one address so far; the app does not call it yet.
+step. It has two addresses so far, both for reading.
 
 ### Starting it
 
@@ -840,6 +893,47 @@ npm start
 
 `npm run dev` does the same and restarts when a file changes. The server listens on
 <http://localhost:3000>; another port can be set with `PORT` in `.env`.
+
+The app reaches it under `/api` of its own address: while developing, the dev server (`npm start`
+in the project folder) passes every address that starts with `/api` on to
+`http://localhost:3000`, as said in `proxy.conf.json`. Change the port there too if you change
+it in `.env`.
+
+### Listing the diagrams
+
+`GET /api/diagrams?page={n}` gives one page of the list of all diagrams, 20 to a page, the one
+changed last first. Without `page` it gives the first page.
+
+```bash
+curl "http://localhost:3000/api/diagrams?page=2"
+```
+
+```json
+{
+  "items": [
+    {
+      "id": 21,
+      "name": "Fund structure 21",
+      "createdAt": "2026-08-10T17:30:13.573Z",
+      "updatedAt": "2026-10-08T08:30:13.573Z"
+    }
+  ],
+  "page": 2,
+  "pageSize": 20,
+  "total": 45,
+  "totalPages": 3
+}
+```
+
+The cutting into pages is done by the database (`limit` and `offset`), so a page costs the same
+however long the list is. `total` and `totalPages` are of the whole list. A page after the last
+has no `items` and still the totals.
+
+| Answer | When                                                 | Body                                                                 |
+| ------ | ---------------------------------------------------- | -------------------------------------------------------------------- |
+| `200`  | Always, for a page that is a whole number above zero | The page, as above                                                   |
+| `400`  | `page` is something else (`abc`, `0`, `-1`, `1.5`)   | `{ "error": "The page is a whole number above zero." }`              |
+| `500`  | The database could not be reached or failed          | `{ "error": "The request could not be answered. Try again later." }` |
 
 ### Reading a diagram
 
@@ -912,15 +1006,16 @@ as they are.
 
 ### Its files
 
-| File                                   | Purpose                                                              |
-| -------------------------------------- | -------------------------------------------------------------------- |
-| `backend/src/server.ts`                | Starts the server                                                    |
-| `backend/src/app.ts`                   | The addresses and their answers, including the errors                |
-| `backend/src/database.ts`              | The connections to PostgreSQL, from the settings in `.env`           |
-| `backend/src/diagrams/read-diagram.ts` | The four queries that read one diagram, in one read-only transaction |
-| `backend/src/diagrams/to-diagram.ts`   | Turns the rows into the diagram that is handed out                   |
-| `backend/src/diagrams/diagram.ts`      | What a diagram looks like in an answer                               |
-| `backend/db/`                          | The tables, see [Database](#database)                                |
+| File                                    | Purpose                                                              |
+| --------------------------------------- | -------------------------------------------------------------------- |
+| `backend/src/server.ts`                 | Starts the server                                                    |
+| `backend/src/app.ts`                    | The addresses and their answers, including the errors                |
+| `backend/src/database.ts`               | The connections to PostgreSQL, from the settings in `.env`           |
+| `backend/src/diagrams/list-diagrams.ts` | Reads one page of the list of diagrams                               |
+| `backend/src/diagrams/read-diagram.ts`  | The four queries that read one diagram, in one read-only transaction |
+| `backend/src/diagrams/to-diagram.ts`    | Turns the rows into the diagram that is handed out                   |
+| `backend/src/diagrams/diagram.ts`       | What a diagram looks like in an answer                               |
+| `backend/db/`                           | The tables, see [Database](#database)                                |
 
 ### Its tests
 
@@ -946,8 +1041,11 @@ diagrams from it, and drop it again; `fund_diagrams` is not touched.
 npm run build
 ```
 
-The result is a static site in `dist/gojs-diagrams/browser`. Any static host can serve it. The
-build includes a `_redirects` file so that `/batches/new` also works on hosts that use it, such as
+The result is a static site in `dist/gojs-diagrams/browser`. Any static host can serve it. For the
+list of diagrams and the diagrams of the database, the host also has to pass the addresses that
+start with `/api` on to the [backend](#backend); without that the editor works with its sample
+data, and the list says that it could not be read. The
+build includes a `_redirects` file so that `/batches/new` and `/diagrams` also work on hosts that use it, such as
 Netlify; on other hosts, configure a fallback to `index.html`.
 
 Read the [licence](#licence) section before publishing a build on the public internet.

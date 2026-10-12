@@ -93,6 +93,11 @@ export const NODE_COUNTS: readonly number[] = [30, 100, 200, 500, 1000, 2000];
 export const DEFAULT_DATASET = '30';
 /** The id of the dataset with nothing in it, for building a diagram from scratch. */
 export const BLANK_DATASET = 'blank';
+/**
+ * What the Data dropdown shows while the diagram is one of the database, opened
+ * from the list of diagrams. Not a dataset of the app: its data comes from the backend.
+ */
+export const STORED_DATASET = 'stored';
 /** The layout a diagram is first shown in. */
 export const DEFAULT_LAYOUT: LayoutType = 'top-bottom';
 /** The line type a diagram is first shown with: orthogonal, rounded, routed around nodes. */
@@ -207,6 +212,14 @@ export const FAILURE_NOTICE =
 /** Shown above the diagram when data could not be opened completely. */
 export const LOAD_FAILURE_NOTICE =
   'That diagram could not be opened. An empty one was opened instead; choose other data to go on.';
+/** Shown above an empty diagram when the diagram of the address is not in the database. */
+export const NO_SUCH_DIAGRAM_NOTICE =
+  'There is no diagram at this address. It may have been deleted; choose another from the list of all diagrams.';
+/** Shown above an empty diagram when the backend did not hand the diagram out. */
+export const DIAGRAM_NOT_READ_NOTICE =
+  'The diagram could not be read from the database. Check that the backend is running, then reset the diagram to try again.';
+/** What the user is asked before leaving a diagram with changes for another page of the app. */
+export const LEAVE_QUESTION = 'Leave this diagram? The changes you made will be lost.';
 /** The name under which the browser remembers whether the developer tools are shown. */
 export const DEVELOPER_TOOLS_KEY = 'gojs-diagrams.developer-tools-shown';
 /** The name under which the browser remembers whether the benchmark statistics are open. */

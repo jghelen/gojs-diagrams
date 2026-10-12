@@ -268,8 +268,9 @@ asks for the password once (if you do not know it, see
 backend/db/setup.sh
 ```
 
-With something to look at: the app's "Sample fund structure" of 24 funds as one diagram, and four
-user-defined fields with a few values:
+With something to look at: the app's "Sample fund structure" of 24 funds as one diagram, four
+user-defined fields with a few values, and 44 more diagrams that each show some of the same funds
+(45 diagrams make three pages of the list):
 
 ```bash
 backend/db/setup.sh --with-sample
@@ -289,12 +290,13 @@ To start over, drop the database and run the script again:
 dropdb --host localhost --port 5433 --username postgres fund_diagrams
 ```
 
-| File                                                                   | What it does                                                      |
-| ---------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| [backend/db/001_schema.sql](backend/db/001_schema.sql)                 | The eight tables, their rules and their indexes                   |
-| [backend/db/002_seed.sql](backend/db/002_seed.sql)                     | The eight legal entity types                                      |
-| [backend/db/003_sample_diagram.sql](backend/db/003_sample_diagram.sql) | Optional: one diagram and four fields, for a database still empty |
-| [backend/db/setup.sh](backend/db/setup.sh)                             | Creates the database and runs the files above                     |
+| File                                                                   | What it does                                                                                                   |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| [backend/db/001_schema.sql](backend/db/001_schema.sql)                 | The eight tables, their rules and their indexes                                                                |
+| [backend/db/002_seed.sql](backend/db/002_seed.sql)                     | The eight legal entity types                                                                                   |
+| [backend/db/003_sample_diagram.sql](backend/db/003_sample_diagram.sql) | Optional: one diagram and four fields, for a database still empty                                              |
+| [backend/db/004_more_diagrams.sql](backend/db/004_more_diagrams.sql)   | Optional, after the sample: 44 more diagrams of the same funds, to try the list of diagrams and its pages with |
+| [backend/db/setup.sh](backend/db/setup.sh)                             | Creates the database and runs the files above                                                                  |
 
 ## Connecting from DataGrip
 
@@ -493,6 +495,6 @@ The files were run on PostgreSQL 14.1, in a throwaway server that was removed af
   (`src/app/diagram/diagram-name.ts`), and the app already cleans a stored name that breaks it.
 - **Choice lists** for user-defined fields (a value picked from fixed options). Not built; it
   would add a type and one table for the options.
-- **The rest of the API.** The backend can read one diagram so far (see the
-  [README](README.md#backend)). Listing, saving, and managing legal entities, relationships and
-  fields are still to come.
+- **The rest of the API.** The backend can list the diagrams and read one (see the
+  [README](README.md#backend)). Saving, and managing legal entities, relationships and fields are
+  still to come.

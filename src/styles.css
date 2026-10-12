@@ -8,6 +8,8 @@
 
 body {
   margin: 0;
+  /* Said out loud: a browser in dark mode may otherwise put the dark text on a dark page. */
+  background: #fff;
 }
 
 button,

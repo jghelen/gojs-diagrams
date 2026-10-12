@@ -1,5 +1,8 @@
 <header class="bar">
   <h1>Fund structure diagrams</h1>
+  <a class="all-diagrams" [routerLink]="listUrl" title="The list of all diagrams of the database"
+    >All diagrams</a
+  >
   <label>
     <!-- No visible label: the name is for screen readers. -->
     <select
@@ -7,6 +10,10 @@
       [disabled]="busy()"
       (change)="loadDataset.emit($any($event.target).value)"
     >
+      <!-- A diagram opened from the list is none of the app's own data. -->
+      @if (datasetId() === storedDataset) {
+        <option [value]="storedDataset" selected>From the database</option>
+      }
       @for (dataset of datasets; track dataset.id) {
         <option [value]="dataset.id" [selected]="dataset.id === datasetId()">
           {{ dataset.label }}

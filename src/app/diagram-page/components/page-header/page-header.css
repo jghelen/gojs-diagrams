@@ -18,6 +18,13 @@ h1 {
   font-size: 16px;
 }
 
+/* The way to the list of all diagrams. */
+.all-diagrams {
+  font-size: 13px;
+  color: #1d4ed8;
+  white-space: nowrap;
+}
+
 /* How many legal entities the diagram has: dark blue and bold. */
 .node-count {
   color: #1e3a8a;

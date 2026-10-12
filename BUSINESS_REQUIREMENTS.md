@@ -44,17 +44,17 @@ the business: **does undo/redo stay fast and reliable on large structures** (up 
 
 ## 3. Screen overview
 
-| Area                          | Content                                                                                                                                                                |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Header, left                  | **Data** dropdown: which diagram to open; next to it **LE: n**, the number of legal entities                                                                           |
-| Header, right                 | **Styles**, **Actions** menu, **Reset diagram** (reload icon), **New diagram**, **Developer tools** switch                                                             |
-| Bar above the canvas          | Diagram **name**, **description**, and **search**                                                                                                                      |
-| Left navigation on the canvas | Add node, Undo, Redo, Zoom in, Zoom out, Zoom to fit, Layout, Lines, Shape, Auto arrange, Expand all, Collapse all (in that order)                                     |
-| Canvas                        | The diagram                                                                                                                                                            |
-| Overview, bottom right        | A small picture of the whole diagram for moving around                                                                                                                 |
-| Footer                        | In small print: the versions of Angular and GoJS the application is built with                                                                                         |
-| Side panel, right             | Hidden until a node or a line is selected; then selected nodes and selected relationships. With the developer tools always shown, starting with History and bulk edits |
-| Below the canvas              | With the developer tools only: timing table (see [14](#14-performance-measurement))                                                                                    |
+| Area                          | Content                                                                                                                                                                               |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Header, left                  | **All diagrams**: the way to the list of diagrams (see [4.5](#45-the-list-of-diagrams)); **Data** dropdown: which diagram to open; next to it **LE: n**, the number of legal entities |
+| Header, right                 | **Styles**, **Actions** menu, **Reset diagram** (reload icon), **New diagram**, **Developer tools** switch                                                                            |
+| Bar above the canvas          | Diagram **name**, **description**, and **search**                                                                                                                                     |
+| Left navigation on the canvas | Add node, Undo, Redo, Zoom in, Zoom out, Zoom to fit, Layout, Lines, Shape, Auto arrange, Expand all, Collapse all (in that order)                                                    |
+| Canvas                        | The diagram                                                                                                                                                                           |
+| Overview, bottom right        | A small picture of the whole diagram for moving around                                                                                                                                |
+| Footer                        | In small print: the versions of Angular and GoJS the application is built with                                                                                                        |
+| Side panel, right             | Hidden until a node or a line is selected; then selected nodes and selected relationships. With the developer tools always shown, starting with History and bulk edits                |
+| Below the canvas              | With the developer tools only: timing table (see [14](#14-performance-measurement))                                                                                                   |
 
 Every icon without a text label shows its name when the user hovers over it.
 
@@ -127,6 +127,47 @@ Every icon without a text label shows its name when the user hovers over it.
   (Export PNG, Print) are disabled too: there is nothing to style, export or print. Both become
   available with the first node, and are disabled again when the last node is deleted or its
   adding is undone. Reset diagram and New diagram stay available.
+
+### 4.5 The list of diagrams
+
+- **BR-4.16** A page lists all diagrams that are stored in the database, as a table with the
+  columns **Title**, **Created at** and **Updated at**. It is reached with **All diagrams** in
+  the header, and has an address of its own.
+- **BR-4.17** The diagram that was changed last is listed first.
+- **BR-4.18** The table shows 20 diagrams per page. Only the page that is shown is fetched: the
+  list is cut into pages by the backend, not in the browser.
+- **BR-4.19** Below the table the user can go to the previous and to the next page, and reads
+  which page of how many is shown and which diagrams of how many. On the first page there is no
+  previous page to go to, on the last no next.
+- **BR-4.20** The page that is shown is part of the address, so the browser's Back button, a
+  reload and a bookmark lead to the same page.
+- **BR-4.21** The dates are shown in the user's own time, to the minute.
+- **BR-4.22** While the list is being fetched the page says so. If it cannot be fetched, the page
+  says that and offers to try again. A database without diagrams gives the message that there
+  are none yet; a page beyond the last one gives a message and the way back to the first.
+
+### 4.6 Opening a stored diagram
+
+- **BR-4.23** The title of a diagram in the list is a link. It opens that diagram in the editor,
+  in the same browser tab. Every stored diagram has an address of its own.
+- **BR-4.24** Until the diagram has arrived, the canvas is empty and all controls are disabled.
+- **BR-4.25** A stored diagram is shown as it was stored: name, description, layout type, line
+  type, expanded relationship cards and the field under the names; every fund with its colour,
+  shape and comment, at its stored position. If funds have no stored position, the chosen layout
+  arranges the diagram.
+- **BR-4.26** A relationship between two funds is the same in every diagram: it is drawn in every
+  diagram that contains both funds. A diagram can also have lines that exist in that diagram
+  only; they are drawn like relationships drawn by hand and are not relationships of the funds.
+- **BR-4.27** A stored name with characters that a name may not have is shown without them, with
+  the note of BR-4.11c.
+- **BR-4.28** While a stored diagram is shown, the Data dropdown reads **From the database**.
+  Choosing other data there opens it as usual. **Reset diagram** fetches the stored diagram again
+  and discards all changes.
+- **BR-4.29** If the diagram does not exist, or cannot be fetched, the canvas stays empty and
+  usable, and a note above it says which of the two happened.
+- **BR-4.30** Leaving a diagram that has changes for another page of the application asks for
+  confirmation first, because the changes would be lost. A diagram without changes is left
+  without a question.
 
 ## 5. Nodes (funds)
 
@@ -584,10 +625,10 @@ called the **developer tools**.
 
 ## 15. Not available yet
 
-| Item                             | Status                                                                 |
-| -------------------------------- | ---------------------------------------------------------------------- |
-| Save, Save As                    | Listed in the Actions menu, disabled. Diagrams are not stored anywhere |
-| Up and down arrows on a node     | Shown, without an action. The intended behaviour is to be defined      |
-| Add Batch target page            | A placeholder page that shows the fund's id                            |
-| Undo all / Redo all in one click | Not offered on screen; the user steps with Undo and Redo               |
-| Real fund data                   | The diagrams are a fixed sample and generated test data                |
+| Item                             | Status                                                                                                           |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Save, Save As                    | Listed in the Actions menu, disabled. Stored diagrams can be listed and opened, but changes are not written back |
+| Up and down arrows on a node     | Shown, without an action. The intended behaviour is to be defined                                                |
+| Add Batch target page            | A placeholder page that shows the fund's id                                                                      |
+| Undo all / Redo all in one click | Not offered on screen; the user steps with Undo and Redo                                                         |
+| Real fund data                   | The diagrams are a fixed sample, generated test data, and whatever is in the database                            |

@@ -1,6 +1,9 @@
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { Type } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { provideRouter } from '@angular/router';
 import * as go from 'gojs/release/go';
 import { DEFAULT_COLOR, DEFAULT_SHAPE, DEVELOPER_TOOLS_KEY } from '../diagram/constants';
 import { DATASETS, Dataset } from '../diagram/datasets';
@@ -20,6 +23,12 @@ import { LinkInfoCard } from './link-info-card/link-info-card';
 import { OperationRunner } from './operation-runner/operation-runner';
 import { DiagramPage } from './diagram-page';
 import { SelectionState } from './selection-state/selection-state';
+
+/**
+ * The page asks for the backend and for the router, for the diagrams of the
+ * database. These tests use neither: no request is answered, no address followed.
+ */
+const BACKEND_AND_ROUTER = [provideRouter([]), provideHttpClient(), provideHttpClientTesting()];
 
 /**
  * What these tests drive: members of the page, of its parts and of its services,
@@ -158,7 +167,7 @@ describe('DiagramPage', () => {
     // Most tests look at the statistics or the history numbers, so they have the developer
     // tools shown, as if that had been chosen on an earlier visit.
     localStorage.setItem(DEVELOPER_TOOLS_KEY, 'true');
-    TestBed.configureTestingModule({ imports: [DiagramPage] });
+    TestBed.configureTestingModule({ imports: [DiagramPage], providers: BACKEND_AND_ROUTER });
     fixture = TestBed.createComponent(DiagramPage);
     fixture.detectChanges();
     await fixture.whenStable();

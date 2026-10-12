@@ -7,18 +7,28 @@ import {
   computed,
   effect,
   inject,
+  input,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Router } from '@angular/router';
 import * as go from 'gojs/release/go';
+import { DiagramsApi, nodesAndLinksOf } from '../api/diagrams-api';
 import {
   BLANK_DATASET,
   DEFAULT_DATASET,
   DEFAULT_LAYOUT,
   DEFAULT_LINK_TYPE,
+  DIAGRAM_NOT_READ_NOTICE,
+  LEAVE_QUESTION,
   LOAD_FAILURE_NOTICE,
+  NO_SUCH_DIAGRAM_NOTICE,
   QUICK_LAYOUTS,
   SLOW_LAYOUTS_FROM,
+  STORED_DATASET,
+  StyleFieldId,
 } from '../diagram/constants';
 import { findDataset } from '../diagram/datasets';
 import { checkedDiagramName } from '../diagram/diagram-name';
@@ -34,7 +44,7 @@ import { HistoryService, withoutUndo } from '../diagram/history.service';
 import { createLayout } from '../diagram/layouts';
 import { LinkData, NodeData } from '../diagram/node-data';
 import { newBatchUrl } from '../new-batch/new-batch';
-import { openInNewTab } from './browser';
+import { confirmWithUser, openInNewTab } from './browser';
 import { BenchmarkStatistics } from './components/benchmark-statistics/benchmark-statistics';
 import { DiagramInfoBar } from './components/diagram-info-bar/diagram-info-bar';
 import { NodeDialogs } from './components/node-dialogs/node-dialogs';
@@ -57,9 +67,20 @@ import { SelectionState } from './selection-state/selection-state';
 /** How long after an error a diagram that is being opened is given to arrive after all. */
 const LOAD_PATIENCE_MS = 100;
 
+/** What a diagram that is being opened brings along besides its nodes and lines. */
+interface OpenedSettings {
+  name: string;
+  description?: string;
+  cardsExpanded?: boolean;
+  subtitleField?: StyleFieldId | null;
+}
+
 /**
  * The page. It creates the diagram, loads data into it, and keeps everything
- * around it up to date. What the user sees and does is in its parts:
+ * around it up to date. The data is the one picked in the Data dropdown, or,
+ * at the address /diagrams/<id>, that diagram of the database.
+ *
+ * What the user sees and does is in its parts:
  *
  * - `PageHeader`: the bar at the top, with the data and the actions on the whole diagram.
  * - `DiagramInfoBar`: name, description and search, above the canvas.
@@ -125,6 +146,14 @@ export class DiagramPage {
   private readonly linkCard = inject(LinkInfoCard);
   private readonly styles = inject(FundStyles);
   private readonly developerTools = inject(DeveloperTools);
+  private readonly api = inject(DiagramsApi);
+  private readonly router = inject(Router);
+
+  /**
+   * From the address /diagrams/<id>: the id of the diagram of the database to
+   * show. Not set at the address "/", where the Data dropdown says what is shown.
+   */
+  readonly id = input<string>();
 
   /** Id of the dataset the diagram was loaded with. */
   protected readonly datasetId = signal(DEFAULT_DATASET);
@@ -155,15 +184,32 @@ export class DiagramPage {
   private stopWatchingCanvasSize: () => void = () => undefined;
   /** True from the moment data is opened until GoJS has arranged it for the first time. */
   private loading = false;
+  /** True while a diagram of the database is on its way from the backend. */
+  private waitingForStored = false;
+  /** Counts what was opened, so that a diagram arriving late knows it is no longer wanted. */
+  private openings = 0;
+  /** The id in the address that the page last acted on. */
+  private addressId: string | undefined;
 
   constructor() {
-    afterNextRender(() => this.init());
+    afterNextRender(() => {
+      this.addressId = this.id();
+      if (this.addressId !== undefined) this.datasetId.set(STORED_DATASET);
+      this.init();
+    });
+    // The address can change while the page stays: see followAddress.
+    effect(() => {
+      const id = this.id();
+      untracked(() => this.followAddress(id));
+    });
     // The statistics below the canvas come and go with the developer tools.
     effect(() => {
       this.developerTools.shown();
       this.canvasResized();
     });
     inject(DestroyRef).onDestroy(() => {
+      // A diagram still on its way from the backend has nowhere to go any more.
+      this.openings++;
       this.stopReveal();
       this.stopWatchingErrors();
       this.stopWatchingCanvasSize();
@@ -219,7 +265,7 @@ export class DiagramPage {
 
     this.listenToDiagram();
     this.watchForErrors();
-    this.loadModel(this.datasetId());
+    this.open(this.datasetId());
     this.refresh();
   }
 
@@ -234,7 +280,8 @@ export class DiagramPage {
       this.overview.isEnabled = false;
       this.stopReveal = revealNodesOneByOne(this.diagram, () => {
         this.overview.isEnabled = true;
-        this.runner.busy.set(false);
+        // The empty canvas shown while a stored diagram is on its way stays locked.
+        this.runner.busy.set(this.waitingForStored);
       });
     });
     this.diagram.addDiagramListener('ChangedSelection', () => {
@@ -316,14 +363,80 @@ export class DiagramPage {
 
   /** Loads the dataset with this id from scratch, discarding the undo history. */
   protected reset(datasetId: string): void {
-    this.loadModel(datasetId);
     this.datasetId.set(datasetId);
+    this.open(datasetId);
     this.runner.clearLog();
     this.refresh();
+    // The app's own data has no address: that of a stored diagram no longer fits.
+    if (datasetId !== STORED_DATASET && this.id() !== undefined)
+      void this.router.navigateByUrl('/');
   }
 
-  /** Loads a fresh model that keeps the currently selected layout and line type. */
-  private loadModel(datasetId: string): void {
+  /** Opens the dataset with this id, or the diagram of the address for STORED_DATASET. */
+  private open(datasetId: string): void {
+    // Whatever was on its way from the backend is no longer wanted.
+    this.openings++;
+    this.waitingForStored = false;
+    if (datasetId === STORED_DATASET) {
+      void this.openStored();
+      return;
+    }
+    const dataset = findDataset(datasetId);
+    // A loaded diagram starts out named after its data; a new one has to be given a name.
+    this.loadModel(dataset.create(), { name: datasetId === BLANK_DATASET ? '' : dataset.label });
+  }
+
+  /**
+   * Opens the diagram of the address from the database: with its own layout
+   * type, line type and settings, and its nodes where they were stored.
+   *
+   * The canvas is empty and everything is disabled until the diagram is here.
+   * If it does not come, the canvas stays empty and the page says why.
+   */
+  private async openStored(): Promise<void> {
+    const id = this.id();
+    const opening = this.openings;
+    this.loadModel({ nodes: [], links: [] }, { name: '' });
+    if (id === undefined) return;
+    this.waitingForStored = true;
+    try {
+      const stored = await this.api.read(id);
+      // Something else was opened in the meantime, or the page was left.
+      if (opening !== this.openings) return;
+      this.waitingForStored = false;
+      this.state.layoutType.set(stored.settings.layoutType);
+      this.state.linkType.set(stored.settings.linkType);
+      this.loadModel(nodesAndLinksOf(stored), stored.settings);
+      this.refresh();
+    } catch (error) {
+      if (opening !== this.openings) return;
+      this.waitingForStored = false;
+      // Unless the empty canvas is itself still being set up, which then unlocks the page.
+      if (!this.loading) this.runner.busy.set(false);
+      const missing = error instanceof HttpErrorResponse && error.status === 404;
+      this.failure.set(missing ? NO_SUCH_DIAGRAM_NOTICE : DIAGRAM_NOT_READ_NOTICE);
+    }
+  }
+
+  /**
+   * The address changed while the page stayed, which the browser's Back and
+   * Forward buttons do between "/" and "/diagrams/<id>": show what the new
+   * address says. A change of address that the page made itself, after sample
+   * data was picked, finds the diagram already as it should be.
+   */
+  private followAddress(id: string | undefined): void {
+    // Not started yet: starting up opens what the address says.
+    if (!this.diagram || id === this.addressId) return;
+    this.addressId = id;
+    if (id !== undefined) this.reset(STORED_DATASET);
+    else if (this.datasetId() === STORED_DATASET) this.reset(DEFAULT_DATASET);
+  }
+
+  /**
+   * Loads a fresh model with these nodes and lines, in the currently selected
+   * layout and line type.
+   */
+  private loadModel(data: { nodes: NodeData[]; links: LinkData[] }, opened: OpenedSettings): void {
     // A reveal of the previous diagram that is still running has nothing left to show.
     this.stopReveal();
     // Not a change for the history: see revealNodesOneByOne.
@@ -334,38 +447,41 @@ export class DiagramPage {
     this.history.rollBackUnfinished();
     this.failure.set(null);
     this.linkCard.close();
-    const dataset = findDataset(datasetId);
-    const data = dataset.create();
+    // Nodes that all have a position, as those of a stored diagram do once it
+    // has been arranged, stay where they are: nothing is laid out.
+    const placed = data.nodes.length > 0 && data.nodes.every((node) => node.loc !== undefined);
     // The circle, layered and force-directed layouts take many seconds on a big
     // diagram. One of them may be in use from a smaller diagram; a big one is then
     // opened in the default layout rather than keeping the user waiting.
     if (
+      !placed &&
       data.nodes.length >= SLOW_LAYOUTS_FROM &&
       !QUICK_LAYOUTS.includes(this.state.layoutType())
     ) {
       this.state.layoutType.set(DEFAULT_LAYOUT);
     }
-    // A loaded diagram starts out named after its data; a new one has to be given a name.
     // A name that arrives with special characters, as one from a database may, is
     // shown without them, and the page says which name it did not accept.
-    const opened = checkedDiagramName(datasetId === BLANK_DATASET ? '' : dataset.label);
-    this.state.refusedName.set(opened.refused);
+    const name = checkedDiagramName(opened.name);
+    this.state.refusedName.set(name.refused);
     const settings = {
       layoutType: this.state.layoutType(),
       linkType: this.state.linkType(),
-      name: opened.name,
-      description: '',
-      // A newly loaded diagram starts with its relationship cards put away,
-      // and with nodes that show their name only.
-      cardsExpanded: false,
-      subtitleField: null,
+      name: name.name,
+      description: opened.description ?? '',
+      // Unless it was stored otherwise, a diagram starts with its relationship
+      // cards put away, and with nodes that show their name only.
+      cardsExpanded: opened.cardsExpanded ?? false,
+      subtitleField: opened.subtitleField ?? null,
     };
     this.runner.busy.set(true);
     this.loading = true;
     // A new model gets new parts: none of them dimmed, none of them a search result.
     this.selection.forgetHighlight();
     this.nodeSearch.clear();
-    this.diagram.layout = createLayout(settings.layoutType, data.nodes.length);
+    const layout = createLayout(settings.layoutType, data.nodes.length, settings.cardsExpanded);
+    layout.isInitial = !placed;
+    this.diagram.layout = layout;
     this.history.load(createModel(data, settings));
   }
 
@@ -426,6 +542,15 @@ export class DiagramPage {
   }
 
   // ----- Leaving the page -----
+
+  /**
+   * Asked by the router before another page of the app, such as the list of
+   * diagrams, takes the place of this one. With changes in the diagram the user
+   * is asked first, as on closing the tab; here the question can be the app's own.
+   */
+  mayLeave(): boolean {
+    return !this.history.canUndo || confirmWithUser(LEAVE_QUESTION);
+  }
 
   /**
    * Asks before the tab is closed or reloaded, or left for another address,

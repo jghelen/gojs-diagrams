@@ -1,0 +1,78 @@
+<header class="bar">
+  <h1>Fund structure diagrams</h1>
+  <a routerLink="/">Open the editor</a>
+</header>
+
+<main>
+  <h2>Diagrams</h2>
+
+  @if (diagrams.error()) {
+    <div class="notice" role="alert">
+      <p>The list of diagrams could not be read. Check that the backend is running.</p>
+      <button type="button" (click)="diagrams.reload()">Try again</button>
+    </div>
+  } @else if (diagrams.hasValue()) {
+    @let list = diagrams.value();
+    @if (list.total === 0) {
+      <p class="notice">There are no diagrams yet.</p>
+    } @else if (list.items.length === 0) {
+      <p class="notice">
+        There is no page {{ list.page }}: the list has {{ list.totalPages }}
+        {{ list.totalPages === 1 ? 'page' : 'pages' }}.
+        <a [routerLink]="listUrl">Go to the first page</a>
+      </p>
+    } @else {
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Title</th>
+            <th scope="col">Created at</th>
+            <th scope="col">Updated at</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (diagram of list.items; track diagram.id) {
+            <tr>
+              <td>
+                <a [routerLink]="diagramUrl(diagram.id)" title="Open this diagram">{{
+                  diagram.name
+                }}</a>
+              </td>
+              <td>
+                <time [attr.datetime]="diagram.createdAt">{{
+                  diagram.createdAt | date: dateFormat
+                }}</time>
+              </td>
+              <td>
+                <time [attr.datetime]="diagram.updatedAt">{{
+                  diagram.updatedAt | date: dateFormat
+                }}</time>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+
+      <nav class="pages" aria-label="Pages of the list">
+        @if (list.page > 1) {
+          <a class="step" [routerLink]="listUrl" [queryParams]="{ page: list.page - 1 }"
+            >Previous</a
+          >
+        } @else {
+          <span class="step" aria-disabled="true">Previous</span>
+        }
+        <span class="where">
+          Page {{ list.page }} of {{ list.totalPages }} · diagrams {{ range().first }} to
+          {{ range().last }} of {{ range().total }}
+        </span>
+        @if (list.page < list.totalPages) {
+          <a class="step" [routerLink]="listUrl" [queryParams]="{ page: list.page + 1 }">Next</a>
+        } @else {
+          <span class="step" aria-disabled="true">Next</span>
+        }
+      </nav>
+    }
+  } @else {
+    <p class="notice" role="status">Reading the diagrams…</p>
+  }
+</main>
